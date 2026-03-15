@@ -1,0 +1,11 @@
+CHANGELOG
+_______
+
+2026-03-15
+0.0.0: Initial release.
+
+1. + Namo
+2. + Namo#initialize: Initialise from an array of hashes.
+3. + Namo#dimensions: Dimension names are inferred from hash keys.
+4. + Namo#coordinates: Extract the coordinates by finding unique values per dimension.
+5. + Namo#[]: Select by named dimension using keyword arguments, using any one of a single value, and array, or a range.
