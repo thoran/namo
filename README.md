@@ -18,60 +18,165 @@ gem 'namo'
 
 ## Usage
 
-Create a Namo from an array of hashes:
+Create a Namo instance from an array of hashes:
 
 ```ruby
 require 'namo'
 
-prices = Namo.new([
-  {date: '2025-01-01', symbol: 'BHP', close: 42.5},
-  {date: '2025-01-01', symbol: 'RIO', close: 118.3},
-  {date: '2025-01-02', symbol: 'BHP', close: 43.1},
-  {date: '2025-01-02', symbol: 'RIO', close: 117.8}
+sales = Namo.new([
+  {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+  {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+  {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+  {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
 ])
 ```
 
 Dimensions and coordinates are inferred:
 
 ```ruby
-prices.dimensions
-# => [:date, :symbol, :close]
+sales.dimensions
+# => [:product, :quarter, :price, :quantity]
 
-prices.coordinates[:date]
-# => ['2025-01-01', '2025-01-02']
+sales.coordinates[:product]
+# => ['Widget', 'Gadget']
 
-prices.coordinates[:symbol]
-# => ['BHP', 'RIO']
+sales.coordinates[:quarter]
+# => ['Q1', 'Q2']
 ```
+
+### Selection
 
 Select by named dimension using keyword arguments:
 
 ```ruby
 # Single value
-prices[symbol: 'BHP']
+sales[product: 'Widget']
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+# ]>
 
 # Multiple dimensions
-prices[date: '2025-01-01', symbol: 'BHP']
+sales[product: 'Widget', quarter: 'Q1']
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100}
+# ]>
 
 # Range
-prices[close: 42.0..43.0]
+sales[price: 10.0..20.0]
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+# ]>
 
 # Array of values
-prices[symbol: ['BHP', 'RIO']]
-
-# All data
-prices[]
+sales[quarter: ['Q1']]
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+#   {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40}
+# ]>
 ```
 
-Selection always returns a new Namo. Omitting a dimension means "all values along that dimension."
+### Projection
+
+Project to specific dimensions:
+
+```ruby
+sales[:product, :price]
+# => #<Namo [
+#   {product: 'Widget', price: 10.0},
+#   {product: 'Widget', price: 10.0},
+#   {product: 'Gadget', price: 25.0},
+#   {product: 'Gadget', price: 25.0}
+# ]>
+```
+
+Selection and projection can be chained:
+
+```ruby
+sales[product: 'Widget'][:quarter, :price]
+# => #<Namo [
+#   {quarter: 'Q1', price: 10.0},
+#   {quarter: 'Q2', price: 10.0}
+# ]>
+```
+
+Or combined in a single call (names before selectors):
+
+```ruby
+sales[:quarter, :price, product: 'Widget']
+# => #<Namo [
+#   {quarter: 'Q1', price: 10.0},
+#   {quarter: 'Q2', price: 10.0}
+# ]>
+```
+
+Selection and projection always return a new Namo instance, so everything chains.
+
+### Formulae
+
+Define computed dimensions using `[]=`:
+
+```ruby
+sales[:revenue] = proc{|row| row[:price] * row[:quantity]}
+
+sales[:product, :quarter, :revenue]
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1', revenue: 1000.0},
+#   {product: 'Widget', quarter: 'Q2', revenue: 1500.0},
+#   {product: 'Gadget', quarter: 'Q1', revenue: 1000.0},
+#   {product: 'Gadget', quarter: 'Q2', revenue: 1500.0}
+# ]>
+```
+
+Formulae compose:
+
+```ruby
+sales[:cost] = proc{|row| row[:quantity] * 4.0}
+sales[:profit] = proc{|row| row[:revenue] - row[:cost]}
+
+sales[:product, :quarter, :profit]
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1', profit: 600.0},
+#   {product: 'Widget', quarter: 'Q2', profit: 900.0},
+#   {product: 'Gadget', quarter: 'Q1', profit: 840.0},
+#   {product: 'Gadget', quarter: 'Q2', profit: 1260.0}
+# ]>
+```
+
+Formulae work with selection and projection:
+
+```ruby
+sales[product: 'Widget'][:revenue, :quarter]
+# => #<Namo [
+#   {revenue: 1000.0, quarter: 'Q1'},
+#   {revenue: 1500.0, quarter: 'Q2'}
+# ]>
+```
+
+Formulae carry through selection — a filtered Namo instance remembers its formulae.
+
+### Extracting data
+
+`to_a` returns an array of hashes:
+
+```ruby
+sales[:product, :quarter, :revenue].to_a
+# => [
+#   {product: 'Widget', quarter: 'Q1', revenue: 1000.0},
+#   {product: 'Widget', quarter: 'Q2', revenue: 1500.0},
+#   {product: 'Gadget', quarter: 'Q1', revenue: 1000.0},
+#   {product: 'Gadget', quarter: 'Q2', revenue: 1500.0}
+# ]
+```
 
 ## Why?
 
-Every other multi-dimensional array library requires you to pre-shape your data before you can work with it. Namo takes it in the form it already comes in.
+Every other multi-dimensional array library requires you to pre-shape your data before you can work with it. Namo takes it in the form it likely already comes in.
 
 ## Name
 
-Namo: na(med) (di)m(ensi)o(ns). A companion to Numo (numeric arrays for Ruby).
+Namo: nam(ed) (dimensi)o(ns). A companion to Numo (numeric arrays for Ruby). And in Aussie culture 'o' gets added to the end of names.
 
 ## Contributing
 

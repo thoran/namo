@@ -1,70 +1,154 @@
-# namo_test.rb
-
-# 20260314
-# 0.0.0
-
 require 'minitest/autorun'
+require 'minitest-spec-context'
+
 require_relative '../lib/namo'
 
 describe Namo do
   let(:sample_data) do
     [
-      {date: '2025-01-01', symbol: 'BHP', close: 42.5},
-      {date: '2025-01-01', symbol: 'RIO', close: 118.3},
-      {date: '2025-01-02', symbol: 'BHP', close: 43.1},
-      {date: '2025-01-02', symbol: 'RIO', close: 117.8}
+      {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+      {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+      {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+      {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
     ]
   end
 
-  let(:namo){ Namo.new(sample_data) }
+  let(:sales) do
+    Namo.new(sample_data)
+  end
 
-  describe '#dimensions' do
-    it 'infers dimensions from hash keys' do
-      _(namo.dimensions).must_equal [:date, :symbol, :close]
+  describe "#dimensions" do
+    it "infers dimensions from hash keys" do
+      _(sales.dimensions).must_equal [:product, :quarter, :price, :quantity]
     end
   end
 
-  describe '#coordinates' do
-    it 'extracts unique values per dimension' do
-      _(namo.coordinates[:date]).must_equal ['2025-01-01', '2025-01-02']
-      _(namo.coordinates[:symbol]).must_equal ['BHP', 'RIO']
-      _(namo.coordinates[:close]).must_equal [42.5, 118.3, 43.1, 117.8]
+  describe "#coordinates" do
+    it "extracts unique values for each dimension" do
+      _(sales.coordinates).must_equal ({
+        product: ['Widget', 'Gadget'],
+        quarter: ['Q1', 'Q2'],
+        price: [10.0, 25.0],
+        quantity: [100, 150, 40, 60]
+      })
+      _(sales.coordinates[:product]).must_equal ['Widget', 'Gadget']
+      _(sales.coordinates[:quarter]).must_equal ['Q1', 'Q2']
     end
   end
 
-  describe '#[]' do
-    it 'selects by single value' do
-      result = namo[symbol: 'BHP']
-      _(result.coordinates[:date]).must_equal ['2025-01-01', '2025-01-02']
-      _(result.coordinates[:symbol]).must_equal ['BHP']
-      _(result.coordinates[:close]).must_equal [42.5, 43.1]
+  describe "#[]" do
+    context "selection" do
+      it "selects by single coordinate" do
+        result = sales[product: 'Widget']
+        _(result.coordinates[:product]).must_equal ['Widget']
+        _(result.to_a.count).must_equal 2
+        _(result.to_a.map{|row| row[:product]}).must_equal ['Widget', 'Widget']
+      end
+
+      it "selects by array of coordinates" do
+        result = sales[quarter: ['Q1']]
+        _(result.coordinates[:quarter]).must_equal ['Q1']
+        _(result.to_a.count).must_equal 2
+      end
+
+      it "selects by multiple dimensions" do
+        result = sales[product: 'Widget', quarter: 'Q1']
+        _(result.to_a.count).must_equal 1
+        _(result.to_a).must_equal [{product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100}]
+      end
+
+      it "returns a Namo instance" do
+        result = sales[product: 'Widget']
+        _(result.coordinates[:product]).must_equal ['Widget']
+      end
     end
 
-    it 'selects by multiple dimensions' do
-      result = namo[date: '2025-01-01', symbol: 'BHP']
-      _(result.coordinates[:date]).must_equal ['2025-01-01']
-      _(result.coordinates[:symbol]).must_equal ['BHP']
-      _(result.coordinates[:close]).must_equal [42.5]
+    context "projection" do
+      it "projects to named dimensions" do
+        result = sales[:product, :price]
+        _(result.dimensions).must_equal [:product, :price]
+        _(result.coordinates[:product]).must_equal ['Widget', 'Gadget']
+        _(result.to_a.count).must_equal 4
+      end
     end
 
-    it 'selects by range' do
-      result = namo[close: 42.0..43.0]
-      _(result.coordinates[:close]).must_equal [42.5]
+    context "selection and projection" do
+      it "can use them together" do
+        result = sales[:price, product: 'Widget']
+        _(result.to_a.count).must_equal 2
+        _(result.to_a).must_equal [{price: 10.0}, {price: 10.0}]
+      end
+
+      it "can chain them" do
+        result = sales[product: 'Widget'][:price]
+        _(result.to_a.count).must_equal 2
+        _(result.to_a).must_equal [{price: 10.0}, {price: 10.0}]
+      end
+    end
+  end
+
+  describe "#[]= formulae" do
+    it "defines a formula" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      _(sales[:product, :quarter, :revenue].to_a).must_equal [
+        {product: "Widget", quarter: "Q1", revenue: 1000.0},
+        {product: "Widget", quarter: "Q2", revenue: 1500.0},
+        {product: "Gadget", quarter: "Q1", revenue: 1000.0},
+        {product: "Gadget", quarter: "Q2", revenue: 1500.0}
+      ]
     end
 
-    it 'selects by array of values' do
-      result = namo[symbol: ['BHP', 'RIO']]
-      _(result.coordinates[:symbol]).must_equal ['BHP', 'RIO']
+    it "composes formulae" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      sales[:cost] = proc{|r| r[:quantity] * 4.0}
+      sales[:profit] = proc{|r| r[:revenue] - r[:cost]}
+      _(sales[:product, :quarter, :profit].to_a).must_equal [
+        {product: "Widget", quarter: "Q1", profit: 600.0},
+        {product: "Widget", quarter: "Q2", profit: 900.0},
+        {product: "Gadget", quarter: "Q1", profit: 840.0},
+        {product: "Gadget", quarter: "Q2", profit: 1260.0}
+      ]
     end
 
-    it 'returns a Namo' do
-      result = namo[symbol: 'BHP']
-      _(result).must_be_kind_of Namo
+    it "works with chained selection and projection" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales[product: 'Widget'][:product, :quarter, :revenue]
+      _(result.to_a).must_equal [
+        {product: "Widget", quarter: "Q1", revenue: 1000.0},
+        {product: "Widget", quarter: "Q2", revenue: 1500.0}
+      ]
     end
 
-    it 'returns all data when no selections given' do
-      result = namo[]
-      _(result.coordinates).must_equal namo.coordinates
+    it "works with single-call selection and projection" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales[:product, :revenue, product: 'Widget']
+      _(result.to_a).must_equal [
+        {product: "Widget", revenue: 1000.0},
+        {product: "Widget", revenue: 1500.0}
+      ]
+    end
+
+    it "carries formulae through selection" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      widgets = sales[product: 'Widget']
+      _(widgets[:revenue].to_a).must_equal [{revenue: 1000.0}, {revenue: 1500.0}]
+    end
+
+    it "projects formula with context dimensions" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales[:product, :quarter, :revenue]
+      _(result.to_a).must_equal [
+        {product: 'Widget', quarter: 'Q1', revenue: 1000.0},
+        {product: 'Widget', quarter: 'Q2', revenue: 1500.0},
+        {product: 'Gadget', quarter: 'Q1', revenue: 1000.0},
+        {product: 'Gadget', quarter: 'Q2', revenue: 1500.0}
+      ]
+    end
+  end
+
+  describe "#to_a" do
+    it "returns the data as an array of hashes" do
+      _(sales.to_a).must_equal sample_data
     end
   end
 end

@@ -1,14 +1,27 @@
 CHANGELOG
-_______
+_________
 
-2026-03-15
+20260328
+0.1.0: Add formulae via []=. Formulae are procs which receive a Row object, compose via named references, and carry through selection.
+
+1. ~ Namo#[]: Refactor to accept *names for projection alongside **selections. Always returns a Namo instance.
+2. + Namo#[]=: Define named formulae as procs.
+3. + Namo#to_a: Extract data as an array of hashes.
+4. + Namo::Row: Resolve names against row data or formulae.
+5. ~ Namo#initialize: Accept optional formulae: keyword argument.
+6. + attr_accessor :data, :formulae
+7. ~ README.md: + Projection section, + Formulae section, + Extracting data section
+8. ~ namo_test.rb: Add tests for projection, formulae, composition, chained and single-call selection with projection.
+9. ~ Namo::VERSION: /0.0.1/0.1.0/
+
+20260315
 0.0.1: Fix README.md and CHANGELOG.
 
 1. ~ README.md: Fix Contributing secton.
 2. ~ CHANGELOG: Use the same description in the summary as in the commit message.
 3. ~ Namo::VERSION: /0.0.0/0.0.1/
 
-2026-03-15
+20260315
 0.0.0: The initial release has instantiation from hashes, automatic inferral of dimension names and co-ordinates, and selection of data by a single value, an array, or a range.
 
 1. + Namo

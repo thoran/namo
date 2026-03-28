@@ -15,6 +15,7 @@ tmp/
 # Bundler
 /vendor/bundle
 .bundle
+Gemfile.lock
 
 # RDoc
 /doc/

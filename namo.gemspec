@@ -2,7 +2,6 @@ require_relative './lib/Namo/VERSION'
 
 Gem::Specification.new do |spec|
   spec.name = 'namo'
-  spec.date = '2026-03-15'
   spec.version = Namo::VERSION
 
   spec.summary = "Named dimensional data for Ruby."
@@ -28,5 +27,6 @@ Gem::Specification.new do |spec|
   ].flatten
 
   spec.add_development_dependency 'minitest'
+  spec.add_development_dependency 'minitest-spec-context'
   spec.add_development_dependency 'rake'
 end
