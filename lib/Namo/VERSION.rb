@@ -1,6 +1,6 @@
 # Namo/VERSION.rb
 # Namo::VERSION
 
-module Namo
-  VERSION = '0.1.0'
+class Namo
+  VERSION = '0.2.0'
 end

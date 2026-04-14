@@ -1,6 +1,19 @@
 CHANGELOG
 _________
 
+20260414
+0.2.0: Include Enumerable.
+
+1. ~ Namo: include Enumerable
+2. + Namo#each: Yield Row objects wrapping each data row with formulae. Returns an Enumerator when no block is given.
+3. ~ Namo#[]: Refactor to use Enumerable#select and Row#match? instead of select_rows.
+4. - Namo#select_rows: Replaced by Row#match?.
+5. + Namo::Row#match?: Selection logic moved from Namo to Row.
+6. + Namo::Row#to_h: Return the underlying row hash.
+7. ~ namo_test.rb: Add tests for #each and Enumerable methods (map, reduce, min_by, flat_map).
+8. ~ README.md: + Enumerable section
+9. ~ Namo::VERSION: /0.1.0/0.2.0/; /module/class/ to match Namo's definition.
+
 20260328
 0.1.0: Add formulae via []=. Formulae are procs which receive a Row object, compose via named references, and carry through selection.
 

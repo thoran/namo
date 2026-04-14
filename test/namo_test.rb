@@ -146,6 +146,64 @@ describe Namo do
     end
   end
 
+  describe "#each" do
+    it "yields Row objects" do
+      rows = []
+      sales.each{|row| rows << row}
+      _(rows.first).must_be_kind_of Namo::Row
+      _(rows.length).must_equal 4
+    end
+
+    it "yields rows with access to data" do
+      products = sales.map{|row| row[:product]}
+      _(products).must_equal ['Widget', 'Widget', 'Gadget', 'Gadget']
+    end
+
+    it "yields rows with access to formulae" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      revenues = sales.map{|row| row[:revenue]}
+      _(revenues).must_equal [1000.0, 1500.0, 1000.0, 1500.0]
+    end
+
+    it "returns an enumerator without a block" do
+      _(sales.each).must_be_kind_of Enumerator
+    end
+  end
+
+  describe "Enumerable" do
+    it "supports reduce" do
+      total_quantity = sales.reduce(0){|sum, row| sum + row[:quantity]}
+      _(total_quantity).must_equal 350
+    end
+
+    it "supports reduce with selection" do
+      widget_quantity = sales[product: 'Widget'].reduce(0){|sum, row| sum + row[:quantity]}
+      _(widget_quantity).must_equal 250
+    end
+
+    it "supports reduce with formulae" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      total_revenue = sales.reduce(0){|sum, row| sum + row[:revenue]}
+      _(total_revenue).must_equal 5000.0
+    end
+
+    it "supports reduce with selection and formulae" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      widget_revenue = sales[product: 'Widget'].reduce(0){|sum, row| sum + row[:revenue]}
+      _(widget_revenue).must_equal 2500.0
+    end
+
+    it "supports min_by" do
+      cheapest = sales.min_by{|row| row[:price]}
+      _(cheapest[:product]).must_equal 'Widget'
+    end
+
+    it "supports flat_map" do
+      prices = sales.flat_map{|row| [row[:price]]}
+      _(prices).must_equal [10.0, 10.0, 25.0, 25.0]
+    end
+  end
+
   describe "#to_a" do
     it "returns the data as an array of hashes" do
       _(sales.to_a).must_equal sample_data

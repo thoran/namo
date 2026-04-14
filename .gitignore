@@ -42,3 +42,6 @@ _yardoc
 
 # Test artifacts
 .minitest-*
+
+# AI
+.claude

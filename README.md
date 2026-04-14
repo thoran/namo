@@ -156,6 +156,35 @@ sales[product: 'Widget'][:revenue, :quarter]
 
 Formulae carry through selection — a filtered Namo instance remembers its formulae.
 
+### Enumerable
+
+Namo includes `Enumerable`, so `each`, `reduce`, `map`, `select`, `min_by`, and all the rest work out of the box. Rows are yielded as `Row` objects, so formulae are accessible during enumeration:
+
+```ruby
+sales.reduce(0){|sum, row| sum + row[:quantity]}
+# => 350
+
+sales[product: 'Widget'].reduce(0){|sum, row| sum + row[:quantity]}
+# => 250
+
+sales[:revenue] = proc{|row| row[:price] * row[:quantity]}
+
+sales.reduce(0){|sum, row| sum + row[:revenue]}
+# => 5000.0
+
+sales[product: 'Widget'].reduce(0){|sum, row| sum + row[:revenue]}
+# => 2500.0
+
+sales.map{|row| row[:product]}
+# => ['Widget', 'Widget', 'Gadget', 'Gadget']
+
+sales.min_by{|row| row[:price]}[:product]
+# => 'Widget'
+
+sales.flat_map{|row| [row[:price]]}
+# => [10.0, 10.0, 25.0, 25.0]
+```
+
 ### Extracting data
 
 `to_a` returns an array of hashes:

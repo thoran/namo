@@ -2,6 +2,8 @@
 # Namo
 
 class Namo
+  include Enumerable
+
   class Row
     def [](name)
       if @formulae.key?(name)
@@ -9,6 +11,21 @@ class Namo
       else
         @row[name]
       end
+    end
+
+    def match?(selections)
+      selections.all? do |dimension, coordinate|
+        case coordinate
+        when Array, Range
+          coordinate.include?(self[dimension])
+        else
+          self[dimension] == coordinate
+        end
+      end
+    end
+
+    def to_h
+      @row
     end
 
     private
@@ -35,18 +52,26 @@ class Namo
   end
 
   def [](*names, **selections)
-    data = selections.any? ? select_rows(selections) : @data
-    if names.any?
-      data = data.map do |row_data|
-        row = Row.new(row_data, @formulae)
-        names.each_with_object({}){|name, hash| hash[name] = row[name]}
+    rows = selections.any? ? select{|row| row.match?(selections)} : entries
+    data = (
+      if names.any?
+        rows.map do |row|
+          names.each_with_object({}){|name, hash| hash[name] = row[name]}
+        end
+      else
+        rows.map(&:to_h)
       end
-    end
+    )
     self.class.new(data, formulae: @formulae.dup)
   end
 
   def []=(name, proc)
     @formulae[name] = proc
+  end
+
+  def each(&block)
+    return enum_for(:each) unless block_given?
+    @data.each{|row_data| block.call(Row.new(row_data, @formulae))}
   end
 
   def to_a
@@ -62,18 +87,5 @@ class Namo
   def initialize(data = nil, formulae: {})
     @data = data
     @formulae = formulae
-  end
-
-  def select_rows(selections)
-    @data.select do |row|
-      selections.all? do |dimension, coordinate|
-        case coordinate
-        when Array, Range
-          coordinate.include?(row[dimension])
-        else
-          row[dimension] == coordinate
-        end
-      end
-    end
   end
 end
