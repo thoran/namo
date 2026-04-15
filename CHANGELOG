@@ -2,6 +2,15 @@ CHANGELOG
 _________
 
 20260415
+0.4.0: + concatenation (+) and row removal (-)
+
+1. + Namo#+: Concatenate two Namo instances with matching dimensions. Appends rows from the second to the first. Raises ArgumentError when dimensions differ.
+2. + Namo#-: Remove rows from the first Namo that appear exactly in the second. Whole-row set difference. Raises ArgumentError when dimensions differ.
+3. ~ Namo_test.rb: Add tests for #+ and #-.
+4. ~ README.md: + Concatenation section, + Row removal section.
+5. ~ Namo::VERSION: /0.3.0/0.4.0/
+
+20260415
 0.3.0: + contraction
 
 1. + Namo::NegatedDimension: Wrapper for negated dimension names used in contraction.

@@ -251,6 +251,92 @@ describe Namo do
     end
   end
 
+  describe "#+" do
+    let(:more_data) do
+      [
+        {product: 'Widget', quarter: 'Q3', price: 10.0, quantity: 200},
+        {product: 'Gadget', quarter: 'Q3', price: 25.0, quantity: 80}
+      ]
+    end
+
+    let(:more_sales) do
+      Namo.new(more_data)
+    end
+
+    it "concatenates rows" do
+      result = sales + more_sales
+      _(result.to_a.count).must_equal 6
+      _(result.to_a).must_equal(sample_data + more_data)
+    end
+
+    it "preserves dimensions" do
+      result = sales + more_sales
+      _(result.dimensions).must_equal [:product, :quarter, :price, :quantity]
+    end
+
+    it "carries formulae through from self" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales + more_sales
+      _(result.map{|row| row[:revenue]}).must_equal [1000.0, 1500.0, 1000.0, 1500.0, 2000.0, 2000.0]
+    end
+
+    it "merges formulae from other" do
+      more_sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales + more_sales
+      _(result.map{|row| row[:revenue]}).must_equal [1000.0, 1500.0, 1000.0, 1500.0, 2000.0, 2000.0]
+    end
+
+    it "prefers self's formulae on conflict" do
+      sales[:label] = proc{|r| "self: #{r[:product]}"}
+      more_sales[:label] = proc{|r| "other: #{r[:product]}"}
+      result = sales + more_sales
+      _(result.map{|row| row[:label]}).must_equal [
+        'self: Widget', 'self: Widget', 'self: Gadget', 'self: Gadget',
+        'self: Widget', 'self: Gadget'
+      ]
+    end
+
+    it "raises when dimensions differ" do
+      other = Namo.new([{product: 'Widget', quarter: 'Q1'}])
+      _ { sales + other }.must_raise ArgumentError
+    end
+  end
+
+  describe "#-" do
+    let(:to_remove) do
+      Namo.new([
+        {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+        {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+      ])
+    end
+
+    it "removes matching rows" do
+      result = sales - to_remove
+      _(result.to_a.count).must_equal 2
+      _(result.to_a).must_equal [
+        {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+        {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40}
+      ]
+    end
+
+    it "preserves non-matching rows" do
+      other = Namo.new([{product: 'Thingo', quarter: 'Q4', price: 99.0, quantity: 1}])
+      result = sales - other
+      _(result.to_a).must_equal sample_data
+    end
+
+    it "carries formulae through from self" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales - to_remove
+      _(result.map{|row| row[:revenue]}).must_equal [1500.0, 1000.0]
+    end
+
+    it "raises when dimensions differ" do
+      other = Namo.new([{product: 'Widget', quarter: 'Q1'}])
+      _ { sales - other }.must_raise ArgumentError
+    end
+  end
+
   describe "#to_a" do
     it "returns the data as an array of hashes" do
       _(sales.to_a).must_equal sample_data

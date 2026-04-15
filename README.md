@@ -153,6 +153,58 @@ sales[-:price, -:quantity, product: 'Widget']
 
 Selection, projection, and contraction always return a new Namo instance, so everything chains.
 
+### Concatenation
+
+`+` combines two Namo objects that share the same dimensions by appending the rows of the second to the first:
+
+```ruby
+q1_sales = Namo.new([
+  {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+  {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40}
+])
+
+q2_sales = Namo.new([
+  {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+  {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+])
+
+all_sales = q1_sales + q2_sales
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+#   {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+#   {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+# ]>
+```
+
+The dimensions must match — concatenating Namo objects with different dimensions raises an `ArgumentError`. Formulae carry through from the left-hand side.
+
+### Row Removal
+
+`-` removes from the first Namo any row that appears exactly in the second:
+
+```ruby
+sales = Namo.new([
+  {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+  {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+  {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+  {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+])
+
+discontinued = Namo.new([
+  {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+  {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+])
+
+sales - discontinued
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+# ]>
+```
+
+Removal is exact — every dimension, every value must match. The dimensions must match; different dimensions raise an `ArgumentError`. Formulae carry through from the left-hand side.
+
 ### Formulae
 
 Define computed dimensions using `[]=`:

@@ -56,6 +56,20 @@ class Namo
     @data.each{|row_data| block.call(Row.new(row_data, @formulae))}
   end
 
+  def +(other)
+    unless dimensions == other.dimensions
+      raise ArgumentError, "dimensions do not match"
+    end
+    self.class.new(@data + other.data, formulae: other.formulae.merge(@formulae))
+  end
+
+  def -(other)
+    unless dimensions == other.dimensions
+      raise ArgumentError, "dimensions do not match"
+    end
+    self.class.new(@data - other.data, formulae: @formulae.dup)
+  end
+
   def to_a
     @data.map do |row|
       row.keys.each_with_object({}) do |key, hash|
