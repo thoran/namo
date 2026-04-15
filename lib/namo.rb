@@ -1,40 +1,12 @@
 # namo.rb
 # Namo
 
+require_relative 'Namo/NegatedDimension'
+require_relative 'Namo/Row'
+require_relative 'Symbol'
+
 class Namo
   include Enumerable
-
-  class Row
-    def [](name)
-      if @formulae.key?(name)
-        @formulae[name].call(self)
-      else
-        @row[name]
-      end
-    end
-
-    def match?(selections)
-      selections.all? do |dimension, coordinate|
-        case coordinate
-        when Array, Range
-          coordinate.include?(self[dimension])
-        else
-          self[dimension] == coordinate
-        end
-      end
-    end
-
-    def to_h
-      @row
-    end
-
-    private
-
-    def initialize(row, formulae)
-      @row = row
-      @formulae = formulae
-    end
-  end
 
   attr_accessor :data
   attr_accessor :formulae
@@ -53,16 +25,26 @@ class Namo
 
   def [](*names, **selections)
     rows = selections.any? ? select{|row| row.match?(selections)} : entries
-    data = (
-      if names.any?
+    negated, positive = names.partition{|n| n.is_a?(NegatedDimension)}
+    if negated.any? && positive.any?
+      raise ArgumentError, "cannot mix projection and contraction in a single call"
+    end
+    projected = (
+      if negated.any?
+        excluded = negated.map(&:name)
+        kept = dimensions - excluded
         rows.map do |row|
-          names.each_with_object({}){|name, hash| hash[name] = row[name]}
+          kept.each_with_object({}){|name, hash| hash[name] = row[name]}
+        end
+      elsif positive.any?
+        rows.map do |row|
+          positive.each_with_object({}){|name, hash| hash[name] = row[name]}
         end
       else
         rows.map(&:to_h)
       end
     )
-    self.class.new(data, formulae: @formulae.dup)
+    self.class.new(projected, formulae: @formulae.dup)
   end
 
   def []=(name, proc)

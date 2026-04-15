@@ -1,5 +1,11 @@
 require_relative './lib/Namo/VERSION'
 
+class Gem::Specification
+  def development_dependencies=(gems)
+    gems.each{|gem| add_development_dependency(*gem)}
+  end
+end
+
 Gem::Specification.new do |spec|
   spec.name = 'namo'
   spec.version = Namo::VERSION
@@ -13,20 +19,23 @@ Gem::Specification.new do |spec|
   spec.license = 'MIT'
 
   spec.required_ruby_version = '>= 2.7'
+
   spec.require_paths = ['lib']
 
   spec.files = [
+    'namo.gemspec',
     'CHANGELOG',
     'Gemfile',
-    Dir['lib/**/*.rb'],
     'LICENSE',
-    'namo.gemspec',
     'Rakefile',
     'README.md',
+    Dir['lib/**/*.rb'],
     Dir['test/**/*.rb'],
   ].flatten
 
-  spec.add_development_dependency 'minitest'
-  spec.add_development_dependency 'minitest-spec-context'
-  spec.add_development_dependency 'rake'
+  spec.development_dependencies = %w{
+    minitest
+    minitest-spec-context
+    rake
+  }
 end

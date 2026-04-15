@@ -85,6 +85,53 @@ describe Namo do
         _(result.to_a).must_equal [{price: 10.0}, {price: 10.0}]
       end
     end
+
+    context "contraction" do
+      it "removes named dimensions" do
+        result = sales[-:price, -:quantity]
+        _(result.dimensions).must_equal [:product, :quarter]
+        _(result.to_a.count).must_equal 4
+        _(result.to_a.first).must_equal({product: 'Widget', quarter: 'Q1'})
+      end
+
+      it "removes a single dimension" do
+        result = sales[-:price]
+        _(result.dimensions).must_equal [:product, :quarter, :quantity]
+        _(result.to_a.count).must_equal 4
+      end
+
+      it "raises when mixing projection and contraction" do
+        _ { sales[:product, -:price] }.must_raise ArgumentError
+      end
+
+      it "carries formulae through contraction" do
+        sales[:label] = proc{|r| "#{r[:product]}-#{r[:quarter]}"}
+        result = sales[-:price, -:quantity]
+        _(result.map{|row| row[:label]}).must_equal [
+          'Widget-Q1', 'Widget-Q2', 'Gadget-Q1', 'Gadget-Q2'
+        ]
+      end
+    end
+
+    context "selection and contraction" do
+      it "can use them together" do
+        result = sales[-:price, -:quantity, product: 'Widget']
+        _(result.to_a.count).must_equal 2
+        _(result.to_a).must_equal [
+          {product: 'Widget', quarter: 'Q1'},
+          {product: 'Widget', quarter: 'Q2'}
+        ]
+      end
+
+      it "can chain them" do
+        result = sales[product: 'Widget'][-:price, -:quantity]
+        _(result.to_a.count).must_equal 2
+        _(result.to_a).must_equal [
+          {product: 'Widget', quarter: 'Q1'},
+          {product: 'Widget', quarter: 'Q2'}
+        ]
+      end
+    end
   end
 
   describe "#[]= formulae" do

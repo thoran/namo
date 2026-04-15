@@ -111,7 +111,47 @@ sales[:quarter, :price, product: 'Widget']
 # ]>
 ```
 
-Selection and projection always return a new Namo instance, so everything chains.
+### Contraction
+
+Contraction is the complement of projection. Projection says "keep these dimensions"; contraction says "remove these dimensions, keep everything else":
+
+```ruby
+sales[-:price, -:quantity]
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1'},
+#   {product: 'Widget', quarter: 'Q2'},
+#   {product: 'Gadget', quarter: 'Q1'},
+#   {product: 'Gadget', quarter: 'Q2'}
+# ]>
+```
+
+The `-:price` syntax uses unary minus on Symbol to produce a negated dimension. Mixing projection and contraction in the same call is an error — the two modes are mutually exclusive:
+
+```ruby
+sales[:product, -:price]  # => ArgumentError
+```
+
+Selection and contraction can be chained:
+
+```ruby
+sales[product: 'Widget'][-:price, -:quantity]
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1'},
+#   {product: 'Widget', quarter: 'Q2'}
+# ]>
+```
+
+Or combined in a single call (names before selectors):
+
+```ruby
+sales[-:price, -:quantity, product: 'Widget']
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1'},
+#   {product: 'Widget', quarter: 'Q2'}
+# ]>
+```
+
+Selection, projection, and contraction always return a new Namo instance, so everything chains.
 
 ### Formulae
 

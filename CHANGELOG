@@ -1,6 +1,17 @@
 CHANGELOG
 _________
 
+20260415
+0.3.0: + contraction
+
+1. + Namo::NegatedDimension: Wrapper for negated dimension names used in contraction.
+2. + Symbol#-@: Produce a NegatedDimension, enabling -:date syntax.
+3. ~ Namo#[]: Extend to recognise NegatedDimension for contraction (remove named dimensions, keep everything else). Raise ArgumentError when mixing projection and contraction.
+4. > Namo::Row: Extract to Namo/Row.rb.
+5. ~ namo_test.rb: Add tests for contraction, mixed-mode error, and contraction with selection and formulae. Split tests into one file per class: Row_test.rb, NegatedDimension_test.rb, Symbol_test.rb.
+6. ~ README.md: + Contraction section
+7. ~ Namo::VERSION: /0.2.0/0.3.0/
+
 20260414
 0.2.0: Include Enumerable.
 
