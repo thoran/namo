@@ -1,6 +1,16 @@
 CHANGELOG
 _________
 
+20260416
+0.5.0: + row-axis set operations: intersection (&), union (|), symmetric difference (^)
+
+1. + Namo#&: Intersection. Returns rows present in both Namo objects. Requires matching dimensions.
+2. + Namo#|: Union. Returns all rows from both sides, deduplicated. Requires matching dimensions.
+3. + Namo#^: Symmetric difference. Returns rows in one side but not both. Requires matching dimensions.
+4. ~ Namo_test.rb: Add tests for #&, #|, and #^.
+5. ~ README.md: + Intersection section, + Union section, + Symmetric difference section.
+6. ~ Namo::VERSION: /0.4.0/0.5.0/
+
 20260415
 0.4.0: + concatenation (+) and row removal (-)
 

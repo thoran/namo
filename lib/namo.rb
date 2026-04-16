@@ -70,6 +70,27 @@ class Namo
     self.class.new(@data - other.data, formulae: @formulae.dup)
   end
 
+  def &(other)
+    unless dimensions == other.dimensions
+      raise ArgumentError, "dimensions do not match"
+    end
+    self.class.new(@data & other.data, formulae: @formulae.dup)
+  end
+
+  def |(other)
+    unless dimensions == other.dimensions
+      raise ArgumentError, "dimensions do not match"
+    end
+    self.class.new((@data | other.data), formulae: other.formulae.merge(@formulae))
+  end
+
+  def ^(other)
+    unless dimensions == other.dimensions
+      raise ArgumentError, "dimensions do not match"
+    end
+    self.class.new((@data - other.data) + (other.data - @data), formulae: other.formulae.merge(@formulae))
+  end
+
   def to_a
     @data.map do |row|
       row.keys.each_with_object({}) do |key, hash|

@@ -337,6 +337,135 @@ describe Namo do
     end
   end
 
+  describe "#&" do
+    let(:other) do
+      Namo.new([
+        {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+        {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60},
+        {product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}
+      ])
+    end
+
+    it "returns rows present in both" do
+      result = sales & other
+      _(result.to_a).must_equal [
+        {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+        {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+      ]
+    end
+
+    it "returns empty when nothing overlaps" do
+      other = Namo.new([{product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}])
+      result = sales & other
+      _(result.to_a).must_equal []
+    end
+
+    it "preserves dimensions" do
+      result = sales & other
+      _(result.dimensions).must_equal [:product, :quarter, :price, :quantity]
+    end
+
+    it "carries formulae through from self" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales & other
+      _(result.map{|row| row[:revenue]}).must_equal [1000.0, 1500.0]
+    end
+
+    it "raises when dimensions differ" do
+      other = Namo.new([{product: 'Widget', quarter: 'Q1'}])
+      _ { sales & other }.must_raise ArgumentError
+    end
+  end
+
+  describe "#|" do
+    let(:other) do
+      Namo.new([
+        {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+        {product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}
+      ])
+    end
+
+    it "returns all rows deduplicated" do
+      result = sales | other
+      _(result.to_a).must_equal [
+        {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+        {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+        {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+        {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60},
+        {product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}
+      ]
+    end
+
+    it "preserves dimensions" do
+      result = sales | other
+      _(result.dimensions).must_equal [:product, :quarter, :price, :quantity]
+    end
+
+    it "merges formulae from other" do
+      other[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales | other
+      _(result.map{|row| row[:revenue]}).must_equal [1000.0, 1500.0, 1000.0, 1500.0, 50.0]
+    end
+
+    it "prefers self's formulae on conflict" do
+      sales[:label] = proc{|r| "self: #{r[:product]}"}
+      other[:label] = proc{|r| "other: #{r[:product]}"}
+      result = sales | other
+      _(result.map{|row| row[:label]}).must_equal [
+        'self: Widget', 'self: Widget', 'self: Gadget', 'self: Gadget', 'self: Thingo'
+      ]
+    end
+
+    it "raises when dimensions differ" do
+      other = Namo.new([{product: 'Widget', quarter: 'Q1'}])
+      _ { sales | other }.must_raise ArgumentError
+    end
+  end
+
+  describe "#^" do
+    let(:other) do
+      Namo.new([
+        {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+        {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60},
+        {product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}
+      ])
+    end
+
+    it "returns rows in one but not both" do
+      result = sales ^ other
+      _(result.to_a).must_equal [
+        {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+        {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+        {product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}
+      ]
+    end
+
+    it "returns empty when both are identical" do
+      result = sales ^ sales
+      _(result.to_a).must_equal []
+    end
+
+    it "returns all rows when nothing overlaps" do
+      other = Namo.new([{product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}])
+      result = sales ^ other
+      _(result.to_a.count).must_equal 5
+    end
+
+    it "merges formulae with self winning on conflict" do
+      sales[:label] = proc{|r| "self: #{r[:product]}"}
+      other[:label] = proc{|r| "other: #{r[:product]}"}
+      result = sales ^ other
+      _(result.map{|row| row[:label]}).must_equal [
+        'self: Widget', 'self: Gadget', 'self: Thingo'
+      ]
+    end
+
+    it "raises when dimensions differ" do
+      other = Namo.new([{product: 'Widget', quarter: 'Q1'}])
+      _ { sales ^ other }.must_raise ArgumentError
+    end
+  end
+
   describe "#to_a" do
     it "returns the data as an array of hashes" do
       _(sales.to_a).must_equal sample_data

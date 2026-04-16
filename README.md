@@ -205,6 +205,81 @@ sales - discontinued
 
 Removal is exact — every dimension, every value must match. The dimensions must match; different dimensions raise an `ArgumentError`. Formulae carry through from the left-hand side.
 
+### Intersection
+
+`&` returns the rows present in both Namo objects, like `Array#&`:
+
+```ruby
+sales = Namo.new([
+  {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+  {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+  {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+  {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+])
+
+confirmed = Namo.new([
+  {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+  {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+])
+
+sales & confirmed
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+#   {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+# ]>
+```
+
+The dimensions must match; different dimensions raise an `ArgumentError`. Formulae carry through from the left-hand side.
+
+### Union
+
+`|` returns all rows from both sides, deduplicated, like `Array#|`:
+
+```ruby
+q1_sales = Namo.new([
+  {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+  {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40}
+])
+
+all_sales = Namo.new([
+  {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+  {product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}
+])
+
+q1_sales | all_sales
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+#   {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+#   {product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}
+# ]>
+```
+
+The dimensions must match; different dimensions raise an `ArgumentError`. Formulae merge from both sides; the left-hand side's formulae take precedence on conflict.
+
+### Symmetric Difference
+
+`^` returns rows that appear in one side but not both:
+
+```ruby
+set_a = Namo.new([
+  {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+  {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40}
+])
+
+set_b = Namo.new([
+  {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+  {product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}
+])
+
+set_a ^ set_b
+# => #<Namo [
+#   {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+#   {product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}
+# ]>
+```
+
+The dimensions must match; different dimensions raise an `ArgumentError`. Formulae merge from both sides; the left-hand side's formulae take precedence on conflict.
+
 ### Formulae
 
 Define computed dimensions using `[]=`:
