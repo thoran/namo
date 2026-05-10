@@ -1,5 +1,7 @@
 # Namo Presentation Examples with Comparisons
 
+Date: 20260420
+
 Companion document to the Namo Roadmap. Each example shows one comparison tool (the strongest competitor for that discipline), then three stages of Namo — 1.x (explicit), 2.x (bare names), 3.x (DSL) — so the audience watches the ceremony disappear.
 
 The narrative: "This is what you're writing now. This is 1.0. This is 2.0. This is 3.0." Four stages per discipline. Each step removes noise. By 3.x, the specification reads like English.

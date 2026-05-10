@@ -1,5 +1,7 @@
 # Namo Roadmap
 
+Date: 20260420
+
 ## Design philosophy
 
 Namo's foundational insight is that every key in a hash is a dimension. There is no distinction between "axes" and "values" — a hash `{symbol: 'BHP', date: '2025-01-01', close: 42.5}` has three dimensions, and all three have coordinates. `symbol` has coordinate `'BHP'`, `date` has coordinate `'2025-01-01'`, `close` has coordinate `42.5`.
@@ -901,4 +903,3 @@ Compose stellar observations with catalogue data. Distance modulus formula using
 - The selection line is the closer for every example.
 - Have a live IRB session ready. The immediacy is more convincing than slides.
 - Acknowledge where competitors are good. Honesty makes the wins more credible.
-
