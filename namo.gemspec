@@ -19,7 +19,6 @@ Gem::Specification.new do |spec|
   spec.license = 'MIT'
 
   spec.required_ruby_version = '>= 2.7'
-
   spec.require_paths = ['lib']
 
   spec.files = [

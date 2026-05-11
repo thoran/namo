@@ -1,24 +1,29 @@
 # Namo Roadmap
 
-Date: 20260510
+Date: 20260511
 
 ## Design philosophy
 
-Namo's foundational insight is that every key in a hash is a dimension. There is no distinction between "axes" and "values" — a hash `{symbol: 'BHP', date: '2025-01-01', close: 42.5}` has three dimensions, and all three have coordinates. `symbol` has coordinate `'BHP'`, `date` has coordinate `'2025-01-01'`, `close` has coordinate `42.5`.
 
-This means coordinates are values and values are coordinates. You can select on `close` the same way you select on `symbol` — `namo[close: 42.5]` is just as valid as `namo[symbol: 'BHP']`. You can project to `symbol` and `date` and drop `close`, or project to `close` alone. No dimension is privileged. No field is "just data."
+### Analytical freedom
 
-This simplification is powerful because it eliminates the distinction that every other tool forces you to make at ingestion time. Pandas requires you to decide which columns are the index and which are data. xarray requires you to declare dimensions, coordinates, and data variables separately. Quantrix requires you to define categories and items. In each case, the user must understand their data's structure before they can load it.
+Namo's foundational design principle is that every key in a row/record/hash is a dimension. There is no distinction between 'axes' and 'values'. This means coordinates are values and values are coordinates.
 
-Namo infers everything from the hash keys. The structure is the data. There is no configuration step, no reshaping, no schema declaration. An array of hashes from a database, a CSV, a JSON API, or a YAML file goes straight into Namo and every key is immediately selectable, projectable, and usable in formulae.
+Namo infers everything from the hash keys. There is no configuration step, no reshaping, no schema declaration. An array of hashes from a database, a CSV, a JSON API, or a YAML file goes straight into Namo and every key is immediately selectable, projectable, and usable in formulae.
 
-This also means that formulae — which create new named computations — are indistinguishable from data dimensions. `row.close` and `row.earnings_yield` resolve through the same mechanism. The consumer doesn't know or care whether a dimension is stored data or a computed formula. They're all just names with values.
+This simplification is powerful because it eliminates the distinction that every other tool requires to be made at ingestion time. Analytical decisions belong to the analyst, to be made later during analysis. Every other library in this space requires the user to commit to analytical decisions at ingestion time — which columns are the index, which are data variables, what types they have, when computation runs, where derived values come from. Each of those commitments narrows what the user can later do with the loaded data.
+
+The structure of an analysis — which dimensions are grouped by, which are aggregated over, which serve as identifiers and which as measurements — are determined by the questions asked of the data, not the data as structured. The same dataset answers different questions, and Namo doesn't presage any at ingestion.
+
+A hash `{symbol: 'BHP', date: '2025-01-01', close: 42.5}` has three dimensions, all equally first-class. You can select on `close` the same way you select on `symbol` — `namo[close: 42.5]` is just as valid as `namo[symbol: 'BHP']`. You can project to `symbol` and `date` and drop `close`, or project to `close` alone. No dimension is privileged. No field is "just data."
+
+`coordinates.close` and `values.close` are the same data viewed two ways — `coordinates` is `values` deduplicated. The shallow API distinction reflects a deep equivalence: every value is a coordinate of its dimension, every coordinate is a value present in the data. Whether you treat `close` as an axis to group by or a quantity to compute over is decided at query time.
+
+Other libraries force the decision earlier. Pandas requires one to choose which columns are the index. xarray requires one to declare dimensions, coordinates, and data variables separately. In each case, the user must understand their data's analytical structure before they can load it — and once loaded, restructuring is awkward.
 
 ### Type agnosticism
 
-Namo is not a computation engine or a multidimensional spreadsheet. It is a multidimensional database. The distinction matters: spreadsheets and numerical tools like Quantrix, Improv, xarray, Pandas, and Polars are fundamentally organised around numbers. Their dimensions exist to label numerical data. Text in a dimension is a category label, not something you compute on.
-
-Namo doesn't privilege numbers. A formula can concatenate strings, produce status labels, or generate alert messages as naturally as it can compute ratios:
+The kinds of computation you'll do are also deferred. Namo doesn't privilege numbers. A formula can concatenate strings, produce status labels, or generate alert messages as naturally as it can compute ratios:
 
 ```ruby
 e.label  = proc{ "#{symbol} (#{exchange})" }
@@ -28,12 +33,103 @@ e.alert  = proc{ "#{symbol}: #{action} at #{close}" }
 
 These are just as valid as `proc{ close / book_value }`. The formula mechanism resolves names and calls procs. What the proc does with the values — arithmetic, string manipulation, date logic, pattern matching — is Ruby's business, not Namo's.
 
-This means Namo can handle datasets that aren't numerical at all: customer records, event logs, text corpora, legal documents with categorised metadata, survey responses. Anything expressible as an array of hashes. The selection, projection, contraction, composition, and set operators all work on text, dates, booleans, and arbitrary objects the same way they work on numbers. `namo[status: 'active']` works because `status` is a dimension like any other, and strings are values like any other. The selection mechanism applies to all types equally — not because it ignores type, but because it doesn't restrict it.
+This means Namo can handle datasets that aren't numerical at all: customer records, event logs, text corpora, legal documents with categorised metadata, survey responses. Anything expressible as an array of hashes. The selection, projection, contraction, composition, and set operators all work on text, dates, booleans, and arbitrary objects the same way they work on numbers. `namo[status: 'active']` works because `status` is a dimension like any other, and strings are values like any other.
 
 No other tool in this space offers this. Pandas comes closest — DataFrames can hold mixed types — but its computation model (`df['col'].rolling().mean()`) assumes numeric columns. xarray is explicitly numerical. Quantrix and Improv are spreadsheets. Polars is a columnar computation engine optimised for numeric and string operations but not arbitrary Ruby objects. Namo's formula mechanism works on whatever Ruby can work on, which is everything.
 
+Namo is not a computation engine or a multidimensional spreadsheet. It is a multidimensional database. The distinction matters: spreadsheets and numerical tools like Quantrix, Improv, xarray, Pandas, and Polars are fundamentally organised around numbers. Their dimensions exist to label numerical data. Text in a dimension is a category label, not something you compute on.
 
-## Current state: 0.5.0
+### Live computation objects
+
+Similarly to how Namo treats all dimensions as both data and coordinates, formulae are treated as derived dimensions. `row.close` and `row.earnings_yield` resolve through the same mechanism. The consumer doesn't need to know or care whether a dimension is stored data or a computed formula. They're all just names with values.
+
+A Namo holds data and computation together as a single object whose computed values are always current with respect to its data. Stored values and formulae are accessed through one interface; both reflect current state on every access.
+
+`row.close` returns the stored value. `row.return` invokes the proc and returns the computed value. Same syntax, same semantics from the consumer's perspective. The fact that one is stored and one is computed is an implementation detail of the dimension, not a fact about how it's accessed.
+
+When the underlying data changes — new rows append, existing rows are updated, the backing store delivers different content — every computed value reflects the change without reconciliation. Pull-based reactivity through laziness: each access recomputes from current state, so there's no stale-snapshot problem to solve.
+
+This holds across the formula trajectory: single-row formulae shipped in 0.1.0, cross-row formulae planned in 0.11.0, parameterised formulae in 0.12.0. Same mechanism throughout, same currentness property regardless of formula complexity.
+
+Other tabular libraries produce snapshots. Pandas, Polars, dplyr, and DataFrames.jl all materialise computed values into stored columns, severing them from the computation that produced them. Spreadsheets like Excel and Quantrix attach formulae to cells but operate on them through a different interface than data. Namo treats them identically across the entire algebra of operations it provides.
+
+### Unified treatment of stored and derived dimensions
+
+Following from live computation: every operation Namo provides treats stored dimensions and derived dimensions equivalently. Selection, projection, contraction, composition, set operators, comparison operators, pattern-matching against schemas — none of them distinguish how a dimension's values are produced.
+
+```ruby
+namo[:revenue]                          # projection — works for stored or derived
+namo[revenue: 1000..2000]               # selection — works for stored or derived
+namo - returned_items                   # set operation — formulae carry through
+namo * fundamentals                     # composition — formulae merge by rule
+case other; when namo.dimensions; ...   # pattern-match — covers both kinds
+```
+
+Analytical structure can be added or removed without re-ingesting. A user can attach `:return`, `:sma_20`, and `:signal` formulae to an existing Namo at any time; subsequent queries treat them as first-class dimensions. They can be removed equally freely. The data layer is untouched; the analytical layer grows and shrinks at the analyst's discretion.
+
+This is what "manipulating derived dimensions as data" means: not a metaphor, but a description of the architecture. Liveness is the mechanism; unified interface is the consequence.
+
+### Self-contained formulae
+
+For the unified interface to work, formulae need to be self-contained — pure functions of the row (or `(row, namo)` for cross-row formulae). They depend on their inputs, not on the environment they were defined in.
+
+```ruby
+# Good — pure function of row
+e[:return] = proc{|row| row[:close] / row[:previous_close] - 1}
+
+# Bad — depends on external state
+@discount_rate = 0.05
+e[:discounted] = proc{|row| row[:value] / (1 + @discount_rate)}
+```
+
+The self-contained pattern is what makes formulae portable. A Namo can be serialised, sent to another process or another machine, and its formulae will produce the same results because they don't depend on the environment they were defined in. The pattern is also what makes formulae safe to compose — two Namos can be merged by `*` and their formulae coexist because neither references anything outside its inputs.
+
+This isn't enforced by the language (Ruby procs can capture whatever they like), but it's the convention Namo's design depends on. Future versions may move toward stricter enforcement or toward formula representations that don't allow external capture at all.
+
+### Algebraic operations on whole Namos
+
+A Namo is a value in an algebra of operations, not just a collection to iterate. Set operators (`+`, `-`, `&`, `|`, `^`) combine Namos as sets of rows. Composition operators (`*`, `**`, `/`) combine Namos with different dimensions. Comparison operators (`==`, `<`, `<=`, `>`, `>=`) ask structural questions about subset relations. `===` asks pattern-match questions about analytical shape.
+
+```ruby
+combined = ohlcv * fundamentals    # join on shared dimensions
+held     = portfolio & universe    # rows present in both
+losers   = today - yesterday       # rows new today
+```
+
+These operators take Namos as inputs and produce Namos as outputs. The result of every operator is itself queryable, composable, and operable. The algebra closes.
+
+The shape of an analytical pipeline is not pre-committed to. Operators compose in whatever order makes sense for the question being asked. No other DataFrame library exposes its operations as algebraic operators. Pandas has methods (`merge`, `concat`, `drop_duplicates`); R has function syntax (`bind_rows()`, `inner_join()`); Polars has fluent method chains. Namo treats the operations as first-class operators on the language level, which makes pipelines compact, readable, and uniform.
+
+### Composition with surrounding systems
+
+A Namo is passive. It holds state and answers queries. It does not provide subscription mechanisms, event propagation, dependency tracking, or change-detection infrastructure. The reactivity model is the analyst's decision, not Namo's.
+
+Real-time systems built on Namo wire push-based change-detection to the Namo's mutation side and pull-based consumers to the Namo's query side. The Namo doesn't need to know about either; the surrounding system composes them.
+
+```ruby
+# Push side: external mechanism updates the Namo
+websocket.on_tick{|tick| analysis.append(tick); notifier.broadcast(:updated)}
+
+# Pull side: consumer queries when notified
+notifier.subscribe(:updated){|_| update_dashboard(analysis[criteria])}
+```
+
+Three components, three responsibilities, clean interfaces. The same passive Namo works in batch reports (pull only, no notifier), interactive analysis (manual queries), polling systems (pull on a timer), and real-time dashboards (push triggers, pull queries) without modification.
+
+Reactive frameworks like RxJS push values through subscription graphs. Namo provides the live computation property that makes such frameworks valuable, but leaves the reactivity infrastructure to the user — to be chosen and composed with whatever the rest of the system already uses. The Namo's job is to be a current-valued data container; everything else is composable around it.
+
+### Portability of analytical artefacts
+
+Following from self-contained formulae and the unified interface: a Namo is a portable analytical artefact. Data plus computation plus structure travel together. Serialise a Namo, send it to a colleague, and they have everything needed to query it, extend it, and recompute its derived values.
+
+This is the property notebooks try to provide and fail at. Jupyter notebooks intermix code cells, output cells, and environment state — the artefact you receive is not deterministically re-runnable. A Namo is different: the data is structurally present, the formulae are self-contained procs, and the receiver can call any query operation on it without depending on a particular Ruby environment, package set, or execution order.
+
+This isn't yet a shipped feature — serialisation lands later in 1.x — but the design enables it. Every other principle in this section contributes: self-contained formulae are portable; unified interface means the receiver doesn't need to know what's stored vs computed; type agnosticism means the format doesn't have to encode complex type systems; analytical structure at query time means the structure is in the data itself, not in a separate schema.
+
+A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
+
+
+## Current state: 0.6.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -124,36 +220,34 @@ sales ^ competitor      # rows unique to each side
 
 All three require matching dimensions, raise `ArgumentError` otherwise. Formulae carry through from self, merge from other, self wins on conflict. `|` and `^` merge formulae from both sides.
 
-### Summary
+### 0.6.0 (2026-05-11): Equality, pattern-match, subset, and superset
 
-The set operators (`+`, `-`, `&`, `|`, `^`) together with selection, projection, contraction, and formulae give Namo a complete vocabulary for working with a single dataset or combining datasets that share the same dimensions. The next phase (0.6.0+) extends this to datasets with different dimensions via composition operators and adds richer selection and formula capabilities.
+Equality, pattern-match, and subset/superset operators, multiset-theoretic on rows where row-content matters. Two Namos with the same rows in different orders are equal; two Namos where one's rows are contained in the other are in a subset relation regardless of how either was ordered. Duplicate rows count — `[{a: 1}, {a: 1}]` is not equal to `[{a: 1}]`. This follows from Namo's identity as a multidimensional database rather than a sequence: row order is an accident of ingestion, not a property of the data, but row count is data.
 
-
-## 0.6.0: Comparisons
-
-Equality and subset/superset operators, set-theoretic throughout.
-
-### The set-theoretic principle
-
-Every Namo-level comparison operator is set-theoretic. Two Namos with the same rows in different orders are equal. Two Namos where one's rows are contained in the other are in a subset relation regardless of how either was ordered. This follows from Namo's identity as a multidimensional database rather than a sequence — row order is an accident of ingestion, not a property of the data.
-
-The sequence view of a Namo (row order, `each` traversal, `last`, `reverse_each`) is real and accessible through Enumerable methods, but it doesn't enter into operator semantics. Operators answer set questions; sequence access is for code that explicitly cares about order.
-
-### The equality hierarchy
-
-Three levels, mirroring Ruby's standard convention:
+The equality hierarchy mirrors Ruby's standard convention, extended with `===` for pattern-match dispatch:
 
 ```ruby
 a.equal?(b)   # same object (inherited from BasicObject, not overridden)
-a.eql?(b)     # same class + same data (as sets) + same formulae
-a == b        # same data (as sets), any class, formulae ignored
+a.eql?(b)     # same class + multiset-equal data + same formula names
+a == b        # multiset-equal data, any class, formula names ignored
+a === b       # same dimensions + same formula names, any class, data ignored
 ```
 
-`equal?` is object identity. Inherited from `BasicObject`, never overridden. `a.equal?(b)` iff they are literally the same in-memory Namo.
+`eql?` requires class match because subclassing carries included modules (`TradingAnalysis < Namo` includes `Indicators`, `Scoring`); two instances of the same subclass with the same data and formulae are interchangeable as analyses, while a subclass and a bare `Namo` with the same data are not. `==` ignores class and formulae — two Namos are equal if they hold the same data, mirroring Ruby's `1 == 1.0` / `1.eql?(1.0)` convention.
 
-`eql?` is the strictest user-facing equality. Returns true when `a` and `b` are instances of the same class, hold the same rows as a set, and have identical formula definitions. The class match matters because subclassing carries included modules (`TradingAnalysis < Namo` includes `Indicators`, `Scoring`); two instances of the same subclass with the same data and formulae are interchangeable as analyses, while a subclass and a bare `Namo` with the same data are not.
+`===` answers a structurally different question: does this candidate fit this analytical pattern? Same dimensions, same formula names, regardless of the rows. This is what case statements need — pattern dispatch on analytical shape, not on data identity:
 
-`==` is the loosest equality. Class is ignored, formulae are ignored, only the row content matters and row order does not. This is the operator users reach for by default, and it returns what they intuitively expect: two Namos are equal if they hold the same data.
+```ruby
+template = Namo.new([{x: 0}])
+
+case Namo.new([{x: 5}, {x: 6}])
+when template then :matched
+else :not_matched
+end
+# => :matched
+```
+
+`===` returns false (rather than raising) for non-Namo operands, since case statements require it to be safe to call on any value. Without a Namo-specific `===`, Ruby's default would delegate to `==`, which would dispatch case statements on multiset row equality — structurally misleading when users want analytical-type dispatch.
 
 ```ruby
 namo_a = Namo.new([{symbol: 'BHP', close: 42.5}, {symbol: 'RIO', close: 118.3}])
@@ -164,70 +258,26 @@ namo_a.eql?(namo_b)   # true — same class, same rows, no formulae either side
 namo_a.equal?(namo_b) # false — different objects
 ```
 
-Ruby's convention `1 == 1.0 # true` but `1.eql?(1.0) # false` is mirrored: `==` crosses class boundaries, `eql?` doesn't.
+`hash` is content-based and consistent with `eql?` — computed from the canonical form of `@data` (rows sorted lexicographically), the class, and the formula names. Two Namos that are `eql?` produce the same hash, making Namos usable as Hash keys and Set members.
 
-### `hash` consistency
-
-`eql?` requires a matching `hash` implementation — `a.eql?(b)` implies `a.hash == b.hash`. `hash` is computed from the canonical form of `@data` (rows sorted lexicographically), the class, and the formula definitions:
+Subset and superset follow stdlib `Set`'s precedent, generalised to multisets:
 
 ```ruby
-def hash
-  [self.class, canonical_data, @formulae].hash
-end
+a < b     # a's rows are a strict multiset subset of b's rows
+a <= b    # a's rows are a multiset subset of b's rows
+a > b     # a's rows are a strict multiset superset of b's rows
+a >= b    # a's rows are a multiset superset of b's rows
 ```
 
-This makes Namos usable as Hash keys and Set members consistently. Two Namos that are `eql?` produce the same hash; mutation of either changes its hash (which is why frozen Namos are the safe case for hash-keyed lookup — see the Mutability open question).
+These pair with the set operators algebraically: `a & b == a` iff `a <= b`; `a | b == b` iff `a <= b`; `a - b == ∅` iff `a <= b`. Dimension mismatch raises `ArgumentError`; non-Namo operand raises `TypeError`.
 
-The recommended module-based formula pattern (see 2.x) makes `@formulae` hash sensibly: shared module methods are the same Method objects across instances, so two `TradingAnalysis` instances with the same data hash identically. Per-instance proc assignment (`e.sma = proc{...}`) creates fresh proc objects per instance, so two interactively-built Namos with "the same" formula written twice will not be `eql?` — but this matches user intuition (two procs with identical bodies are not the same proc) and the interactive-exploration use case rarely needs `eql?` semantics anyway.
+The error message format for dimension mismatch was standardised to `"dimensions don't match: X vs Y"` across all binary operators (`+`, `-`, `&`, `|`, `^`, `<`, `<=`, `>`, `>=`), retrofitted into the set operators from 0.4.0–0.5.0.
 
-### Subset and superset
+Deliberately not included: `<=>` and `Comparable` (subset/superset is a partial order, not total — two Namos can be incomparable, and stdlib `Set` omits `<=>` for the same reason); Row-level public operators; block forms (relaxed-matching variants land in 0.10.0 alongside block forms for set and composition operators). Aspect-level `===` template-matching on `Namo::Dimensions`, `Namo::Coordinates`, and `Namo::Values` lands in 0.7.0.
 
-```ruby
-a < b     # a's rows are a strict subset of b's rows
-a <= b    # a's rows are a subset of b's rows
-a > b     # a's rows are a strict superset of b's rows
-a >= b    # a's rows are a superset of b's rows
-```
+### Summary
 
-Set-theoretic, like `==`. Following stdlib `Set`'s precedent — Set defines `<`, `<=`, `>`, `>=` for subset/superset and uses `subset?`, `superset?`, `proper_subset?`, `proper_superset?` as method aliases. Namo follows the same convention.
-
-These pair with the set operators algebraically:
-
-- `a & b == a` iff `a <= b`
-- `a | b == b` iff `a <= b`
-- `a - b == ∅` iff `a <= b`
-
-If dimensions don't match, raise `ArgumentError` (consistent with how `+`, `-`, `&`, `|`, `^` already handle dimension mismatches in 0.4.0–0.5.0).
-
-### What 0.6.0 does not include
-
-**No `<=>`.** Subset/superset is a partial order, not a total one. Two Namos can have rows where neither is a subset of the other (`{1, 2}` versus `{3, 4}`); `<=>` has no valid return for that case beyond `nil`, and Ruby's `Comparable` machinery breaks on `nil` returns. Stdlib `Set` doesn't define `<=>` for the same reason. Namo doesn't either.
-
-If sorting Namos is ever wanted, it goes through aspect projections that return plain Arrays:
-
-```ruby
-namos.sort_by{|n| n.coordinates[:symbol] }
-namos.sort_by{|n| n.values[:date].first }
-```
-
-`Array#<=>` does the work. Namo never needs its own `<=>`.
-
-**No `Comparable` inclusion.** For the same reason — `Comparable` derives `<`, `<=`, `>`, `>=` from `<=>`, which doesn't exist for partial orders. Defining the four operators directly is the correct approach.
-
-**No `===` redefined on Namo.** Ruby's `===` convention is asymmetric pattern-matching (`Integer === 5`, `(1..10) === 5`); applying it to two whole Namos as a symmetric equality check would violate the convention. If `===` is wanted in case-statement contexts, it works through aspect projections:
-
-```ruby
-case incoming
-when ohlcv.dimensions then process_ohlcv(incoming)
-when fundamentals.dimensions then process_fundamentals(incoming)
-end
-```
-
-`a.dimensions === b` and `a.coordinates === b` (where `b` is a whole Namo) require aspect classes that override `===` to template-match against Namos. Those classes (`Namo::Dimensions < Array`, `Namo::Coordinates < Hash`, `Namo::Values < Hash`) land in 0.7.0 alongside `values`. In 0.6.0, `dimensions` and `coordinates` still return plain Array and Hash, so case-statement template-matching against Namos doesn't yet work — but symmetric same-type comparison (`a.dimensions == b.dimensions`, `a.coordinates == b.coordinates`) does, via Ruby's built-in `Array#==` and `Hash#==`.
-
-**No Row-level operators in the public API.** Users compare Namos, not individual rows. Any row-level comparison is internal implementation of Namo-level operators, named for clarity rather than exposed as operators.
-
-**No block forms.** `==`, `<`, `<=`, `>`, `>=` all use exact row equality in 0.6.0. Block-form variants (relaxing the matching predicate) land in 0.10.0 alongside block forms for set and composition operators. `eql?` never takes a block — its purpose as the strictest level of equality would be undermined by relaxation.
+The set operators (`+`, `-`, `&`, `|`, `^`) together with the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), selection, projection, contraction, and formulae give Namo a complete vocabulary for working with a single dataset or combining datasets that share the same dimensions. The next phase (0.7.0+) extends this to datasets with different dimensions via composition operators and adds richer selection and formula capabilities.
 
 
 ## 0.7.0: Aspect classes and values
@@ -491,7 +541,7 @@ All operators that match rows gain optional blocks that relax row equality from 
 Comparison operators with a block use the block as the row-matching predicate, replacing exact row equality.
 
 ```ruby
-# Equal as sets when matched on symbol alone
+# Equal as multisets when matched on symbol alone
 a.==(b){|ra, rb| ra[:symbol] == rb[:symbol]}
 
 # a's rows are a subset of b's, matching on symbol and date
@@ -500,7 +550,7 @@ a.<=(b){|ra, rb| ra[:symbol] == rb[:symbol] && ra[:date] == rb[:date]}
 
 Useful when comparing Namos that should be considered "the same" on identifying dimensions even if other fields differ. A trading screen run on Monday and Tuesday with the same symbols-of-interest but different prices is `==` with a `{|ra, rb| ra[:symbol] == rb[:symbol]}` block, even though exact-row `==` returns false.
 
-`eql?` does not take a block. Its purpose as the strictest level of equality (class + data + formulae) would be undermined by relaxation. The block forms are for the set-theoretic operators only.
+`eql?` does not take a block. Its purpose as the strictest level of equality (class + data + formulae) would be undermined by relaxation. The block forms are for the multiset-theoretic operators only.
 
 ### Blocks on * and **
 
@@ -815,6 +865,76 @@ end
 ```
 
 Scoring strategies are swappable via dependency injection.
+
+### `Namo#===` revision under module-based formulae
+
+When module-based formulae become a real pattern (rather than a documented one), `Namo#===` (and `Namo#eql?`, and `Namo#hash`) must be revised to enumerate module-defined method names alongside `@formulae.keys`. The 0.6.0 implementation compares formula *names* via `@formulae.keys.sort` — which is correct for `[]=`-registered formulae, but module-defined formulae don't enter `@formulae`. They're plain Ruby methods on the included module, discovered by Row's `method_missing` through the normal method-lookup chain. So a `TradingAnalysis` instance with `include Indicators` would have `@formulae.keys == []` even though it has the full `Indicators` analytical surface; under 0.6.0's `===`, two such instances are correctly `===` to each other (same dimensions, same — empty — `@formulae.keys`), but they'd also be `===` to a vanilla `Namo` of the same dimensions, which is wrong: a vanilla `Namo` has no indicators.
+
+#### The starting point
+
+```ruby
+# 0.6.0 implementation
+def ===(other)
+  return false unless other.is_a?(Namo)
+  dimensions.sort == other.dimensions.sort &&
+    @formulae.keys.sort == other.formulae.keys.sort
+end
+```
+
+Correct for the case where all analytical structure flows through `@formulae`. The gap is everything that lives on the class instead of the instance.
+
+#### Alternatives considered
+
+Three candidates were on the table:
+
+**Path A: Check class identity.** `===` also requires `self.class == other.class`, matching `eql?`'s class-strictness. Same class implies same included modules implies same module-defined formulae, by transitivity. Simple to implement but rejects useful equivalences — two Namos from different classes with the same queryable surface (one via `[]=`, one via `include`) would not be `===` even though they behave identically as analytical artefacts.
+
+**Path B: Duck-type the queryable surface.** `===` compares the full set of names queryable on each Namo, regardless of where each name's definition lives. Storage dimensions, instance `@formulae` keys, and class-level analytical method names all contribute. Two Namos with the same queryable surface are `===` regardless of class or how their formulae were registered. Matches the design philosophy's unified-treatment principle: care about what's queryable, not where the definition lives.
+
+**Path C: Class as proxy for analytical surface.** Same code as Path A, framed differently — class identity stands in for the union of all analytical methods. This is just Path A with different rationale; the behaviour is identical and the same objection applies.
+
+Path B is the right answer. It honours duck-typing across class boundaries, handles the `[]=`-vs-`include` mixture correctly, and doesn't change behaviour when users refactor a formula from per-instance assignment to a module method.
+
+#### Path B implementation sketch
+
+```ruby
+def ===(other)
+  return false unless other.is_a?(Namo)
+  queryable_names == other.send(:queryable_names)
+end
+
+private
+
+def queryable_names
+  (dimensions + @formulae.keys + class_formula_names).to_set
+end
+```
+
+`to_set` gives order-insensitive comparison; `.sort` would also work and avoids the Set allocation. Either is fine — pick when implementing. The equivalent changes to `eql?` and `hash` follow the same shape: substitute `queryable_names` for `@formulae.keys.sort` everywhere they appear.
+
+#### What `class_formula_names` returns
+
+The open design question. Two candidate mechanisms:
+
+**Implicit identification.** All public instance methods on the Namo subclass that aren't inherited from `Namo` itself are treated as formulae. Simple, no declaration overhead. Cost: conflates analytical methods with any custom method — a `def to_s` override on the subclass would be misread as a formula.
+
+**Explicit declaration.** Modules opt into being treated as formula libraries, either by a marker module (`include Formula::Module`) or per-method declaration (`formula :sma`). Cost: declaration overhead. Benefit: precise — only intentionally-analytical methods count.
+
+The implicit approach is more ergonomic; the explicit approach is more robust. Choose based on what the module-based formula mechanism actually looks like once it's implemented.
+
+#### Body equality is not part of any equality operator
+
+0.6.0 already settled this for the instance-level case: `===`, `eql?`, and `hash` all compare formula *names* (`@formulae.keys.sort`), not the procs themselves. The Path B revision extends that stance to module-defined formulae — adding more names to compare, not adding proc-body comparison. The rationale is the same as at 0.6.0 design time:
+
+1. **Proc identity isn't function identity.** Two interactively-built Namos defining `:doubled = proc{|r| r[:x] * 2}` separately have different proc objects. Comparing by proc identity would call them unequal despite identical behaviour. Users would be surprised.
+
+2. **`===` is a pattern-match operator, not a behaviour-identity operator.** Pattern-matching asks "does this candidate fit this pattern?" The pattern is the analytical shape — what names are queryable. `eql?` makes the same call for the same reason: in Ruby there's no cheap, reliable way to compare two procs for behavioural equivalence, so neither operator pretends to.
+
+The deeper question of true behavioural equivalence (AST comparison, iseq comparison, DSL normal forms, etc.) is its own significant project; see the "Proc equivalence options" note in the project memory for the landscape. Until one of those paths lands, key-based comparison is the honest pragmatic position.
+
+#### When this revision lands
+
+In whichever 2.x release introduces module-based formula registration as a real mechanism (rather than just a documented pattern using plain Ruby methods). Until then, the 0.6.0 key-based implementation handles `[]=`-registered formulae correctly; the gap (module-defined methods) only matters once those methods actually exist as a registration channel.
 
 ### `DefineAccessors` optimisation
 

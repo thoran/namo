@@ -466,6 +466,282 @@ describe Namo do
     end
   end
 
+  describe "#==" do
+    it "is true for same data, same order" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      b = Namo.new([{x: 1}, {x: 2}])
+      _(a == b).must_equal true
+    end
+
+    it "is true for same data, different order" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      b = Namo.new([{x: 2}, {x: 1}])
+      _(a == b).must_equal true
+    end
+
+    it "is false for different data" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      b = Namo.new([{x: 1}, {x: 3}])
+      _(a == b).must_equal false
+    end
+
+    it "is multiset-aware: duplicates count" do
+      a = Namo.new([{x: 1}])
+      b = Namo.new([{x: 1}, {x: 1}])
+      _(a == b).must_equal false
+    end
+
+    it "is true across subclasses with same data" do
+      subclass = Class.new(Namo)
+      a = Namo.new([{x: 1}, {x: 2}])
+      b = subclass.new([{x: 1}, {x: 2}])
+      _(a == b).must_equal true
+    end
+
+    it "ignores formulae" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      b = Namo.new([{x: 1}, {x: 2}])
+      b[:y] = proc{|row| row[:x] * 2}
+      _(a == b).must_equal true
+    end
+
+    it "is false against a non-Namo" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      _(a == [{x: 1}, {x: 2}]).must_equal false
+      _(a == 'string').must_equal false
+      _(a == nil).must_equal false
+    end
+  end
+
+  describe "#===" do
+    it "is true when dimensions and formulae match, ignoring rows" do
+      a = Namo.new([{x: 1}])
+      b = Namo.new([{x: 2}, {x: 3}])
+      _(a === b).must_equal true
+    end
+
+    it "is false when formulae differ" do
+      a = Namo.new([{x: 1}])
+      b = Namo.new([{x: 1}])
+      b[:doubled] = proc{|row| row[:x] * 2}
+      _(a === b).must_equal false
+    end
+
+    it "is true when formulae have the same names, regardless of proc identity" do
+      a = Namo.new([{x: 1}])
+      a[:doubled] = proc{|row| row[:x] * 2}
+      b = Namo.new([{x: 1}])
+      b[:doubled] = proc{|row| row[:x] * 2}
+      _(a === b).must_equal true
+    end
+
+    it "is false when dimensions differ" do
+      a = Namo.new([{x: 1}])
+      b = Namo.new([{y: 1}])
+      _(a === b).must_equal false
+    end
+
+    it "is true when dimensions are in different order" do
+      a = Namo.new([{x: 1, y: 2}])
+      b = Namo.new([{y: 9, x: 8}])
+      _(a === b).must_equal true
+    end
+
+    it "is false for a non-Namo and does not raise" do
+      a = Namo.new([{x: 1}])
+      _(a === [{x: 1}]).must_equal false
+      _(a === 'string').must_equal false
+      _(a === nil).must_equal false
+    end
+
+    it "drives case statement dispatch on analytical type" do
+      template = Namo.new([{x: 0}])
+      candidate = Namo.new([{x: 5}, {x: 6}])
+      result = case candidate
+               when template; :matched
+               else; :not_matched
+               end
+      _(result).must_equal :matched
+    end
+  end
+
+  describe "#eql?" do
+    it "is true for same class, same data, no formulae" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      b = Namo.new([{x: 1}, {x: 2}])
+      _(a.eql?(b)).must_equal true
+    end
+
+    it "is true for same class, same data, different order" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      b = Namo.new([{x: 2}, {x: 1}])
+      _(a.eql?(b)).must_equal true
+    end
+
+    it "is true when formula names match, regardless of proc identity" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      a[:y] = proc{|row| row[:x] * 2}
+      b = Namo.new([{x: 1}, {x: 2}])
+      b[:y] = proc{|row| row[:x] * 2}
+      _(a.eql?(b)).must_equal true
+    end
+
+    it "is false when formula names differ" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      a[:doubled] = proc{|row| row[:x] * 2}
+      b = Namo.new([{x: 1}, {x: 2}])
+      b[:tripled] = proc{|row| row[:x] * 3}
+      _(a.eql?(b)).must_equal false
+    end
+
+    it "is false across different classes" do
+      subclass = Class.new(Namo)
+      a = Namo.new([{x: 1}, {x: 2}])
+      b = subclass.new([{x: 1}, {x: 2}])
+      _(a.eql?(b)).must_equal false
+    end
+  end
+
+  describe "#hash" do
+    it "is equal for set-equal Namos" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      b = Namo.new([{x: 2}, {x: 1}])
+      _(a.hash).must_equal b.hash
+    end
+
+    it "differs when formula names differ" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      b = Namo.new([{x: 1}, {x: 2}])
+      b[:y] = proc{|row| row[:x] * 2}
+      _(a.hash).wont_equal b.hash
+    end
+
+    it "is equal when formula names match, regardless of proc identity" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      a[:y] = proc{|row| row[:x] * 2}
+      b = Namo.new([{x: 1}, {x: 2}])
+      b[:y] = proc{|row| row[:x] * 2}
+      _(a.hash).must_equal b.hash
+    end
+
+    it "differs across classes" do
+      subclass = Class.new(Namo)
+      a = Namo.new([{x: 1}, {x: 2}])
+      b = subclass.new([{x: 1}, {x: 2}])
+      _(a.hash).wont_equal b.hash
+    end
+
+    it "makes Namos usable as Hash keys" do
+      a = Namo.new([{x: 1}, {x: 2}])
+      b = Namo.new([{x: 2}, {x: 1}])
+      h = {a => 'first'}
+      _(h[b]).must_equal 'first'
+    end
+  end
+
+  describe "#<, #<=, #>, #>=" do
+    let(:small) { Namo.new([{x: 1}, {x: 2}]) }
+    let(:large) { Namo.new([{x: 1}, {x: 2}, {x: 3}]) }
+    let(:disjoint) { Namo.new([{x: 4}, {x: 5}]) }
+
+    it "recognises proper subset" do
+      _(small < large).must_equal true
+      _(small <= large).must_equal true
+      _(large > small).must_equal true
+      _(large >= small).must_equal true
+    end
+
+    it "treats equal sets as <= and >= but not < or >" do
+      copy = Namo.new([{x: 2}, {x: 1}])
+      _(small <= copy).must_equal true
+      _(small >= copy).must_equal true
+      _(small < copy).must_equal false
+      _(small > copy).must_equal false
+    end
+
+    it "treats disjoint sets as neither subset nor superset" do
+      _(small <= disjoint).must_equal false
+      _(small >= disjoint).must_equal false
+      _(small < disjoint).must_equal false
+      _(small > disjoint).must_equal false
+    end
+
+    it "is multiset-aware: a single row is a proper subset of two of the same row" do
+      one = Namo.new([{x: 1}])
+      two = Namo.new([{x: 1}, {x: 1}])
+      _(one < two).must_equal true
+      _(one <= two).must_equal true
+      _(two <= one).must_equal false
+      _(two < one).must_equal false
+    end
+
+    it "raises ArgumentError on mismatched dimensions" do
+      other = Namo.new([{y: 1}])
+      _ { small < other }.must_raise ArgumentError
+      _ { small <= other }.must_raise ArgumentError
+      _ { small > other }.must_raise ArgumentError
+      _ { small >= other }.must_raise ArgumentError
+    end
+
+    it "raises TypeError on non-Namo" do
+      _ { small < [{x: 1}] }.must_raise TypeError
+      _ { small <= 'string' }.must_raise TypeError
+      _ { small > nil }.must_raise TypeError
+      _ { small >= 42 }.must_raise TypeError
+    end
+  end
+
+  describe "#equal?" do
+    it "is false for distinct objects" do
+      a = Namo.new([{x: 1}])
+      b = Namo.new([{x: 1}])
+      _(a.equal?(b)).must_equal false
+    end
+
+    it "is true for the same object" do
+      a = Namo.new([{x: 1}])
+      _(a.equal?(a)).must_equal true
+    end
+  end
+
+  describe "dimension-mismatch error message" do
+    it "names both dimension lists" do
+      a = Namo.new([{x: 1}])
+      b = Namo.new([{y: 1}])
+      err = _ { a + b }.must_raise ArgumentError
+      _(err.message).must_match(/dimensions don't match/)
+      _(err.message).must_match(/\[:x\]/)
+      _(err.message).must_match(/\[:y\]/)
+    end
+  end
+
+  describe "non-Namo comparison error message" do
+    it "names the offending class" do
+      a = Namo.new([{x: 1}])
+      err = _ { a < 'string' }.must_raise TypeError
+      _(err.message).must_match(/can't compare Namo with/)
+      _(err.message).must_match(/String/)
+    end
+  end
+
+  describe "non-Namo set operation error message" do
+    it "raises TypeError on non-Namo for #+, #-, #&, #|, #^" do
+      a = Namo.new([{x: 1}])
+      _ { a + [{x: 1}] }.must_raise TypeError
+      _ { a - 'string' }.must_raise TypeError
+      _ { a & nil }.must_raise TypeError
+      _ { a | 42 }.must_raise TypeError
+      _ { a ^ :symbol }.must_raise TypeError
+    end
+
+    it "names the offending class" do
+      a = Namo.new([{x: 1}])
+      err = _ { a + 'string' }.must_raise TypeError
+      _(err.message).must_match(/can't compare Namo with/)
+      _(err.message).must_match(/String/)
+    end
+  end
+
   describe "#to_a" do
     it "returns the data as an array of hashes" do
       _(sales.to_a).must_equal sample_data

@@ -132,6 +132,79 @@ The progression: Pandas 30+ lines, Namo 1.x ~15 lines, 2.x ~13 lines, 3.x ~12 li
 The temporal join in Namo is a block on `*`. In Pandas it's `merge_asof` — a function most users don't know exists.
 
 
+## Schema dispatch on incoming data feeds
+
+A function receives data and needs to dispatch on its analytical shape — same dimensions and formulae mean "the same kind of analysis," regardless of the specific rows.
+
+### Pandas
+
+```python
+ohlcv_cols        = {'date', 'symbol', 'open', 'high', 'low', 'close', 'volume'}
+fundamentals_cols = {'symbol', 'pe', 'book_value', 'dividend_yield'}
+
+incoming_cols = set(incoming.columns)
+
+if   ohlcv_cols.issubset(incoming_cols):        process_ohlcv(incoming)
+elif fundamentals_cols.issubset(incoming_cols): process_fundamentals(incoming)
+else: raise ValueError(f"unknown shape: {incoming.columns.tolist()}")
+```
+
+### Namo
+
+```ruby
+ohlcv_shape        = Namo.new([{date: nil, symbol: nil, open: 0.0, high: 0.0, low: 0.0, close: 0.0, volume: 0}])
+fundamentals_shape = Namo.new([{symbol: nil, pe: 0.0, book_value: 0.0, dividend_yield: 0.0}])
+
+case incoming
+when ohlcv_shape        then process_ohlcv(incoming)
+when fundamentals_shape then process_fundamentals(incoming)
+else raise ArgumentError, "unknown shape: #{incoming.dimensions}"
+end
+```
+
+### What to highlight
+
+The Pandas version has no schema-as-value: you maintain free-floating sets of column names and dispatch via `if`/`elif`. The Namo version uses `case`/`when`, the same construct Ruby uses for type dispatch (`Integer === 5`), with templates that *are* Namos — same first-class object as everything else in the program. If you want to add a third shape, you add a `when` clause; if you want the template to also carry formulae for downstream processing, the template already does.
+
+Identical in Namo 2.x and 3.x — `case`/`when` dispatch via `===` doesn't depend on bare names or the DSL block syntax.
+
+
+## Comparing yesterday's screen to today's
+
+A daily screen produces a set of candidates. You want to know how today's result compares to yesterday's: unchanged, grown, shrunk, or churned?
+
+### Pandas
+
+```python
+yesterday_rows = set(map(tuple, yesterday.itertuples(index=False)))
+today_rows     = set(map(tuple, today.itertuples(index=False)))
+
+if   today_rows == yesterday_rows: status = "no change"
+elif today_rows >= yesterday_rows: status = f"added {len(today_rows - yesterday_rows)} candidates"
+elif yesterday_rows >= today_rows: status = f"removed {len(yesterday_rows - today_rows)} candidates"
+else:                              status = f"churn: {len(today_rows ^ yesterday_rows)} differing"
+```
+
+### Namo
+
+```ruby
+status = case
+         when today == yesterday then "no change"
+         when today >= yesterday then "added #{(today - yesterday).count} candidates"
+         when yesterday >= today then "removed #{(yesterday - today).count} candidates"
+         else                         "churn: #{((today | yesterday) - (today & yesterday)).count} differing"
+         end
+```
+
+### What to highlight
+
+Pandas's `DataFrame.equals` is order-sensitive, so set-equality on rows requires materialising each row as a tuple and dropping into Python's `set` type — the DataFrame structure goes away, the boolean comes back as a Python primitive. The `set` type happens to have `==`, `>=`, `-`, `^` defined, which is why this works at all, but you're working in two type systems for one comparison.
+
+Namo's row-set operators (`==`, `<=`, `>=`, `-`, `&`, `|`) all work directly on Namos and return Namos (or booleans). The whole comparison stays in one type system. The algebraic identity `today >= yesterday` iff `(today - yesterday).count > 0` reads consistently with how you'd describe it in English.
+
+Identical in Namo 2.x and 3.x — the comparison and set operators don't change across versions.
+
+
 ## Climate / environmental science
 
 Compose temperature readings with station metadata. Derive anomalies, classify extremes.

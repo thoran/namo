@@ -1092,21 +1092,26 @@ filtered = filter(:close => c -> c > 40, df)
 
 ### Equality hierarchy
 
-**Namo** — planned (0.6.0)
+**Namo** — shipped (0.6.0)
 
-A four-level equality hierarchy mirroring Ruby's standard convention. Each level adds constraints to the level below:
+A four-level equality hierarchy mirroring Ruby's standard convention, extended with `===` for pattern-match dispatch. Each operator answers a distinct question:
 
 ```ruby
 a.equal?(b)   # same object (object identity, inherited)
-a.eql?(b)     # same class + same data (as sets) + same formulae
-a == b        # same data (as sets), any class, formulae ignored
+a.eql?(b)     # same class + same data (as multisets) + same formula names
+a == b        # same data (as multisets), any class, formulae ignored
+a === b       # same dimensions + same formula names, any class, data ignored
 ```
 
-`==` is set-theoretic — two Namos with the same rows in different orders are equal. Class is ignored, formulae are ignored. This matches what users intuitively expect from `==` on a database-like object.
+`==` is multiset-theoretic on rows — two Namos with the same rows in different orders are equal, but `[{x:1}, {x:1}]` is not equal to `[{x:1}]` (duplicate rows count as data). Class is ignored, formulae are ignored.
 
-`eql?` is the strictest user-facing equality. Class must match (so `TradingAnalysis.new(data).eql?(Namo.new(data))` is false even when data matches) and formulae must match. The convention follows Ruby's numerics — `1 == 1.0` is true, `1.eql?(1.0)` is false.
+`===` is the pattern-match operator. It asks "do these two Namos have the same analytical shape?" — same dimensions, same formula names, regardless of data. This is what case statements use, so a Namo can serve as a template for `case`/`when` dispatch on schema rather than on data.
+
+`eql?` is the strictest user-facing equality. Class must match (so `TradingAnalysis.new(data).eql?(Namo.new(data))` is false even when data matches) and formula names must match. The convention follows Ruby's numerics — `1 == 1.0` is true, `1.eql?(1.0)` is false.
 
 `hash` is consistent with `eql?` and computed from canonical form, so two Namos that are `eql?` produce the same hash and can be used as Hash keys or Set members reliably (when frozen).
+
+Note that proc identity is deliberately *not* part of any of these operators. Two independently-written procs with identical bodies (`proc{|r| r[:x] * 2}` typed twice) are not `==` in Ruby, so comparing the formulae hashes directly would treat structurally-equivalent Namos as unequal. `===` and `eql?` therefore compare formula *names* — proc bodies are out of scope for Ruby's reflection in any practical way.
 
 **Pandas** — `DataFrame.equals(other)` exists but is order-sensitive (rows in different orders compare as unequal). `==` does element-wise comparison, returning a DataFrame of booleans rather than a single answer. No analogue to `eql?`.
 
@@ -1140,11 +1145,11 @@ ds1.equals(ds2)
 isequal(a, b)
 ```
 
-**Summary:** No other tool has a three-tier equality hierarchy on datasets. Most have one method that does element-wise or strict-identical comparison; none distinguish "same data ignoring order and metadata" from "same in every observable way." Namo's hierarchy is the only one that lets users pick the level of strictness appropriate to the question they're asking.
+**Summary:** No other tool has a four-level equality hierarchy on datasets. Most have one method that does element-wise or strict-identical comparison; none distinguish "same data ignoring order and metadata" from "same analytical shape regardless of data" from "same in every observable way." Namo's hierarchy is the only one that lets users pick the level of strictness appropriate to the question they're asking, and `===` makes Namos work naturally as templates in `case` dispatch.
 
 ### Subset/superset tests
 
-**Namo** — planned (0.6.0)
+**Namo** — shipped (0.6.0)
 
 ```ruby
 a < b   # strict subset
@@ -1153,7 +1158,7 @@ a > b   # strict superset
 a >= b  # superset
 ```
 
-Set-theoretic. Pair with the set operators algebraically: `a & b == a` iff `a <= b`. Following stdlib `Set`'s precedent for mapping mathematical subset notation onto Ruby's comparison operators.
+Multiset-theoretic on rows: duplicate rows count, so a single `{x:1}` is a proper subset of two `{x:1}`s. Pair with the set operators algebraically: `a & b == a` iff `a <= b`. Following stdlib `Set`'s precedent for mapping mathematical subset notation onto Ruby's comparison operators, generalised to multisets.
 
 **Pandas** — no built-in subset/superset test on DataFrames. Workarounds via merge and length comparison.
 

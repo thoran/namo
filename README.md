@@ -4,6 +4,8 @@ Named dimensional data for Ruby.
 
 Namo is a Ruby library for working with multi-dimensional data using named dimensions. It infers dimensions and coordinates from plain arrays of hashes — the same shape you get from databases, CSV files, JSON, and YAML — so there's no reshaping step.
 
+The design rests on a few stances: every hash key is a dimension and none is privileged; formulae attach to a Namo alongside stored data and re-evaluate on each access; the operators that combine Namos all take Namos and return Namos, so analytical pipelines close; and the formula mechanism is type-agnostic — strings, dates, booleans, and arbitrary Ruby objects work as readily as numbers.
+
 ## Installation
 
 ```
@@ -43,6 +45,8 @@ sales.coordinates[:product]
 sales.coordinates[:quarter]
 # => ['Q1', 'Q2']
 ```
+
+Every key is a dimension; every value is a coordinate. There's no schema declaration and no choosing which column is "the index" — `price` and `quantity` are no less first-class than `product` and `quarter`.
 
 ### Selection
 
@@ -154,6 +158,8 @@ sales[-:price, -:quantity, product: 'Widget']
 Selection, projection, and contraction always return a new Namo instance, so everything chains.
 
 ### Concatenation
+
+`+` is the first of Namo's binary operators: it takes a Namo on each side and returns a Namo. The same shape holds for `-`, `&`, `|`, `^`, `==`, `===`, `<`, `<=`, `>`, `>=` and (later) the composition operators — Namo in, Namo (or boolean) out — so analytical pipelines stay queryable end-to-end.
 
 `+` combines two Namo objects that share the same dimensions by appending the rows of the second to the first:
 
@@ -280,6 +286,87 @@ set_a ^ set_b
 
 The dimensions must match; different dimensions raise an `ArgumentError`. Formulae merge from both sides; the left-hand side's formulae take precedence on conflict.
 
+### Equality
+
+Comparison on Namos is **multiset-theoretic on rows**: row order is ignored (it's an accident of ingestion, not data), but row multiplicities count (they *are* data). The same stance carries across the equality, pattern-match, and subset/superset operators below.
+
+`==` is multiset equality on rows. Class and formulae are ignored; row order is ignored; row multiplicities are not.
+
+```ruby
+a = Namo.new([{x: 1}, {x: 2}])
+b = Namo.new([{x: 2}, {x: 1}])
+
+a == b
+# => true
+
+a == Namo.new([{x: 1}, {x: 1}, {x: 2}])
+# => false
+```
+
+`eql?` is stricter: it also requires the class to match and the formula names to match. Like `===`, it ignores proc bodies — proc identity isn't a meaningful equivalence in Ruby (`proc{...} == proc{...}` is false), so neither `===` nor `eql?` uses it.
+
+`hash` is consistent with `eql?` and is content-based, so equal Namos hash equally and can be used as Hash keys:
+
+```ruby
+h = {a => 'first'}
+h[b]
+# => 'first'
+```
+
+`equal?` is unchanged from Ruby's default — it tests object identity.
+
+`===` answers a different question: does the candidate have the same dimensions and the same formula names? Row data is ignored, and so are the proc bodies themselves — only the names matter. This is the `===` semantics that case statements use, so Namos can serve as templates for analytical shape:
+
+```ruby
+sales_shape = Namo.new([{product: 'X', quarter: 'Q1', price: 0.0, quantity: 0}])
+sales_shape[:revenue] = proc{|row| row[:price] * row[:quantity]}
+
+q1 = Namo.new([{product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100}])
+q1[:revenue] = proc{|row| row[:price] * row[:quantity]}
+
+sales_shape === q1
+# => true (same dimensions, same formula name)
+
+sales_shape == q1
+# => false (different rows)
+```
+
+The two `:revenue` procs are independently-written and not the same object — `proc{...} == proc{...}` is false in Ruby. But `===` doesn't compare proc identity; it asks "do these Namos have the same analytical shape?" and the shape is the set of dimensions plus the set of formula names.
+
+Each comparison operator answers a distinct question: `eql?` is strictest (class + data + formula names); `==` is data identity; `===` is analytical identity; the subset operators are data containment.
+
+### Subset and Superset
+
+`<`, `<=`, `>`, `>=` are multiset subset and superset relations on rows.
+
+```ruby
+small = Namo.new([{x: 1}, {x: 2}])
+large = Namo.new([{x: 1}, {x: 2}, {x: 3}])
+
+small <= large
+# => true
+
+small < large
+# => true
+
+large > small
+# => true
+```
+
+Equal sets are `<=` and `>=` each other, but neither `<` nor `>`. Disjoint sets are none of the above — unless one side is empty, in which case it is a subset of (and disjoint with) the other.
+
+Multiplicity matters: a single `{x: 1}` is a proper subset of two `{x: 1}`s.
+
+```ruby
+one = Namo.new([{x: 1}])
+two = Namo.new([{x: 1}, {x: 1}])
+
+one < two
+# => true
+```
+
+The dimensions must match; different dimensions raise an `ArgumentError`. Comparing against a non-Namo raises a `TypeError`.
+
 ### Formulae
 
 Define computed dimensions using `[]=`:
@@ -295,6 +382,8 @@ sales[:product, :quarter, :revenue]
 #   {product: 'Gadget', quarter: 'Q2', revenue: 1500.0}
 # ]>
 ```
+
+Formulae aren't materialised into stored columns — they re-evaluate on every access. A `:revenue` value reflects the current `:price` and `:quantity` at the moment you ask for it, so derived values stay in sync with whatever the underlying data is doing.
 
 Formulae compose:
 

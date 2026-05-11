@@ -1,0 +1,35 @@
+#!/bin/sh
+# md4print
+
+# 20260420
+# 0.0.0
+
+usage() {
+  echo "md4print - Strip syntax highlighting from markdown code blocks for printing."
+  echo
+  echo "Usage: md4print <filename.md>"
+  echo
+  echo "Produces filename.print.md with \`\`\`ruby (and other languages) replaced by bare \`\`\`."
+}
+
+validate_args() {
+  if [ $# -ne 1 ]; then
+    usage
+    exit 1
+  fi
+  if [ ! -f "$1" ]; then
+    echo "File not found: $1" >&2
+    exit 1
+  fi
+}
+
+output_filename() {
+  echo "${1%.md}.print.md"
+}
+
+main() {
+  validate_args "$@"
+  sed 's/```[a-zA-Z]*/```/g' "$1" > "$(output_filename "$1")"
+}
+
+main "$@"

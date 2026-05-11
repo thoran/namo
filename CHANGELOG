@@ -1,6 +1,21 @@
 CHANGELOG
 _________
 
+20260511
+0.6.0: + equality, pattern-match, and subset/superset operators
+
+1. + Namo#==: Multiset equality on row data, ignoring class and formulae.
+2. + Namo#===: Analytical identity match — true iff other has the same dimensions and same formula names as self, ignoring rows and proc bodies. Returns false for non-Namo operands.
+3. + Namo#eql?: Strict equality requiring class match, multiset-equal data, and formula name match.
+4. + Namo#hash: Content-based hash, consistent with eql?.
+5. + Namo#<, #<=, #>, #>=: Multiset subset/superset relations on rows. Raise ArgumentError on mismatched dimensions, TypeError on non-Namo operand.
+6. ~ Namo#+, #-, #&, #|, #^: Error message on dimension mismatch updated to "dimensions don't match: X vs Y". Non-Namo operand now raises TypeError ("can't compare Namo with X") instead of NoMethodError.
+7. ~ lib/namo.rb, namo.gemspec: Minor cleanup (./-prefixed requires; gemspec whitespace).
+8. ~ test/namo_test.rb: Add tests for ==, ===, eql?, hash, <, <=, >, >=, equal?, and the new error message.
+9. ~ README.md: + Equality section, + Subset and superset section, + design-philosophy paragraph in the opening and one-line principle callouts in the dimensions, formulae, set-operator, and equality sections.
+10. + script/md4print, ~ Rakefile: + rake docs:print, docs:pdf, docs:all for regenerating docs/*.print.md and docs/*.print.pdf.
+11. ~ Namo::VERSION: /0.5.0/0.6.0/
+
 20260416
 0.5.0: + row-axis set operations: intersection (&), union (|), symmetric difference (^)
 
