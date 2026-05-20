@@ -1,6 +1,22 @@
 CHANGELOG
 _________
 
+20260520
+0.7.0: + derived-dimension surfacing, lazy single-column access, live views
+
+1. + Namo#data_dimensions: Returns the storage dimensions as a plain Array (keys of the first row).
+2. + Namo#derived_dimensions: Returns the formula names as a plain Array.
+3. + Namo#values(*dims): Per-dimension full sequences (duplicates preserved, in row order). With no args, returns a Hash {dim => sequence} across the queryable namespace. With one arg, lazily computes and returns just that column as an Array. With multiple args, returns a subset Hash containing each requested dimension. Unknown dimensions propagate as nil per row, matching Row#[] and Namo#[] selection conventions — values(:unknown) returns an Array of nils; values(:known, :unknown) returns {known: [...], unknown: [nil, ...]}.
+4. + Namo#coordinates(*dims): Per-dimension unique-value sets. Same argument shape as #values; coordinates(dim) == values(dim).uniq. Unknown dimensions therefore appear as [nil].
+5. + Namo#to_h: Alias for the full values Hash.
+6. ~ Namo#dimensions: Now covers the queryable namespace (storage + derived) instead of storage-only. Return type stays a plain Array. Memoisation removed: every call recomputes from current state (live view).
+7. ~ Namo#coordinates: Memoisation removed (was @coordinates ||= ...). Now covers the queryable namespace; coordinates(:derived_dim) and coordinates[:derived_dim] work, evaluating the formula across all rows. New positional-args API supports lazy single-column access.
+8. ~ Namo#canonical_data: Sorts by data_dimensions to preserve 0.6.0 row-equality semantics under the broader dimensions definition.
+9. /raise_unless_matching_dimensions/raise_unless_matching_data_dimensions/: Private helper renamed to reflect what it actually compares.
+10. ~ test/namo_test.rb: + Tests for #data_dimensions, #derived_dimensions, the no-arg/single-arg/multi-arg forms of #values and #coordinates, derived-dimension surfacing in #dimensions, #to_h, the coordinates(dim) == values(dim).uniq consistency property, and live-view semantics (added rows / formulae reflected on next call).
+11. ~ Rakefile: + -V mainfont=Charter -V monofont=Menlo on pandoc invocation in docs:md2pdf, for a cleaner serif body font and so code spans containing Unicode math glyphs (e.g. ∅) render correctly under xelatex.
+12. ~ Namo::VERSION: /0.6.0/0.7.0/
+
 20260511
 0.6.0: + equality, pattern-match, and subset/superset operators
 

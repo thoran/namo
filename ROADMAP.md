@@ -1,6 +1,6 @@
 # Namo Roadmap
 
-Date: 20260511
+Date: 20260520
 
 ## Design philosophy
 
@@ -41,7 +41,7 @@ Namo is not a computation engine or a multidimensional spreadsheet. It is a mult
 
 ### Live computation objects
 
-Similarly to how Namo treats all dimensions as both data and coordinates, formulae are treated as derived dimensions. `row.close` and `row.earnings_yield` resolve through the same mechanism. The consumer doesn't need to know or care whether a dimension is stored data or a computed formula. They're all just names with values.
+Similarly to how Namo treats all dimensions as both data and coordinates, formulae are treated as derived dimensions. `row.close` and `row.earnings_yield` resolve through the same mechanism. The consumer doesn't need to know or care whether a dimension is data or a derived formula. They're all just names with values.
 
 A Namo holds data and computation together as a single object whose computed values are always current with respect to its data. Stored values and formulae are accessed through one interface; both reflect current state on every access.
 
@@ -51,18 +51,18 @@ When the underlying data changes — new rows append, existing rows are updated,
 
 This holds across the formula trajectory: single-row formulae shipped in 0.1.0, cross-row formulae planned in 0.11.0, parameterised formulae in 0.12.0. Same mechanism throughout, same currentness property regardless of formula complexity.
 
-Other tabular libraries produce snapshots. Pandas, Polars, dplyr, and DataFrames.jl all materialise computed values into stored columns, severing them from the computation that produced them. Spreadsheets like Excel and Quantrix attach formulae to cells but operate on them through a different interface than data. Namo treats them identically across the entire algebra of operations it provides.
+Other tabular libraries produce snapshots. Pandas, Polars, dplyr, and DataFrames.jl all materialise computed values into data columns, severing them from the computation that produced them. Spreadsheets like Excel and Quantrix attach formulae to cells but operate on them through a different interface than data. Namo treats them identically across the entire algebra of operations it provides.
 
-### Unified treatment of stored and derived dimensions
+### Unified treatment of data and derived dimensions
 
-Following from live computation: every operation Namo provides treats stored dimensions and derived dimensions equivalently. Selection, projection, contraction, composition, set operators, comparison operators, pattern-matching against schemas — none of them distinguish how a dimension's values are produced.
+Following from live computation: every operation Namo provides treats data dimensions and derived dimensions equivalently. Selection, projection, contraction, composition, set operators, comparison operators, pattern-matching against schemas — none of them distinguish how a dimension's values are produced.
 
 ```ruby
-namo[:revenue]                          # projection — works for stored or derived
-namo[revenue: 1000..2000]               # selection — works for stored or derived
+namo[:revenue]                          # projection — works whether a dimension is data or derived
+namo[revenue: 1000..2000]               # selection — works whether a dimension is data or derived
 namo - returned_items                   # set operation — formulae carry through
 namo * fundamentals                     # composition — formulae merge by rule
-case other; when namo.dimensions; ...   # pattern-match — covers both kinds
+case other; when namo; ...              # pattern-match (Namo#===) — checks data and derived dimensions together
 ```
 
 Analytical structure can be added or removed without re-ingesting. A user can attach `:return`, `:sma_20`, and `:signal` formulae to an existing Namo at any time; subsequent queries treat them as first-class dimensions. They can be removed equally freely. The data layer is untouched; the analytical layer grows and shrinks at the analyst's discretion.
@@ -124,12 +124,12 @@ Following from self-contained formulae and the unified interface: a Namo is a po
 
 This is the property notebooks try to provide and fail at. Jupyter notebooks intermix code cells, output cells, and environment state — the artefact you receive is not deterministically re-runnable. A Namo is different: the data is structurally present, the formulae are self-contained procs, and the receiver can call any query operation on it without depending on a particular Ruby environment, package set, or execution order.
 
-This isn't yet a shipped feature — serialisation lands later in 1.x — but the design enables it. Every other principle in this section contributes: self-contained formulae are portable; unified interface means the receiver doesn't need to know what's stored vs computed; type agnosticism means the format doesn't have to encode complex type systems; analytical structure at query time means the structure is in the data itself, not in a separate schema.
+This isn't yet a shipped feature — serialisation lands later in 1.x — but the design enables it. Every other principle in this section contributes: self-contained formulae are portable; unified interface means the receiver doesn't need to know what's data vs derived; type agnosticism means the format doesn't have to encode complex type systems; analytical structure at query time means the structure is in the data itself, not in a separate schema.
 
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.6.0
+## Current state: 0.7.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -273,22 +273,17 @@ These pair with the set operators algebraically: `a & b == a` iff `a <= b`; `a |
 
 The error message format for dimension mismatch was standardised to `"dimensions don't match: X vs Y"` across all binary operators (`+`, `-`, `&`, `|`, `^`, `<`, `<=`, `>`, `>=`), retrofitted into the set operators from 0.4.0–0.5.0.
 
-Deliberately not included: `<=>` and `Comparable` (subset/superset is a partial order, not total — two Namos can be incomparable, and stdlib `Set` omits `<=>` for the same reason); Row-level public operators; block forms (relaxed-matching variants land in 0.10.0 alongside block forms for set and composition operators). Aspect-level `===` template-matching on `Namo::Dimensions`, `Namo::Coordinates`, and `Namo::Values` lands in 0.7.0.
+Deliberately not included: `<=>` and `Comparable` (subset/superset is a partial order, not total — two Namos can be incomparable, and stdlib `Set` omits `<=>` for the same reason); Row-level public operators; block forms (relaxed-matching variants land in 0.10.0 alongside block forms for set and composition operators).
 
-### Summary
+### 0.7.0 (2026-05-20): Derived-dimension surfacing, values, live views
 
-The set operators (`+`, `-`, `&`, `|`, `^`) together with the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), selection, projection, contraction, and formulae give Namo a complete vocabulary for working with a single dataset or combining datasets that share the same dimensions. The next phase (0.7.0+) extends this to datasets with different dimensions via composition operators and adds richer selection and formula capabilities.
+Three things land together: `values` as the third inspection aspect alongside `dimensions` and `coordinates`; derived dimensions (formula names) surfacing through the inspection aspects so data and derived are queried uniformly; and explicit accessors for the data/derived split (`data_dimensions`, `derived_dimensions`). All three accessors are live — they recompute from current state on every call, with no memoisation.
 
+The shape of the API is plain Ruby. `dimensions` returns an `Array`, `coordinates` and `values` return `Hash` (eager) or `Array` (single column, lazy), depending on how they're called. No aspect classes, no subclasses of `Array`/`Hash`. Subclassing of `Namo` itself (`class Sales < Namo`) and `Namo#===` from 0.6.0 already cover case-statement dispatch on analytical shape, so the aspect-class layer is not needed.
 
-## 0.7.0: Aspect classes and values
+#### values
 
-Promote `dimensions`, `coordinates`, and `values` to first-class aspect objects via subclasses of plain Ruby types. Each aspect overrides `===` to template-match against whole Namos, enabling case-statement dispatch on schema. `values` is introduced in this release as the third aspect. `to_h` is exposed as the Ruby-conventional alias for `values`.
-
-The conceptual unit is "aspects as first-class objects." Comparison vocabulary in 0.6.0 covered Namo-level operators; this release covers aspect-level `===` template-matching, which closes out the comparison story.
-
-### values[:dimension]
-
-Extract all values for a dimension, preserving duplicates and row order.
+Extract per-dimension sequences, preserving duplicates and row order.
 
 ```ruby
 namo = Namo.new([
@@ -297,57 +292,85 @@ namo = Namo.new([
   {symbol: 'BHP', close: 43.1},
 ])
 
-namo.coordinates[:symbol]  # => ['BHP', 'RIO']
-namo.values[:symbol]       # => ['BHP', 'RIO', 'BHP']
+namo.values(:symbol)        # => ['BHP', 'RIO', 'BHP']
+namo.coordinates(:symbol)   # => ['BHP', 'RIO']
 ```
 
 `coordinates` answers "what exists along this axis?" — the unique axis labels. `values` answers "what does this column actually contain?" — the raw data, preserving count and order. The difference is analogous to `DISTINCT` vs a bare `SELECT` on a column.
 
-The two aspects are syntactically parallel — both `coordinates[:dim]` and `values[:dim]` use `[]` access on the returned object — and semantically parallel as well (both project the Namo down to a per-dimension Array, ready for Ruby's built-in Array operators).
-
-Implementation:
+Both accept positional dimension arguments:
 
 ```ruby
-def values
-  @values ||= Namo::Values.new.tap do |hash|
-    dimensions.each{|d| hash[d] = @data.map{|row| row[d]}}
+namo.values                     # => full Hash {dim => sequence}
+namo.values(:symbol)            # => Array — one column, lazily computed
+namo.values(:symbol, :close)    # => subset Hash with just those columns
+namo.values(:unknown)           # => [nil, nil, ...] — one nil per row
+namo.values(:symbol, :unknown)  # => {symbol: [...], unknown: [nil, nil, ...]}
+```
+
+With no args, `values` returns a Hash keyed by every dimension in the queryable namespace. With one arg it returns just that column as an Array, computing only that column (lazy). With multiple args it returns a Hash containing just the requested columns, again computing only those. Unknown dimensions propagate nil naturally — `row[:unknown]` is nil for each row, so the column is an Array of nils — matching the convention used by `Row#[]` and `Namo#[]` selection. `coordinates` mirrors the same shape; an unknown dimension becomes `[nil]` after uniq'ing the per-row nils.
+
+Asymmetric returns (Array for one arg, Hash for none or many) follow the natural reading: `values(:symbol)` is "the values of `:symbol`," singular, so an Array. Ruby has precedent for arg-shape-driven returns (`arr[2]` vs `arr[2..3]`); the principle is that the most useful shape for each calling pattern wins over uniformity.
+
+The implementation is straightforward and lives directly in `Namo`:
+
+```ruby
+def values(*dims)
+  if dims.empty?
+    dimensions.each_with_object({}){|dim, hash| hash[dim] = values_for(dim)}
+  elsif dims.length == 1
+    dim = dims.first
+    return nil unless dimensions.include?(dim)
+    values_for(dim)
+  else
+    dims.each_with_object({}){|dim, hash| hash[dim] = values_for(dim) if dimensions.include?(dim)}
   end
 end
 
-class Namo::Values < Hash
-  # === overridden for template-matching against Namos (see Aspect classes below)
-end
-```
-
-`Namo::Values` is a subclass of `Hash`, so all Hash operations work — `[]`, `keys`, `values` (the Hash method, not the Namo aspect), `to_a`, `==`, iteration. The subclass exists so that `===` can be overridden to match against whole Namos in case-statement contexts. For day-to-day use, treat the return value as a Hash; the subclass identity is only relevant for template matching.
-
-`values[:symbol]` is plain Hash indexing. The whole hash is built up front rather than lazily per column; for typical Namo sizes (hundreds to low thousands of rows, handful of dimensions) the cost is negligible and matches the pattern `coordinates` already uses.
-
-`values` is the primitive that `coordinates` is built on — `coordinates[:dim]` is `values[:dim].uniq`. The implementation reflects that directly:
-
-```ruby
-def coordinates
-  @coordinates ||= Namo::Coordinates.new.tap do |hash|
-    dimensions.each{|d| hash[d] = values[d].uniq}
+def coordinates(*dims)
+  if dims.empty?
+    values.transform_values(&:uniq)
+  elsif dims.length == 1
+    values(dims.first)&.uniq
+  else
+    dims.each_with_object({}){|dim, hash| hash[dim] = values(dim)&.uniq if dimensions.include?(dim)}
   end
 end
 ```
 
-A single source of truth for per-dimension column extraction. The performance cost compared to a single-pass implementation is negligible for typical data sizes (hundreds to low thousands of rows) — one extra method dispatch and array allocation per dimension — and 1.x is about expressivity and stability, not speed. The optimised form can return as a 3.x concern alongside columnar storage, when performance work is on the table.
+`coordinates` is literally `values` with `.uniq` applied per column — a single source of truth for per-dimension column extraction. `coordinates(dim) == values(dim).uniq` holds across the queryable namespace, by construction.
 
-`dimensions` is also wrapped, returning a `Namo::Dimensions` (subclass of `Array`):
+#### Queryable namespace: data and derived dimensions together
+
+`dimensions`, `values`, and `coordinates` all cover the *queryable namespace* — the union of data dimensions (keys of `@data.first`) and derived dimensions (keys of `@formulae`). From the user's perspective, data and derived are equivalent: anywhere you can name a data dimension, you can name a formula.
 
 ```ruby
-def dimensions
-  @dimensions ||= Namo::Dimensions.new(@data.first.keys)
-end
+namo = Namo.new([{price: 10.0, quantity: 100}, {price: 25.0, quantity: 60}])
+namo[:revenue] = proc{|r| r[:price] * r[:quantity]}
+
+namo.dimensions              # => [:price, :quantity, :revenue]
+namo.values(:revenue)        # => [1000.0, 1500.0]
+namo.coordinates(:revenue)   # => [1000.0, 1500.0]
+namo.to_h                    # => {price: [...], quantity: [...], revenue: [...]}
 ```
 
-The three introspection methods now form a complete set: `dimensions` tells you what names exist, `coordinates` tells you the unique values per dimension, `values` tells you all values for a dimension. All three return subclasses of plain Ruby types (Array, Hash, Hash), so existing usage is unchanged — the wrappers add behaviour without removing any.
+Asking for `values(:revenue)` evaluates the formula across every row and returns the resulting column. The derived dimension behaves identically to a data dimension from the inspection vocabulary's point of view. This unification matches the 0.1.0 design principle that formulae are first-class dimensions, not a separate computed-column concept; 0.7.0 finishes wiring that principle through the inspection methods.
 
-### `to_h` is `values`
+#### Data and derived as explicit accessors
 
-The hash returned by `values` is exactly the columnar form expected by `to_h` — `{symbol: [...], close: [...], ...}`, dimension-keyed arrays preserving row order. They produce identical output, so `to_h` is the standard Ruby coercion idiom for the same thing:
+For the cases where the distinction does matter — set operators need to compare row schemas, projection through `[]` operates on data columns, and code introspecting a Namo may want to know which names are data vs derived — the split is exposed as parallel accessors:
+
+```ruby
+namo.data_dimensions     # => [:price, :quantity]   — keys of the first row
+namo.derived_dimensions  # => [:revenue]            — keys of @formulae
+namo.dimensions          # => [:price, :quantity, :revenue]  — the union, queryable namespace
+```
+
+The set operators (`+`, `-`, `&`, `|`, `^`) use `data_dimensions` for their matching check internally, preserving the 0.6.0 semantics that two Namos with the same data layout can be combined regardless of which formulae either has registered.
+
+#### to_h
+
+`to_h` is the Ruby-conventional alias for `values` with no arguments:
 
 ```ruby
 def to_h
@@ -355,96 +378,74 @@ def to_h
 end
 ```
 
-Both are public, both available from 0.7.0. `values` is the primitive name; `to_h` is the Ruby-conventional name. Users can reach for either depending on context — `values` reads naturally when you're treating it as an inspection method (`namo.values[:close].sum`), `to_h` reads naturally when you're converting (`hash = namo.to_h; hash.keys`).
+Returns the full columnar Hash. `values` is the primitive name; `to_h` reads naturally at coercion sites (`hash = namo.to_h; hash.keys`).
 
-This is purely about output. Internal storage stays row-oriented (`@data` as `Array<Hash>`) until 3.x, where columnar storage becomes an option for performance. The public `to_h`/`values` API is stable from 0.7.0; what 3.x changes is the cost of computing the result, not the result itself.
+This is purely about output. Internal storage stays row-oriented (`@data` as `Array<Hash>`); columnar storage as a performance option is a 3.x concern. The public `to_h`/`values` shape is stable from 0.7.0.
 
-The pairing of `values` with proc-based selection is about user workflow: if you're writing `namo[pe: ->(v){ v && v < 15 }]`, you probably also want `namo.values[:pe]` to inspect the range, spot nils, and understand the distribution before writing the predicate. Nothing in the implementation depends on this pairing — proc-based selection works through `Row#match?` and never needs the full column extracted.
+The pairing of `values` with proc-based selection (0.8.0) is about user workflow: if you're writing `namo[pe: ->(v){ v && v < 15 }]`, you probably also want `namo.values(:pe)` first to inspect the range and spot nils before writing the predicate.
 
-### Aspect classes and template-matching
+#### Live views, no memoisation
 
-The aspect-returning methods (`dimensions`, `coordinates`, `values`) return subclass instances rather than plain Array or Hash. The subclasses are:
+Every call to `dimensions`, `data_dimensions`, `derived_dimensions`, `values`, `coordinates`, or `to_h` recomputes from the Namo's current state. There is no caching. Mutating `@data` or `@formulae` (e.g. via `namo[:new_formula] = proc{...}`) is reflected immediately on the next inspection call.
 
 ```ruby
-class Namo::Dimensions < Array
-  def ===(candidate)
-    case candidate
-    when Namo
-      all?{|d| candidate.dimensions.include?(d)}
-    else
-      super
-    end
-  end
-end
-
-class Namo::Coordinates < Hash
-  def ===(candidate)
-    case candidate
-    when Namo
-      keys.all?{|d| candidate.dimensions.include?(d)}
-    else
-      super
-    end
-  end
-end
-
-class Namo::Values < Hash
-  def ===(candidate)
-    case candidate
-    when Namo
-      keys.all?{|d| candidate.dimensions.include?(d)}
-    else
-      super
-    end
-  end
-end
+namo.derived_dimensions    # => []
+namo[:revenue] = proc{|r| r[:price] * r[:quantity]}
+namo.derived_dimensions    # => [:revenue]
+namo.values(:revenue)      # => [1000.0, 1500.0]
 ```
 
-Each subclass overrides `===` to template-match against a Namo on the right side. The aspect on the left is the template; the Namo on the right is the candidate; the question is "does this Namo conform to this aspect?"
+The performance cost compared to a memoised implementation is real but unmeasured at typical sizes (hundreds to low thousands of rows). Single-column laziness — `values(:dim)` computing only the requested column — covers the case where it matters most: a million-row Namo with expensive derived dimensions, where materialising the full Hash would be wasteful. Wholesale aspect caching (e.g. freeze-aware materialisation) is a candidate for a later release, not 0.7.0.
 
-For non-Namo right operands, `===` falls through to `super` — meaning `Array#===` for `Namo::Dimensions` and `Hash#===` for the others, which both delegate to `==`. This preserves the standard Ruby behaviour: `a.dimensions === [:symbol, :date]` does array equality, `a.coordinates === some_hash` does hash equality.
+#### Composition through plain types
 
-The Namo-right-operand case enables case-statement dispatch on schema:
+Because `dimensions`, `data_dimensions`, and `derived_dimensions` return plain `Array`, and `values(:dim)` and `coordinates(:dim)` return plain `Array`, the full vocabulary of Ruby's `Array` operators applies without Namo defining anything new:
 
 ```ruby
+a.dimensions == b.dimensions                          # exact match on queryable namespace
+a.data_dimensions == b.data_dimensions                # exact match on data layout
+a.derived_dimensions == b.derived_dimensions          # exact match on formula names
+a.coordinates(:symbol) == b.coordinates(:symbol)      # set equality on a dimension
+a.values(:close) == b.values(:close)                  # sequence equality on a dimension
+a.values(:close).sum                                  # any Array method
+namos.sort_by{|n| n.values(:date).first}              # sort Namos by aspect
+[:price, :quantity].all?{|d| a.dimensions.include?(d)}  # subset-style check
+```
+
+This is the answer to "where does ordering live?" — at the aspect level, where projections to plain Arrays inherit `<=>` and `==` from Ruby's built-ins. No `Namo#<=>`, no Namo-level total order. Just plain return types.
+
+#### Case-statement dispatch: subclassing and Namo#===
+
+Case-statement dispatch on analytical shape has two paths, both already present without 0.7.0 adding any new `===` infrastructure:
+
+```ruby
+# Subclassing — the cleanest path when you have named shapes
+class Sales < Namo; end
+class Inventory < Namo; end
+
 case incoming
-when ohlcv.dimensions
-  process_ohlcv(incoming)
-when fundamentals.dimensions
-  process_fundamentals(incoming)
+when Sales     then publish_sales_dashboard(incoming)
+when Inventory then publish_inventory_dashboard(incoming)
+end
+
+# Namo#=== — for ad-hoc shape templates without a subclass
+ohlcv = Namo.new([{symbol: nil, date: nil, open: nil, high: nil, low: nil, close: nil, volume: nil}])
+case incoming
+when ohlcv then process_ohlcv(incoming)
 end
 ```
 
-Reading `ohlcv.dimensions === incoming` as "does `incoming` have at least the dimensions `ohlcv` has?" The template-match is a structural conformance check, not strict equality — `incoming` may have additional dimensions and still match. This matches Ruby's `===` convention (`Integer === 5` is true even though 5 is also a Numeric, a Comparable, and so on — match means "fits this category," not "exactly this and nothing else").
+`Class#===` dispatches on `is_a?` (stock Ruby), so subclasses of Namo flow through case statements directly, inheriting case dispatch alongside their domain methods. `Namo#===` (from 0.6.0) matches on full analytical shape — same dimensions, same formula names — for templates that don't justify a subclass.
 
-For exact-match semantics (the candidate has *exactly* these dimensions, no more), use `==`:
+Aspect-level `===` (the originally-planned `ohlcv.dimensions === incoming` template-match) is not part of 0.7.0. The case-dispatch use it would have served is covered by subclassing for known shapes and `Namo#===` for ad-hoc ones; the data-only and derived-only fine-grained variants don't have a concrete use case beyond what `==` on the relevant accessor already gives (`a.data_dimensions == b.data_dimensions`, etc.). If a case-dispatch need on the finer split materialises later, a small `Matcher` returned by a factory method on Namo can serve it without bringing back the aspect-class hierarchy.
 
-```ruby
-case incoming.dimensions
-when ohlcv.dimensions then ...     # exact match via Array#==
-when fundamentals.dimensions then ...
-end
-```
+#### Why Array storage, not Set
 
-This works because both sides are `Namo::Dimensions` (subclasses of Array), and `===` between them falls through to `super` (Array#===, which delegates to ==).
+`values` reinforces the decision to keep `@data` as `Array<Hash>` rather than `Set<Hash>`. `values` needs ordering and duplicates — both things Set throws away. If the internal store were a Set, `values` would lose row order and couldn't contain duplicate rows. `to_a` would need to reconstruct an order that no longer exists internally. `to_h` (columnar) would have the same problem — the column arrays need a consistent row ordering so that `values(:symbol)[i]` and `values(:close)[i]` correspond to the same row. Set buys fast membership testing and automatic deduplication, but Namo doesn't need either of those as primitives. The set operations (`&`, `|`, `^`) work on Array storage just fine.
 
-### Comparison through aspect projection
+### Summary
 
-Because `coordinates[:dim]` and `values[:dim]` both return plain Ruby Arrays, the full vocabulary of Ruby's Array operators is available without Namo defining anything new:
-
-```ruby
-a.coordinates[:symbol] == b.coordinates[:symbol]    # set equality on a dimension
-a.values[:close] == b.values[:close]                # sequence equality on a dimension
-a.coordinates[:date] <=> b.coordinates[:date]       # ordering on unique values
-a.values[:close].sum                                # any Array method
-namos.sort_by{|n| n.values[:date].first}            # sort Namos by aspect
-```
-
-This is the answer to "where does ordering live?" — at the aspect level, where projections to Arrays inherit `<=>` and `==` from Ruby's built-ins. No `Namo#<=>`, no Namo-level total order. Just well-chosen aspect methods exposing plain data structures.
-
-### Why Array storage, not Set
-
-`values` reinforces the decision to keep `@data` as `Array<Hash>` rather than `Set<Hash>`. `values` needs ordering and duplicates — both things Set throws away. If the internal store were a Set, `values` would lose row order and couldn't contain duplicate rows. `to_a` would need to reconstruct an order that no longer exists internally. `to_h` (columnar) would have the same problem — the column arrays need a consistent row ordering so that `values[:symbol][i]` and `values[:close][i]` correspond to the same row. Set buys fast membership testing and automatic deduplication, but Namo doesn't need either of those as primitives. The set operations (`&`, `|`, `^`) work on Array storage just fine.
+The set operators (`+`, `-`, `&`, `|`, `^`) together with the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), selection, projection, contraction, formulae, and the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`) give Namo a complete vocabulary for working with a single dataset or combining datasets that share the same dimensions. The next phase (0.8.0+) extends to datasets with different dimensions via composition operators and adds richer selection and formula capabilities.
 
 ## 0.8.0: Proc-based and regex-based selection
 
@@ -729,7 +730,7 @@ Implementation: override the subset-returning methods to wrap the result in `Nam
 
 ## 1.0.0: Stable release
 
-The 1.0 release includes everything through 0.14.0: comparisons, aspect classes (`Namo::Dimensions`, `Namo::Coordinates`, `Namo::Values`) with template-match `===`, `values` and `to_h`, proc-based and regex-based selection, composition operators (`*`, `**`, `/`), blocks on all operators, two-arity formulae, parameterised formulae, Finite module, and Enumerable methods returning Namos. This is the correct, tested, conservative foundation. No metaprogramming magic, no `method_missing`, no `instance_eval`. Formulae work via `e[:name] = proc{|row| row[:close] / row[:book_value]}` — clear, explicit, proven.
+The 1.0 release includes everything through 0.14.0: comparisons, `values` and `to_h`, derived-dimension surfacing and the data/derived split (`data_dimensions`, `derived_dimensions`), proc-based and regex-based selection, composition operators (`*`, `**`, `/`), blocks on all operators, two-arity formulae, parameterised formulae, Finite module, and Enumerable methods returning Namos. This is the correct, tested, conservative foundation. No metaprogramming magic, no `method_missing`, no `instance_eval`. Formulae work via `e[:name] = proc{|row| row[:close] / row[:book_value]}` — clear, explicit, proven.
 
 1.0 is the set of features that are well-understood, thoroughly tested, and unlikely to change.
 

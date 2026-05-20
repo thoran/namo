@@ -1,6 +1,6 @@
 # Namo Feature Comparison
 
-Date: 20260510
+Date: 20260520
 
 Feature-by-feature comparison of Namo against Pandas, Polars, R/dplyr, xarray, and Julia/DataFrames.jl. Covers both where the tools are the same and where they differ.
 
@@ -943,6 +943,38 @@ antijoin(today, exclusions, on = :symbol)
 
 **Summary:** Other tools handle column-name-based matching via anti-joins. Namo's blocks accept arbitrary predicates — the matching logic is not restricted to column equality. A block could match on computed values, fuzzy comparisons, or any other criterion.
 
+### Worked example: comparing yesterday's screen to today's
+
+A daily screen produces a set of candidates. Comparing today's result to yesterday's — unchanged, grown, shrunk, or churned — reads as a sequence of set-operator calls.
+
+**Namo** — shipped (0.4.0–0.6.0)
+
+```ruby
+status = if today == yesterday; "no change"
+      elsif today >= yesterday; "added #{(today - yesterday).count} candidates"
+      elsif yesterday >= today; "removed #{(yesterday - today).count} candidates"
+      else;                     "churn: #{(today ^ yesterday).count} differing"
+end
+```
+
+The row-set operators (`==`, `<=`, `>=`, `-`, `&`, `|`, `^`) all work directly on Namos and return Namos (or booleans). The whole comparison stays in one type system. The algebraic identity `today >= yesterday` iff `(yesterday - today).count == 0` reads consistently with how you'd describe a superset relation in English.
+
+**Pandas** — `DataFrame.equals` is order-sensitive, so set-equality on rows requires materialising each row as a tuple and dropping into Python's `set` type. The DataFrame structure goes away for the operation; the boolean comes back as a Python primitive. The `set` type happens to have `==`, `>=`, `-`, `^` defined, which is why this works at all — but you're working in two type systems for one comparison.
+
+```python
+yesterday_rows = set(map(tuple, yesterday.itertuples(index=False)))
+today_rows     = set(map(tuple, today.itertuples(index=False)))
+
+if   today_rows == yesterday_rows: status = "no change"
+elif today_rows >= yesterday_rows: status = f"added {len(today_rows - yesterday_rows)} candidates"
+elif yesterday_rows >= today_rows: status = f"removed {len(yesterday_rows - today_rows)} candidates"
+else:                              status = f"churn: {len(today_rows ^ yesterday_rows)} differing"
+```
+
+**Polars / R/dplyr / xarray / Julia** — same pattern as Pandas. None has full set algebra on whole datasets; the workaround is to extract rows into a language-level set type, perform the operation there, and translate back.
+
+**Summary:** The diff idiom is one operator call per branch in Namo; in every other tool it's a conversion to a set-of-rows type plus the operation. Having the set algebra as first-class Namo operators is what keeps the idiom short and in one type system.
+
 
 ## Type handling
 
@@ -1146,6 +1178,48 @@ isequal(a, b)
 ```
 
 **Summary:** No other tool has a four-level equality hierarchy on datasets. Most have one method that does element-wise or strict-identical comparison; none distinguish "same data ignoring order and metadata" from "same analytical shape regardless of data" from "same in every observable way." Namo's hierarchy is the only one that lets users pick the level of strictness appropriate to the question they're asking, and `===` makes Namos work naturally as templates in `case` dispatch.
+
+### Schema dispatch on incoming data feeds
+
+A worked example of `===`: a function receives data and needs to dispatch on its analytical shape — same dimensions and formulae mean "the same kind of analysis," regardless of the specific rows.
+
+**Namo** — shipped (0.6.0)
+
+`===` makes a Namo work as a template in `case`/`when`. The template is itself a Namo — same first-class object as everything else in the program. Adding a third shape means adding a `when` clause; if the template needs to carry formulae for downstream processing, the template already does.
+
+```ruby
+ohlcv_shape        = Namo.new([{date: nil, symbol: nil, open: 0.0, high: 0.0, low: 0.0, close: 0.0, volume: 0}])
+fundamentals_shape = Namo.new([{symbol: nil, pe: 0.0, book_value: 0.0, dividend_yield: 0.0}])
+
+case incoming
+when ohlcv_shape        then process_ohlcv(incoming)
+when fundamentals_shape then process_fundamentals(incoming)
+else raise ArgumentError, "unknown shape: #{incoming.dimensions}"
+end
+```
+
+**Pandas** — no schema-as-value. Maintain free-floating sets of column names; dispatch via `if`/`elif` with set subset checks.
+
+```python
+ohlcv_cols        = {'date', 'symbol', 'open', 'high', 'low', 'close', 'volume'}
+fundamentals_cols = {'symbol', 'pe', 'book_value', 'dividend_yield'}
+
+incoming_cols = set(incoming.columns)
+
+if   ohlcv_cols.issubset(incoming_cols):        process_ohlcv(incoming)
+elif fundamentals_cols.issubset(incoming_cols): process_fundamentals(incoming)
+else: raise ValueError(f"unknown shape: {incoming.columns.tolist()}")
+```
+
+**Polars** — same pattern as Pandas. `df.columns` is a list of names; dispatch via `if`/`elif` on set subset checks.
+
+**R/dplyr** — same pattern. `names(df)` gives column names; dispatch via `if`/`else` on `setdiff` or `%in%`.
+
+**xarray** — split namespace: `ds.dims` for dimensions, `ds.data_vars` for variables. Dispatch via `if`/`else` checking each separately.
+
+**Julia/DataFrames.jl** — same pattern. `names(df)` gives column names; dispatch via `if`/`else` on set operations.
+
+**Summary:** No other tool has a schema as a first-class value. Everywhere else the schema is a list of column names extracted from the dataset and checked via set operations in control flow. Namo's `===` puts the schema-template directly into Ruby's case-statement dispatch, alongside `Integer === 5`. The template is also a Namo, so it composes with everything else — carries formulae, can be selected against, can be combined with operators. Extending the dispatch beyond simple shape-checking comes for free.
 
 ### Subset/superset tests
 

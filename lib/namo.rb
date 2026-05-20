@@ -12,15 +12,39 @@ class Namo
   attr_accessor :formulae
 
   def dimensions
-    @dimensions ||= @data.first.keys
+    @data.first.keys + @formulae.keys
   end
 
-  def coordinates
-    @coordinates ||= (
-      dimensions.each_with_object({}) do |dimension, hash|
-        hash[dimension] = @data.map{|row| row[dimension]}.uniq
-      end
-    )
+  def data_dimensions
+    @data.first.keys
+  end
+
+  def derived_dimensions
+    @formulae.keys
+  end
+
+  def values(*dims)
+    if dims.empty?
+      dimensions.each_with_object({}){|dim, hash| hash[dim] = values_for(dim)}
+    elsif dims.length == 1
+      values_for(dims.first)
+    else
+      dims.each_with_object({}){|dim, hash| hash[dim] = values_for(dim)}
+    end
+  end
+
+  def coordinates(*dims)
+    if dims.empty?
+      values.transform_values(&:uniq)
+    elsif dims.length == 1
+      values(dims.first).uniq
+    else
+      dims.each_with_object({}){|dim, hash| hash[dim] = values(dim).uniq}
+    end
+  end
+
+  def to_h
+    values
   end
 
   def [](*names, **selections)
@@ -32,7 +56,7 @@ class Namo
     projected = (
       if negated.any?
         excluded = negated.map(&:name)
-        kept = dimensions - excluded
+        kept = data_dimensions - excluded
         rows.map do |row|
           kept.each_with_object({}){|name, hash| hash[name] = row[name]}
         end
@@ -58,31 +82,31 @@ class Namo
 
   def +(other)
     raise_unless_namo(other)
-    raise_unless_matching_dimensions(other)
+    raise_unless_matching_data_dimensions(other)
     self.class.new(@data + other.data, formulae: other.formulae.merge(@formulae))
   end
 
   def -(other)
     raise_unless_namo(other)
-    raise_unless_matching_dimensions(other)
+    raise_unless_matching_data_dimensions(other)
     self.class.new(@data - other.data, formulae: @formulae.dup)
   end
 
   def &(other)
     raise_unless_namo(other)
-    raise_unless_matching_dimensions(other)
+    raise_unless_matching_data_dimensions(other)
     self.class.new(@data & other.data, formulae: @formulae.dup)
   end
 
   def |(other)
     raise_unless_namo(other)
-    raise_unless_matching_dimensions(other)
+    raise_unless_matching_data_dimensions(other)
     self.class.new((@data | other.data), formulae: other.formulae.merge(@formulae))
   end
 
   def ^(other)
     raise_unless_namo(other)
-    raise_unless_matching_dimensions(other)
+    raise_unless_matching_data_dimensions(other)
     self.class.new((@data - other.data) + (other.data - @data), formulae: other.formulae.merge(@formulae))
   end
 
@@ -109,25 +133,25 @@ class Namo
 
   def <(other)
     raise_unless_namo(other)
-    raise_unless_matching_dimensions(other)
+    raise_unless_matching_data_dimensions(other)
     proper_subset_of_rows?(other)
   end
 
   def <=(other)
     raise_unless_namo(other)
-    raise_unless_matching_dimensions(other)
+    raise_unless_matching_data_dimensions(other)
     subset_of_rows?(other)
   end
 
   def >(other)
     raise_unless_namo(other)
-    raise_unless_matching_dimensions(other)
+    raise_unless_matching_data_dimensions(other)
     other.proper_subset_of_rows?(self)
   end
 
   def >=(other)
     raise_unless_namo(other)
-    raise_unless_matching_dimensions(other)
+    raise_unless_matching_data_dimensions(other)
     other.subset_of_rows?(self)
   end
 
@@ -142,7 +166,7 @@ class Namo
   protected
 
   def canonical_data
-    @data.sort_by{|row| row.values_at(*dimensions.sort)}
+    @data.sort_by{|row| row.values_at(*data_dimensions.sort)}
   end
 
   def subset_of_rows?(other)
@@ -157,15 +181,23 @@ class Namo
 
   private
 
+  def values_for(dim)
+    if data_dimensions.include?(dim)
+      @data.map{|row_data| row_data[dim]}
+    else
+      @data.map{|row_data| Row.new(row_data, @formulae)[dim]}
+    end
+  end
+
   def raise_unless_namo(other)
     unless other.is_a?(Namo)
       raise TypeError, "can't compare Namo with #{other.class}"
     end
   end
 
-  def raise_unless_matching_dimensions(other)
-    unless dimensions == other.dimensions
-      raise ArgumentError, "dimensions don't match: #{dimensions} vs #{other.dimensions}"
+  def raise_unless_matching_data_dimensions(other)
+    unless data_dimensions == other.data_dimensions
+      raise ArgumentError, "dimensions don't match: #{data_dimensions} vs #{other.data_dimensions}"
     end
   end
 

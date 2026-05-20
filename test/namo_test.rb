@@ -21,18 +21,158 @@ describe Namo do
     it "infers dimensions from hash keys" do
       _(sales.dimensions).must_equal [:product, :quarter, :price, :quantity]
     end
+
+    it "includes derived dimensions after storage dimensions" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      sales[:label] = proc{|r| "#{r[:product]}-#{r[:quarter]}"}
+      _(sales.dimensions).must_equal [:product, :quarter, :price, :quantity, :revenue, :label]
+    end
+
+    it "reflects mutation on the next call" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      _(sales.dimensions).must_include :revenue
+      sales.formulae.delete(:revenue)
+      _(sales.dimensions).wont_include :revenue
+    end
+  end
+
+  describe "#data_dimensions" do
+    it "returns only the storage keys" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      _(sales.data_dimensions).must_equal [:product, :quarter, :price, :quantity]
+    end
+  end
+
+  describe "#derived_dimensions" do
+    it "returns only the formula keys" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      _(sales.derived_dimensions).must_equal [:revenue]
+    end
+
+    it "is empty when no formulae are defined" do
+      _(sales.derived_dimensions).must_equal []
+    end
   end
 
   describe "#coordinates" do
-    it "extracts unique values for each dimension" do
+    it "with no args returns a Hash of unique values for each dimension" do
       _(sales.coordinates).must_equal ({
         product: ['Widget', 'Gadget'],
         quarter: ['Q1', 'Q2'],
         price: [10.0, 25.0],
         quantity: [100, 150, 40, 60]
       })
+    end
+
+    it "0.6.0-style indexing still works" do
       _(sales.coordinates[:product]).must_equal ['Widget', 'Gadget']
       _(sales.coordinates[:quarter]).must_equal ['Q1', 'Q2']
+    end
+
+    it "with one arg returns just that column's unique values as an Array" do
+      _(sales.coordinates(:product)).must_equal ['Widget', 'Gadget']
+    end
+
+    it "with one arg returns [nil] for an unknown dimension (nil values uniqued)" do
+      _(sales.coordinates(:missing)).must_equal [nil]
+    end
+
+    it "with one arg evaluates a derived dimension" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      _(sales.coordinates(:revenue)).must_equal [1000.0, 1500.0]
+    end
+
+    it "with multiple args returns a subset Hash" do
+      _(sales.coordinates(:product, :quarter)).must_equal({
+        product: ['Widget', 'Gadget'],
+        quarter: ['Q1', 'Q2']
+      })
+    end
+
+    it "with multiple args includes unknown dimensions as [nil]" do
+      _(sales.coordinates(:product, :missing)).must_equal({
+        product: ['Widget', 'Gadget'],
+        missing: [nil]
+      })
+    end
+
+    it "covers derived dimensions in the no-arg form" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      _(sales.coordinates[:revenue]).must_equal [1000.0, 1500.0]
+    end
+  end
+
+  describe "#values" do
+    it "with no args returns a Hash of full sequences for each dimension" do
+      _(sales.values).must_equal({
+        product: ['Widget', 'Widget', 'Gadget', 'Gadget'],
+        quarter: ['Q1', 'Q2', 'Q1', 'Q2'],
+        price: [10.0, 10.0, 25.0, 25.0],
+        quantity: [100, 150, 40, 60]
+      })
+    end
+
+    it "with one arg returns just that column as an Array, preserving duplicates and order" do
+      _(sales.values(:product)).must_equal ['Widget', 'Widget', 'Gadget', 'Gadget']
+      _(sales.values(:price)).must_equal [10.0, 10.0, 25.0, 25.0]
+    end
+
+    it "with one arg returns an Array of nils for an unknown dimension (one nil per row)" do
+      _(sales.values(:missing)).must_equal [nil, nil, nil, nil]
+    end
+
+    it "with one arg evaluates a derived dimension across all rows" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      _(sales.values(:revenue)).must_equal [1000.0, 1500.0, 1000.0, 1500.0]
+    end
+
+    it "with multiple args returns a subset Hash" do
+      _(sales.values(:product, :quarter)).must_equal({
+        product: ['Widget', 'Widget', 'Gadget', 'Gadget'],
+        quarter: ['Q1', 'Q2', 'Q1', 'Q2']
+      })
+    end
+
+    it "with multiple args includes unknown dimensions as Arrays of nils" do
+      _(sales.values(:product, :missing)).must_equal({
+        product: ['Widget', 'Widget', 'Gadget', 'Gadget'],
+        missing: [nil, nil, nil, nil]
+      })
+    end
+
+    it "covers derived dimensions in the no-arg form" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      _(sales.values[:revenue]).must_equal [1000.0, 1500.0, 1000.0, 1500.0]
+    end
+  end
+
+  describe "#to_h" do
+    it "returns the full values Hash" do
+      _(sales.to_h).must_equal sales.values
+    end
+  end
+
+  describe "aspect consistency" do
+    it "satisfies coordinates(dim) == values(dim).uniq for each dimension" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      sales.dimensions.each do |dim|
+        _(sales.coordinates(dim)).must_equal sales.values(dim).uniq
+      end
+    end
+  end
+
+  describe "live-view semantics" do
+    it "reflects added rows on next call" do
+      _(sales.values(:product)).must_equal ['Widget', 'Widget', 'Gadget', 'Gadget']
+      sales.data << {product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}
+      _(sales.values(:product)).must_equal ['Widget', 'Widget', 'Gadget', 'Gadget', 'Thingo']
+    end
+
+    it "reflects added formulae on next call" do
+      _(sales.derived_dimensions).must_equal []
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      _(sales.derived_dimensions).must_equal [:revenue]
+      _(sales.coordinates(:revenue)).must_equal [1000.0, 1500.0]
     end
   end
 

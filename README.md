@@ -4,7 +4,7 @@ Named dimensional data for Ruby.
 
 Namo is a Ruby library for working with multi-dimensional data using named dimensions. It infers dimensions and coordinates from plain arrays of hashes — the same shape you get from databases, CSV files, JSON, and YAML — so there's no reshaping step.
 
-The design rests on a few stances: every hash key is a dimension and none is privileged; formulae attach to a Namo alongside stored data and re-evaluate on each access; the operators that combine Namos all take Namos and return Namos, so analytical pipelines close; and the formula mechanism is type-agnostic — strings, dates, booleans, and arbitrary Ruby objects work as readily as numbers.
+The design rests on a few stances: every hash key is a dimension and none is privileged as a coordinate or value; formulae attach to a Namo alongside data and re-evaluate on each access, appearing as derived dimensions alongside the data dimensions; operators that combine Namos all take Namos and return Namos, so analytical pipelines close; and the formula mechanism is type-agnostic — strings, dates, booleans, and arbitrary Ruby objects work as readily as numbers.
 
 ## Installation
 
@@ -383,7 +383,7 @@ sales[:product, :quarter, :revenue]
 # ]>
 ```
 
-Formulae aren't materialised into stored columns — they re-evaluate on every access. A `:revenue` value reflects the current `:price` and `:quantity` at the moment you ask for it, so derived values stay in sync with whatever the underlying data is doing.
+Formulae aren't materialised into row data — they re-evaluate on every access. A `:revenue` value reflects the current `:price` and `:quantity` at the moment you ask for it, so derived values stay in sync with whatever the underlying data is doing.
 
 Formulae compose:
 
@@ -411,6 +411,78 @@ sales[product: 'Widget'][:revenue, :quarter]
 ```
 
 Formulae carry through selection — a filtered Namo instance remembers its formulae.
+
+### Coordinates and values
+
+`dimensions` covers the *queryable namespace* — every name you can ask for, whether it lives in the row data or is computed by a formula. Once formulae are defined, they appear alongside data dimensions:
+
+```ruby
+sales[:revenue] = proc{|row| row[:price] * row[:quantity]}
+
+sales.dimensions
+# => [:product, :quarter, :price, :quantity, :revenue]
+
+sales.data_dimensions
+# => [:product, :quarter, :price, :quantity]
+
+sales.derived_dimensions
+# => [:revenue]
+```
+
+`coordinates` gives the unique values per dimension, including derived ones:
+
+```ruby
+sales.coordinates[:product]
+# => ['Widget', 'Gadget']
+
+sales.coordinates[:revenue]
+# => [1000.0, 1500.0]
+```
+
+`values` gives the full per-row sequence — duplicates preserved, row order preserved:
+
+```ruby
+sales.values[:product]
+# => ['Widget', 'Widget', 'Gadget', 'Gadget']
+
+sales.values[:revenue]
+# => [1000.0, 1500.0, 1000.0, 1500.0]
+```
+
+Both `coordinates` and `values` accept positional arguments. With no args they return a Hash across the queryable namespace; with one arg they lazily compute and return just that column as an Array; with multiple args they return a subset Hash containing just the requested columns:
+
+```ruby
+sales.values(:product)
+# => ['Widget', 'Widget', 'Gadget', 'Gadget']
+
+sales.values(:product, :quarter)
+# => {
+#   product: ['Widget', 'Widget', 'Gadget', 'Gadget'],
+#   quarter: ['Q1', 'Q2', 'Q1', 'Q2']
+# }
+
+sales.coordinates(:revenue)
+# => [1000.0, 1500.0]
+```
+
+Single-arg access is lazy: `sales.values(:revenue)` evaluates the formula only across the rows of `:revenue`, without materialising the other columns. The bracket form (`sales.values[:revenue]`) still works through ordinary Hash lookup but pays for the full materialisation up front.
+
+`coordinates` is `values` with `.uniq` applied per column — `coordinates(dim) == values(dim).uniq` holds for every dimension.
+
+`to_h` is the Ruby-conventional alias for the full `values` Hash:
+
+```ruby
+sales.to_h
+# => {
+#   product: ['Widget', 'Widget', 'Gadget', 'Gadget'],
+#   quarter: ['Q1', 'Q2', 'Q1', 'Q2'],
+#   price: [10.0, 10.0, 25.0, 25.0],
+#   quantity: [100, 150, 40, 60],
+#   revenue: [1000.0, 1500.0, 1000.0, 1500.0]
+# }
+```
+
+Unknown dimensions propagate `nil` per row — `values(:missing)` returns `[nil, nil, ...]` rather than raising or returning a sentinel, matching the convention used by `Row#[]` and `[]` selection. Use `dimensions.include?(:dim)` if you need to check membership directly.
 
 ### Enumerable
 
@@ -443,7 +515,7 @@ sales.flat_map{|row| [row[:price]]}
 
 ### Extracting data
 
-`to_a` returns an array of hashes:
+`to_a` returns an array of hashes — the row-oriented form:
 
 ```ruby
 sales[:product, :quarter, :revenue].to_a
@@ -453,6 +525,17 @@ sales[:product, :quarter, :revenue].to_a
 #   {product: 'Gadget', quarter: 'Q1', revenue: 1000.0},
 #   {product: 'Gadget', quarter: 'Q2', revenue: 1500.0}
 # ]
+```
+
+`to_h` returns a hash of arrays — the columnar form (see [Coordinates and values](#coordinates-and-values) above):
+
+```ruby
+sales[:product, :quarter, :revenue].to_h
+# => {
+#   product: ['Widget', 'Widget', 'Gadget', 'Gadget'],
+#   quarter: ['Q1', 'Q2', 'Q1', 'Q2'],
+#   revenue: [1000.0, 1500.0, 1000.0, 1500.0]
+# }
 ```
 
 ## Why?
