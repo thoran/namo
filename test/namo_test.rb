@@ -272,6 +272,110 @@ describe Namo do
         ]
       end
     end
+
+    context "proc selection" do
+      it "selects rows where the proc returns truthy" do
+        result = sales[price: ->(v){v < 15.0}]
+        _(result.to_a.count).must_equal 2
+        _(result.to_a.map{|row| row[:product]}).must_equal ['Widget', 'Widget']
+      end
+
+      it "selects on multiple proc dimensions" do
+        result = sales[price: ->(v){v < 30.0}, quantity: ->(v){v > 50}]
+        _(result.to_a).must_equal [
+          {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+          {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+          {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+        ]
+      end
+
+      it "composes with projection in a single call" do
+        result = sales[:product, :price, price: ->(v){v < 15.0}]
+        _(result.to_a).must_equal [
+          {product: 'Widget', price: 10.0},
+          {product: 'Widget', price: 10.0}
+        ]
+      end
+
+      it "composes with contraction in a single call" do
+        result = sales[-:quantity, price: ->(v){v < 15.0}]
+        _(result.to_a).must_equal [
+          {product: 'Widget', quarter: 'Q1', price: 10.0},
+          {product: 'Widget', quarter: 'Q2', price: 10.0}
+        ]
+      end
+
+      it "selects on a formula-defined dimension" do
+        sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+        result = sales[revenue: ->(v){v >= 1500.0}]
+        _(result.to_a).must_equal [
+          {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+          {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+        ]
+      end
+    end
+
+    context "regex selection" do
+      it "selects by regex against String values" do
+        result = sales[product: /^W/]
+        _(result.to_a.count).must_equal 2
+        _(result.to_a.map{|row| row[:product]}).must_equal ['Widget', 'Widget']
+      end
+
+      it "supports case-insensitive matching" do
+        result = sales[product: /widget/i]
+        _(result.to_a.count).must_equal 2
+      end
+
+      it "supports alternation" do
+        result = sales[product: /Widget|Gadget/]
+        _(result.to_a.count).must_equal 4
+      end
+
+      it "coerces non-String values via to_s" do
+        result = sales[quantity: /^1/]
+        _(result.to_a.map{|row| row[:quantity]}).must_equal [100, 150]
+      end
+
+      it "composes with an exact value on another dimension" do
+        result = sales[product: /^W/, quarter: 'Q1']
+        _(result.to_a).must_equal [
+          {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100}
+        ]
+      end
+
+      it "composes with projection in a single call" do
+        result = sales[:product, :quarter, product: /^W/]
+        _(result.to_a).must_equal [
+          {product: 'Widget', quarter: 'Q1'},
+          {product: 'Widget', quarter: 'Q2'}
+        ]
+      end
+
+      it "composes with contraction in a single call" do
+        result = sales[-:price, -:quantity, product: /^W/]
+        _(result.to_a).must_equal [
+          {product: 'Widget', quarter: 'Q1'},
+          {product: 'Widget', quarter: 'Q2'}
+        ]
+      end
+
+      it "selects on a formula-defined dimension" do
+        sales[:label] = proc{|r| "#{r[:product]}-#{r[:quarter]}"}
+        result = sales[label: /Widget/]
+        _(result.to_a.count).must_equal 2
+        _(result.map{|row| row[:label]}).must_equal ['Widget-Q1', 'Widget-Q2']
+      end
+    end
+
+    context "mixed proc and regex selection" do
+      it "combines a proc and a regex across dimensions" do
+        result = sales[product: /^W/, quantity: ->(v){v > 100}]
+        _(result.to_a).must_equal [
+          {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+        ]
+      end
+    end
   end
 
   describe "#[]= formulae" do

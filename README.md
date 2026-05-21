@@ -79,7 +79,40 @@ sales[quarter: ['Q1']]
 #   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
 #   {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40}
 # ]>
+
+# Proc predicate
+sales[price: ->(v){v < 20.0}]
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+# ]>
+
+# Regex predicate
+sales[product: /^W/]
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+# ]>
 ```
+
+Procs receive the dimension value and select the row when they return truthy. They handle arbitrary predicates — multi-condition tests, nil-aware checks, anything Ruby can express — and compose with everything else:
+
+```ruby
+sales[price: ->(v){v < 20.0}, quantity: ->(v){v > 100}]
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+# ]>
+```
+
+Regexes match against the dimension value coerced with `to_s`, so they work against strings, symbols, numbers, dates, or anything else with a sensible string form. `nil` becomes `""` — `//` matches it, `/./` doesn't.
+
+```ruby
+sales[product: /widget/i]                          # case-insensitive
+sales[product: /Widget|Gadget/]                    # alternation
+sales[product: /^W/, quarter: 'Q1']                # mixed with exact
+```
+
+Procs and regexes mix freely with exact values, arrays, ranges, projection, and contraction in the same `[]` call.
 
 ### Projection
 

@@ -1,6 +1,18 @@
 CHANGELOG
 _________
 
+20260521
+0.8.0: + proc and regex-based selection
+
+1. ~ Namo::Row#match?: + `when Proc` branch — calls the proc with the dimension value; truthy result selects the row. Predicate receives nil for missing or nil-valued dimensions and decides.
+2. ~ Namo::Row#match?: + `when Regexp` branch — matches against row[dimension].to_s. nil becomes "" (matches //, not /./); Integer/Float/Date/Symbol coerce via to_s.
+3. ~ test/Namo/Row_test.rb: + Proc-predicate tests (true/false/nil/truthy non-boolean returns, nil dimension values, composition with exact/array/range/regex, multiple proc predicates across dimensions, carry-through to formula-defined dimensions). + Regexp-predicate tests (match/no-match/case-insensitive on Strings, to_s coercion of Integer/Float/Date/Symbol/nil, composition with exact/array/range/proc, multiple regex predicates across dimensions, carry-through to formula-defined dimensions).
+4. ~ test/namo_test.rb: + End-to-end tests for proc selection, regex selection, and mixed proc/regex selection, including composition with projection and contraction in a single call and selection on formula-defined dimensions.
+5. ~ README.md: + Proc and regex examples in the Selection section; + paragraphs on proc semantics (truthy/nil-aware, composes with everything) and regex semantics (.to_s coercion across nil/String/Symbol/Integer/Float/Date).
+6. ~ ROADMAP.md: Promote 0.8.0 from upcoming to shipped under "Current state: 0.8.0"; revise Summary to include proc/regex in the selection vocabulary and point "next phase" at 0.9.0+.
+7. ~ CHANGELOG: Update with 0.8.0's changes and retroactively log the 0.7.0 changes to README (+ Coordinates and values section), COMPARISON.md, and EXAMPLES.md (2 sections relocated from EXAMPLES.md to COMPARISON.md).
+8. ~ Namo::VERSION: /0.7.0/0.8.0/
+
 20260520
 0.7.0: + derived-dimension surfacing, lazy single-column access, live views
 
@@ -14,8 +26,12 @@ _________
 8. ~ Namo#canonical_data: Sorts by data_dimensions to preserve 0.6.0 row-equality semantics under the broader dimensions definition.
 9. /raise_unless_matching_dimensions/raise_unless_matching_data_dimensions/: Private helper renamed to reflect what it actually compares.
 10. ~ test/namo_test.rb: + Tests for #data_dimensions, #derived_dimensions, the no-arg/single-arg/multi-arg forms of #values and #coordinates, derived-dimension surfacing in #dimensions, #to_h, the coordinates(dim) == values(dim).uniq consistency property, and live-view semantics (added rows / formulae reflected on next call).
-11. ~ Rakefile: + -V mainfont=Charter -V monofont=Menlo on pandoc invocation in docs:md2pdf, for a cleaner serif body font and so code spans containing Unicode math glyphs (e.g. ∅) render correctly under xelatex.
-12. ~ Namo::VERSION: /0.6.0/0.7.0/
+11. ~ README.md: + Coordinates and values section covering #values, #coordinates(*dims), #data_dimensions, #derived_dimensions, and #to_h.
+12. ~ COMPARISON.md: + "Worked example: comparing yesterday's screen to today's" under the set-operators section; + "Schema dispatch on incoming data feeds" under the equality/=== section. Date bumped to 20260520.
+13. ~ EXAMPLES.md: - "Schema dispatch on incoming data feeds", - "Comparing yesterday's screen to today's" — both relocated to COMPARISON.md as worked examples under the matching feature sections. Date bumped to 20260520.
+14. ~ ROADMAP.md: Promote 0.7.0 from upcoming to shipped under "Current state: 0.7.0"; point "next phase" at 0.8.0+.
+15. ~ Rakefile: + -V mainfont=Charter -V monofont=Menlo on pandoc invocation in docs:md2pdf, for a cleaner serif body font and so code spans containing Unicode math glyphs (e.g. ∅) render correctly under xelatex.
+16. ~ Namo::VERSION: /0.6.0/0.7.0/
 
 20260511
 0.6.0: + equality, pattern-match, and subset/superset operators

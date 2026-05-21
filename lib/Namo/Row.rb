@@ -16,6 +16,10 @@ class Namo
         case coordinate
         when Array, Range
           coordinate.include?(self[dimension])
+        when Proc
+          coordinate.call(self[dimension])
+        when Regexp
+          coordinate.match?(self[dimension].to_s)
         else
           self[dimension] == coordinate
         end

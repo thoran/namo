@@ -1,3 +1,4 @@
+require 'date'
 require 'minitest/autorun'
 require 'minitest-spec-context'
 
@@ -58,6 +59,154 @@ describe Namo::Row do
     it "matches multiple dimensions" do
       _(row.match?(product: 'Widget', quarter: 'Q1')).must_equal true
       _(row.match?(product: 'Widget', quarter: 'Q2')).must_equal false
+    end
+
+    describe "Proc predicates" do
+      it "matches when the proc returns true" do
+        _(row.match?(price: ->(v){v < 15.0})).must_equal true
+      end
+
+      it "doesn't match when the proc returns false" do
+        _(row.match?(price: ->(v){v > 100.0})).must_equal false
+      end
+
+      it "doesn't match when the proc returns nil" do
+        _(row.match?(price: ->(v){nil})).must_equal false
+      end
+
+      it "matches when the proc returns a truthy non-boolean" do
+        _(row.match?(price: ->(v){"truthy"})).must_equal true
+      end
+
+      it "passes nil to the proc when the dimension is missing" do
+        seen = nil
+        row.match?(missing: ->(v){seen = v; true})
+        _(seen).must_be_nil
+      end
+
+      it "lets the proc decide what to do with a nil value" do
+        _(row.match?(missing: ->(v){v.nil?})).must_equal true
+        _(row.match?(missing: ->(v){!v.nil?})).must_equal false
+      end
+
+      it "composes with an exact value on another dimension" do
+        _(row.match?(price: ->(v){v < 15.0}, product: 'Widget')).must_equal true
+        _(row.match?(price: ->(v){v < 15.0}, product: 'Gadget')).must_equal false
+      end
+
+      it "composes with an array on another dimension" do
+        _(row.match?(price: ->(v){v < 15.0}, product: ['Widget', 'Gadget'])).must_equal true
+        _(row.match?(price: ->(v){v < 15.0}, product: ['Gadget'])).must_equal false
+      end
+
+      it "composes with a range on another dimension" do
+        _(row.match?(price: ->(v){v < 15.0}, quantity: 50..150)).must_equal true
+        _(row.match?(price: ->(v){v < 15.0}, quantity: 200..300)).must_equal false
+      end
+
+      it "composes with a regex on another dimension" do
+        _(row.match?(price: ->(v){v < 15.0}, product: /^W/)).must_equal true
+        _(row.match?(price: ->(v){v < 15.0}, product: /^G/)).must_equal false
+      end
+
+      it "composes multiple proc predicates across dimensions" do
+        _(row.match?(
+          price: ->(v){v < 15.0},
+          quantity: ->(v){v >= 100}
+        )).must_equal true
+        _(row.match?(
+          price: ->(v){v < 15.0},
+          quantity: ->(v){v >= 200}
+        )).must_equal false
+      end
+
+      it "carries through to a formula-defined dimension" do
+        formulae[:revenue] = proc{|r| r[:price] * r[:quantity]}
+        _(row.match?(revenue: ->(v){v == 1000.0})).must_equal true
+        _(row.match?(revenue: ->(v){v > 5000.0})).must_equal false
+      end
+    end
+
+    describe "Regexp predicates" do
+      it "matches against a String value" do
+        _(row.match?(product: /Widget/)).must_equal true
+      end
+
+      it "doesn't match when the regex doesn't apply" do
+        _(row.match?(product: /Gadget/)).must_equal false
+      end
+
+      it "supports case-insensitive matching" do
+        _(row.match?(product: /widget/i)).must_equal true
+        _(row.match?(product: /widget/)).must_equal false
+      end
+
+      it "supports anchored patterns" do
+        _(row.match?(product: /^Wid/)).must_equal true
+        _(row.match?(product: /^Gad/)).must_equal false
+      end
+
+      it "coerces Integer values via to_s" do
+        _(row.match?(quantity: /100/)).must_equal true
+        _(row.match?(quantity: /^1/)).must_equal true
+        _(row.match?(quantity: /^9/)).must_equal false
+      end
+
+      it "coerces Float values via to_s" do
+        _(row.match?(price: /^10\./)).must_equal true
+        _(row.match?(price: /\.0$/)).must_equal true
+        _(row.match?(price: /^99/)).must_equal false
+      end
+
+      it "coerces Date values via to_s" do
+        row_data[:date] = Date.new(2026, 5, 21)
+        _(row.match?(date: /^2026/)).must_equal true
+        _(row.match?(date: /-05-/)).must_equal true
+        _(row.match?(date: /^2025/)).must_equal false
+      end
+
+      it "coerces Symbol values via to_s" do
+        row_data[:tag] = :priority
+        _(row.match?(tag: /priority/)).must_equal true
+        _(row.match?(tag: /^pri/)).must_equal true
+        _(row.match?(tag: /xyz/)).must_equal false
+      end
+
+      it "coerces nil to an empty string" do
+        _(row.match?(missing: //)).must_equal true
+        _(row.match?(missing: /./)).must_equal false
+      end
+
+      it "composes with an exact value on another dimension" do
+        _(row.match?(product: /^W/, quarter: 'Q1')).must_equal true
+        _(row.match?(product: /^W/, quarter: 'Q2')).must_equal false
+      end
+
+      it "composes with an array on another dimension" do
+        _(row.match?(product: /^W/, quarter: ['Q1', 'Q2'])).must_equal true
+        _(row.match?(product: /^W/, quarter: ['Q3'])).must_equal false
+      end
+
+      it "composes with a range on another dimension" do
+        _(row.match?(product: /^W/, price: 5.0..15.0)).must_equal true
+        _(row.match?(product: /^W/, price: 20.0..30.0)).must_equal false
+      end
+
+      it "composes with a proc on another dimension" do
+        _(row.match?(product: /^W/, quantity: ->(v){v >= 100})).must_equal true
+        _(row.match?(product: /^W/, quantity: ->(v){v >= 200})).must_equal false
+      end
+
+      it "composes multiple regex predicates across dimensions" do
+        _(row.match?(product: /^W/, quarter: /^Q/)).must_equal true
+        _(row.match?(product: /^W/, quarter: /^X/)).must_equal false
+      end
+
+      it "carries through to a formula-defined dimension" do
+        formulae[:label] = proc{|r| "#{r[:product]}-#{r[:quarter]}"}
+        _(row.match?(label: /Widget-Q1/)).must_equal true
+        _(row.match?(label: /Gadget/)).must_equal false
+      end
     end
   end
 

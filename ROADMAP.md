@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.7.0
+## Current state: 0.8.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -443,36 +443,37 @@ Aspect-level `===` (the originally-planned `ohlcv.dimensions === incoming` templ
 
 `values` reinforces the decision to keep `@data` as `Array<Hash>` rather than `Set<Hash>`. `values` needs ordering and duplicates — both things Set throws away. If the internal store were a Set, `values` would lose row order and couldn't contain duplicate rows. `to_a` would need to reconstruct an order that no longer exists internally. `to_h` (columnar) would have the same problem — the column arrays need a consistent row ordering so that `values(:symbol)[i]` and `values(:close)[i]` correspond to the same row. Set buys fast membership testing and automatic deduplication, but Namo doesn't need either of those as primitives. The set operations (`&`, `|`, `^`) work on Array storage just fine.
 
-### Summary
-
-The set operators (`+`, `-`, `&`, `|`, `^`) together with the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), selection, projection, contraction, formulae, and the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`) give Namo a complete vocabulary for working with a single dataset or combining datasets that share the same dimensions. The next phase (0.8.0+) extends to datasets with different dimensions via composition operators and adds richer selection and formula capabilities.
-
-## 0.8.0: Proc-based and regex-based selection
+### 0.8.0 (2026-05-21): Proc-based and regex-based selection
 
 Two ways to extend `[]` selection beyond exact values, arrays, and ranges: procs for arbitrary predicates, regexes for string pattern matching. Both are single-branch additions to existing selection logic, paired here because they share the same dispatch site (`Row#match?`).
 
-### Proc-based selection
+#### Proc-based selection
 
-Extend `[]` to accept procs as selection predicates on dimensions.
+`[]` accepts procs as selection predicates on any dimension. The proc receives the dimension value (or `nil` for a missing or nil-valued dimension) and decides — truthy result selects the row.
 
 ```ruby
-namo[pe: ->(v){ v && v < 15 }]
-namo[price: ->(v){ v > 10.0 }, symbol: ->(v){ v != 'TEST' }]
+namo[pe: ->(v){v && v < 15}]
+namo[price: ->(v){v > 10.0}, symbol: ->(v){v != 'TEST'}]
 ```
 
-Implementation: add a `when Proc` branch to `Row#match?` that calls the proc with the dimension value. Single addition to existing selection logic.
+Implementation is a single `when Proc` branch in `Row#match?` calling `coordinate.call(self[dimension])`. The match is on `Proc` specifically — not duck-typed via `respond_to?(:call)` — so lambdas, procs, and `Symbol#to_proc` results all flow through, but methods and other callables don't. Exceptions from the predicate propagate; no rescue clause.
 
 This enables multi-factor screening in one expression:
 
 ```ruby
-namo[pe: ->(v){ v && v < 15 }, price_to_book: ->(v){ v && v < 1.5 }]
+namo[pe: ->(v){v && v < 15}, price_to_book: ->(v){v && v < 1.5}]
 ```
 
-Proc-based selection composes with contraction and projection in a single `[]` call.
+Proc-based selection composes with contraction and projection in a single `[]` call, and works on formula-defined dimensions:
 
-### Regex-based selection
+```ruby
+namo[:revenue] = proc{|r| r[:price] * r[:quantity]}
+namo[revenue: ->(v){v >= 1500.0}]
+```
 
-Extend `[]` to accept regexes as selection predicates on string-valued dimensions.
+#### Regex-based selection
+
+`[]` accepts regexes as selection predicates on any dimension. The dimension value is coerced with `to_s` before matching, so regexes work against strings, symbols, integers, floats, dates, and anything else with a sensible string form.
 
 ```ruby
 namo[symbol: /^BH/]                     # symbols starting with BH
@@ -481,14 +482,24 @@ namo[sector: /mining|resources/i]       # alternatives
 namo[symbol: /^BH/, sector: 'Energy']   # regex + exact, composable
 ```
 
-Implementation: add a `when Regexp` branch to `Row#match?`:
+Implementation is a single `when Regexp` branch in `Row#match?`:
 
 ```ruby
 when Regexp
-  coordinate.match?(row[dimension].to_s)
+  coordinate.match?(self[dimension].to_s)
 ```
 
 Same weight as adding proc support — one additional `when` branch in the same `case` statement.
+
+The `to_s` coercion has predictable behaviour across types:
+
+| value           | `.to_s`            | matches `//` | matches `/./` |
+|-----------------|--------------------|-------------:|--------------:|
+| `nil`           | `""`               | yes          | no            |
+| `42`            | `"42"`             | yes          | yes           |
+| `10.0`          | `"10.0"`           | yes          | yes           |
+| `:priority`     | `"priority"`       | yes          | yes           |
+| `Date.new(...)` | `"2026-05-21"`     | yes          | yes           |
 
 Regex is more ergonomic than the equivalent proc for string pattern matching:
 
@@ -497,13 +508,16 @@ Regex is more ergonomic than the equivalent proc for string pattern matching:
 namo[symbol: /^BH/]
 
 # Equivalent proc
-namo[symbol: ->(v){ v.to_s =~ /^BH/ }]
+namo[symbol: ->(v){v.to_s =~ /^BH/}]
 ```
 
-The regex form is shorter, more declarative, and immediately legible. It doesn't replace procs — procs handle arbitrary logic — but for pattern matching on string-valued dimensions it's the natural tool.
+The regex form is shorter, more declarative, and immediately legible. It doesn't replace procs — procs handle arbitrary logic — but for pattern matching on string-valued (or string-coercible) dimensions it's the natural tool.
 
-Regex composes with all other selection types in the same `[]` call: exact values, arrays, ranges, and procs.
+Regex composes with all other selection types in the same `[]` call: exact values, arrays, ranges, procs, projection, and contraction.
 
+### Summary
+
+The set operators (`+`, `-`, `&`, `|`, `^`) together with the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), selection (exact, array, range, proc, regex), projection, contraction, formulae, and the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`) give Namo a complete vocabulary for working with a single dataset or combining datasets that share the same dimensions. The next phase (0.9.0+) extends to datasets with different dimensions via composition operators and adds richer formula capabilities.
 
 ## 0.9.0: Composition operators (*, **, /)
 
