@@ -1,6 +1,6 @@
 # Namo Roadmap
 
-Date: 20260520
+Date: 20260521
 
 ## Design philosophy
 
@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.8.0
+## Current state: 0.9.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -515,37 +515,52 @@ The regex form is shorter, more declarative, and immediately legible. It doesn't
 
 Regex composes with all other selection types in the same `[]` call: exact values, arrays, ranges, procs, projection, and contraction.
 
+### 0.9.0 (2026-05-21): Composition operators (*, **, /)
+
+The dimensional composition algebra. Three operators that extend Namo from the same-dimensions algebra (set operators in 0.4.0–0.5.0, comparison operators in 0.6.0) to combining and decomposing Namos with different dimensions.
+
+#### * (equi-join on shared dimensions)
+
+Pairs rows where coordinates match on every shared data dimension. Inner-join semantics — unmatched rows from both sides are dropped. Output dimensions are `self.data_dimensions` followed by other's exclusive dimensions; output multiplicity is the product of input multiplicities on each matching key.
+
+```ruby
+ohlcv * fundamentals  # joins on shared :symbol
+```
+
+Requires at least one shared data dimension. No overlap raises `ArgumentError` — silently falling through to a Cartesian product would turn a logic error into a large pile of nonsense rows. Formulae merge from both sides; self wins on conflict.
+
+#### ** (Cartesian product)
+
+Every row from the left paired with every row from the right. Output has `self.data.length * other.data.length` rows; output dimensions are `self.data_dimensions + other.data_dimensions`.
+
+```ruby
+products ** quarters
+```
+
+Requires **no** shared data dimensions — the precondition is the mirror image of `*`. Any overlap raises `ArgumentError`. The visual relationship is deliberate: `*` is the filtered version, `**` is the explosive version — more sigil, more output. Formulae merge from both sides; self wins on conflict.
+
+#### / (decomposition)
+
+Removes from self the dimensions that are also in other (the intersection), then dedupes the projected rows. The inverse of `*` and `**`.
+
+```ruby
+combined / fundamentals  # removes shared dimensions, keeps everything else
+```
+
+No precondition — `/` is total on Namo × Namo. When the operands share no dimensions, the intersection is empty and `self / other` returns a Namo equal to self. The asymmetric strictness — `*` and `**` raise, `/` is loose — reflects a structural distinction: `*` and `**` are *combining* operators that need a specific relationship between operands to produce a meaningful result, while `/` is a *projecting* operator where "project away nothing" has a natural answer ("return the original").
+
+The looseness earns `/` algebraic properties a strict version would lose: identity test (`c / b == c` iff they share no dimensions), idempotence (`(c / b) / b == c / b`), and pipeline composition (a step that applies `/ separator` can run over any Namo without special-casing applicability).
+
+Round-trip identity:
+
+- `(a ** b) / b == a` exactly.
+- `(a * b) / b == a[-:shared]` — the dimensions shared with `b` are lost on decomposition.
+
+The asymmetry between the two round-trip cases is real: `/` operates only on the two values it receives and cannot distinguish "shared dimension that belonged to both" from "exclusive dimension that belonged only to the right". Removing the intersection is the only rule expressible from the operands alone.
+
 ### Summary
 
-The set operators (`+`, `-`, `&`, `|`, `^`) together with the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), selection (exact, array, range, proc, regex), projection, contraction, formulae, and the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`) give Namo a complete vocabulary for working with a single dataset or combining datasets that share the same dimensions. The next phase (0.9.0+) extends to datasets with different dimensions via composition operators and adds richer formula capabilities.
-
-## 0.9.0: Composition operators (*, **, /)
-
-The dimensional composition algebra.
-
-### * (equi-join on shared dimensions)
-
-Identifies shared dimension names between two Namos. Pairs rows where coordinates match on all shared dimensions. Non-shared dimensions extend the result.
-
-```ruby
-ohlcv * fundamentals  # joins on exchange, symbol
-```
-
-### ** (Cartesian product)
-
-Every row from the left paired with every row from the right. No automatic matching. The "explosive" operator — more sigil, more output.
-
-** without constraints produces the full Cartesian product. * is derivable from ** — it's ** with shared-dimension filtering applied automatically.
-
-### / (decomposition)
-
-The inverse of *. Factors out dimensions.
-
-```ruby
-combined / ohlcv  # removes dimensions exclusive to ohlcv, keeps shared + fundamentals dimensions
-```
-
-`(combined / ohlcv) * ohlcv` reconstructs combined.
+The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`), together with selection (exact, array, range, proc, regex), projection, contraction, formulae, and the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`) give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions. The next phase (0.10.0+) adds block forms across the comparison, composition, and set operators for custom row-matching, and richer formula capabilities.
 
 ## 0.10.0: Blocks on comparison, composition, and set operators
 

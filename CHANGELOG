@@ -2,6 +2,19 @@ CHANGELOG
 _________
 
 20260521
+0.9.0: + composition operators: equi-join (*), Cartesian product (**), decomposition (/)
+
+1. + Namo#*: Equi-join on shared data dimensions. Inner-join semantics — unmatched rows from both sides are dropped. Raises ArgumentError ("no shared dimensions, need to have shared dimensions") when operands have no overlap. Preserves duplicates multiplicatively. Formulae merge with self winning on conflict.
+2. + Namo#**: Cartesian product of two Namos with disjoint data dimensions. Raises ArgumentError ("dimensions in common, need no common dimensions") when any dimension is shared. Output has left.length * right.length rows. Formulae merge with self winning on conflict.
+3. + Namo#/: Decomposition. Removes from self the dimensions that are also in other (the intersection), then dedupes the projected rows. No precondition — total on Namo × Namo. When self and other share no dimensions, the operator is a no-op. Formulae carry through from self. (a ** b) / b == a exactly; (a * b) / b loses dimensions shared between a and b.
+4. + Namo#raise_unless_shared_data_dimensions, Namo#raise_unless_disjoint_data_dimensions: Private precondition helpers for #* and #** respectively.
+5. ~ test/namo_test.rb: + #* tests (single/multi-dimension join, inner-join symmetry, multiplicative duplicates, formulae merging, error cases). + #** tests (Cartesian product, output sizing, dimension overlap error). + #/ tests (intersection removal, dedupe of collided rows, no-op on disjoint operands, idempotence). + Composition round-trip tests for the ** case (exact identity) and the * case (lossy on shared dimensions).
+6. ~ README.md: + Composition section (*), + Cartesian product section (**), + Decomposition section (/) including the combining-vs-projecting rationale for /'s no-precondition design. Placed after Symmetric Difference and before Equality.
+7. ~ ROADMAP.md: Promote 0.9.0 from upcoming to shipped under "Current state: 0.9.0"; revise Summary to include composition in the operator vocabulary and point "next phase" at 0.10.0+.
+8. ~ COMPARISON.md: /planned (0.9.0)/shipped (0.9.0)/ for Equi-join, Cartesian product, and Decomposition. + Paragraph in the Decomposition entry on the combining-vs-projecting distinction. Date bumped to 20260521.
+9. ~ Namo::VERSION: /0.8.0/0.9.0/
+
+20260521
 0.8.0: + proc and regex-based selection
 
 1. ~ Namo::Row#match?: + `when Proc` branch — calls the proc with the dimension value; truthy result selects the row. Predicate receives nil for missing or nil-valued dimensions and decides.

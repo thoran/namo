@@ -110,6 +110,42 @@ class Namo
     self.class.new((@data - other.data) + (other.data - @data), formulae: other.formulae.merge(@formulae))
   end
 
+  def *(other)
+    raise_unless_namo(other)
+    raise_unless_shared_data_dimensions(other)
+    shared = data_dimensions & other.data_dimensions
+    combined_data = []
+    @data.each do |left_row|
+      other.data.each do |right_row|
+        if shared.all?{|dim| left_row[dim] == right_row[dim]}
+          combined_data << left_row.merge(right_row)
+        end
+      end
+    end
+    self.class.new(combined_data, formulae: other.formulae.merge(@formulae))
+  end
+
+  def **(other)
+    raise_unless_namo(other)
+    raise_unless_disjoint_data_dimensions(other)
+    combined_data = []
+    @data.each do |left_row|
+      other.data.each do |right_row|
+        combined_data << left_row.merge(right_row)
+      end
+    end
+    self.class.new(combined_data, formulae: other.formulae.merge(@formulae))
+  end
+
+  def /(other)
+    raise_unless_namo(other)
+    kept = data_dimensions - other.data_dimensions
+    projected = @data.map do |row|
+      kept.each_with_object({}){|dim, hash| hash[dim] = row[dim]}
+    end
+    self.class.new(projected.uniq, formulae: @formulae.dup)
+  end
+
   def ==(other)
     return false unless other.is_a?(Namo)
     canonical_data == other.canonical_data
@@ -198,6 +234,18 @@ class Namo
   def raise_unless_matching_data_dimensions(other)
     unless data_dimensions == other.data_dimensions
       raise ArgumentError, "dimensions don't match: #{data_dimensions} vs #{other.data_dimensions}"
+    end
+  end
+
+  def raise_unless_shared_data_dimensions(other)
+    if (data_dimensions & other.data_dimensions).empty?
+      raise ArgumentError, "no shared dimensions, need to have shared dimensions: #{data_dimensions} vs #{other.data_dimensions}"
+    end
+  end
+
+  def raise_unless_disjoint_data_dimensions(other)
+    if (data_dimensions & other.data_dimensions).any?
+      raise ArgumentError, "dimensions in common, need no common dimensions: #{data_dimensions} vs #{other.data_dimensions}"
     end
   end
 

@@ -319,6 +319,124 @@ set_a ^ set_b
 
 The dimensions must match; different dimensions raise an `ArgumentError`. Formulae merge from both sides; the left-hand side's formulae take precedence on conflict.
 
+### Composition
+
+`*` is the equi-join operator. It pairs rows from two Namos where coordinates match on every shared dimension, like an inner join on the shared dimension names:
+
+```ruby
+ohlcv = Namo.new([
+  {symbol: 'BHP', date: '2025-01-01', close: 42.5},
+  {symbol: 'RIO', date: '2025-01-01', close: 118.3}
+])
+
+fundamentals = Namo.new([
+  {symbol: 'BHP', pe: 14.5},
+  {symbol: 'RIO', pe: 9.2}
+])
+
+ohlcv * fundamentals
+# => #<Namo [
+#   {symbol: 'BHP', date: '2025-01-01', close: 42.5, pe: 14.5},
+#   {symbol: 'RIO', date: '2025-01-01', close: 118.3, pe: 9.2}
+# ]>
+```
+
+Inner-join semantics: unmatched rows from either side are dropped. Output dimensions are `self.data_dimensions` followed by `other.data_dimensions` exclusive to other. Duplicates on shared coordinates are preserved multiplicatively — output multiplicity is the product of input multiplicities on each matching key.
+
+The two Namos must have at least one shared data dimension. No overlap raises an `ArgumentError` — the asymmetry with `**` is deliberate, and falling through to a Cartesian product would silently turn a logic error into a large pile of nonsense rows. Formulae merge from both sides; the left-hand side wins on conflict.
+
+### Cartesian product
+
+`**` is the Cartesian product. Every row from the left paired with every row from the right:
+
+```ruby
+products = Namo.new([{product: 'Widget'}, {product: 'Gadget'}])
+quarters = Namo.new([{quarter: 'Q1'}, {quarter: 'Q2'}])
+
+products ** quarters
+# => #<Namo [
+#   {product: 'Widget', quarter: 'Q1'},
+#   {product: 'Widget', quarter: 'Q2'},
+#   {product: 'Gadget', quarter: 'Q1'},
+#   {product: 'Gadget', quarter: 'Q2'}
+# ]>
+```
+
+Output has `self.data.length * other.data.length` rows. Output dimensions are `self.data_dimensions + other.data_dimensions`, in operand order. Duplicates are preserved multiplicatively.
+
+The two Namos must have **no** shared data dimensions — the precondition is the mirror image of `*`. Any overlap raises an `ArgumentError`; allowing it would produce rows with the same dimension named twice. Formulae merge from both sides; the left-hand side wins on conflict.
+
+The visual relationship is intentional: `*` is the filtered version, `**` is the explosive version — more sigil, more output.
+
+### Decomposition
+
+`/` removes from the left Namo the dimensions that are also in the right, then dedupes the projected rows. It's the inverse of `*` and `**`:
+
+```ruby
+combined = Namo.new([
+  {symbol: 'BHP', date: '2025-01-01', close: 42.5, pe: 14.5},
+  {symbol: 'RIO', date: '2025-01-01', close: 118.3, pe: 9.2}
+])
+
+fundamentals = Namo.new([
+  {symbol: 'BHP', pe: 14.5},
+  {symbol: 'RIO', pe: 9.2}
+])
+
+combined / fundamentals
+# => #<Namo [
+#   {date: '2025-01-01', close: 42.5},
+#   {date: '2025-01-01', close: 118.3}
+# ]>
+```
+
+The intersection of dimensions — here `:symbol` and `:pe` — is removed. Everything else stays. The projected rows are deduplicated, so `/` answers "what's left when these dimensions are factored out?" rather than "what rows survive a column drop?". Formulae carry through from the left-hand side.
+
+`/` has no precondition. When the two Namos share no dimensions, the intersection is empty, nothing is removed, and `self / other` returns a Namo equal to self:
+
+```ruby
+shipments = Namo.new([{order_id: 1, weight: 10}])
+weather = Namo.new([{date: '2025-01-01', temperature: 22}])
+
+shipments / weather
+# => #<Namo [{order_id: 1, weight: 10}]> — equal to shipments
+```
+
+The round-trip identity holds for the `**` case exactly:
+
+```ruby
+a = Namo.new([{symbol: 'BHP'}, {symbol: 'RIO'}])
+b = Namo.new([{quarter: 'Q1'}, {quarter: 'Q2'}])
+
+(a ** b) / b == a
+# => true
+```
+
+For `*`, the round-trip is lossy on the dimensions that were shared between the operands:
+
+```ruby
+a = Namo.new([{symbol: 'BHP', close: 42.5}, {symbol: 'RIO', close: 118.3}])
+b = Namo.new([{symbol: 'BHP', pe: 14.5}, {symbol: 'RIO', pe: 9.2}])
+
+(a * b) / b
+# => #<Namo [{close: 42.5}, {close: 118.3}]>
+# Equal to a[-:symbol]. :symbol was shared and is lost.
+```
+
+The asymmetry is inherent: `/` operates only on the two values it receives and can't distinguish "shared dimension that belonged to both" from "exclusive dimension that belonged only to the right". Removing the intersection is the only rule expressible from the operands alone, and it gives clean recovery from `**` and well-defined (if lossy) recovery from `*`.
+
+#### Why `/` is loose
+
+`*` and `**` raise when their preconditions are violated — combining unrelated Namos has no natural answer, and silently producing arbitrary output would turn a logic error into a large pile of nonsense rows. `/` is different: it's a projecting operator, not a combining one, and projecting away nothing returns the original. The no-precondition rule isn't a fallback; it's the structurally correct result.
+
+This earns `/` three properties a strict version would lose:
+
+- **Identity test.** `combined / other == combined` exactly when the two have no shared dimensions — answers "are these Namos dimensionally independent?" without explicit introspection. Same shape as `a & b == a` answering subset from 0.6.0.
+- **Idempotence.** `(c / b) / b == c / b`. Once `b`'s dimensions are removed, removing them again does nothing.
+- **Pipeline composition.** A processing step that applies `/ separator` can run over any Namo regardless of whether the separator's dimensions apply. Uninvolved Namos pass through unchanged; involved Namos get stripped. The pipeline doesn't need to special-case applicability.
+
+This is the same pattern that makes `Array#-` useful with arrays that aren't subsets: `[1, 2, 3] - [9] == [1, 2, 3]`, not an error. The no-op-on-non-applicable behaviour lets the operator compose into pipelines that don't know in advance whether the operation applies.
+
 ### Equality
 
 Comparison on Namos is **multiset-theoretic on rows**: row order is ignored (it's an accident of ingestion, not data), but row multiplicities count (they *are* data). The same stance carries across the equality, pattern-match, and subset/superset operators below.

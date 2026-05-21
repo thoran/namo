@@ -710,6 +710,288 @@ describe Namo do
     end
   end
 
+  describe "#*" do
+    let(:ohlcv) do
+      Namo.new([
+        {symbol: 'BHP', date: '2025-01-01', close: 42.5},
+        {symbol: 'RIO', date: '2025-01-01', close: 118.3}
+      ])
+    end
+
+    let(:fundamentals) do
+      Namo.new([
+        {symbol: 'BHP', pe: 14.5},
+        {symbol: 'RIO', pe: 9.2}
+      ])
+    end
+
+    it "joins on a single shared dimension" do
+      result = ohlcv * fundamentals
+      _(result.to_a).must_equal [
+        {symbol: 'BHP', date: '2025-01-01', close: 42.5, pe: 14.5},
+        {symbol: 'RIO', date: '2025-01-01', close: 118.3, pe: 9.2}
+      ]
+    end
+
+    it "joins on multiple shared dimensions" do
+      a = Namo.new([
+        {symbol: 'BHP', date: '2025-01-01', close: 42.5},
+        {symbol: 'BHP', date: '2025-01-02', close: 43.0}
+      ])
+      b = Namo.new([
+        {symbol: 'BHP', date: '2025-01-01', volume: 1000},
+        {symbol: 'BHP', date: '2025-01-02', volume: 1500}
+      ])
+      result = a * b
+      _(result.to_a).must_equal [
+        {symbol: 'BHP', date: '2025-01-01', close: 42.5, volume: 1000},
+        {symbol: 'BHP', date: '2025-01-02', close: 43.0, volume: 1500}
+      ]
+    end
+
+    it "preserves non-shared dimensions from both sides" do
+      result = ohlcv * fundamentals
+      _(result.dimensions).must_equal [:symbol, :date, :close, :pe]
+    end
+
+    it "drops unmatched rows from both sides (inner-join symmetry)" do
+      left = Namo.new([
+        {symbol: 'BHP', close: 42.5},
+        {symbol: 'CBA', close: 100.0}
+      ])
+      right = Namo.new([
+        {symbol: 'BHP', pe: 14.5},
+        {symbol: 'RIO', pe: 9.2}
+      ])
+      result = left * right
+      _(result.to_a).must_equal [{symbol: 'BHP', close: 42.5, pe: 14.5}]
+    end
+
+    it "produces multiplicative duplicates when inputs have duplicates on shared dimensions" do
+      left = Namo.new([
+        {symbol: 'BHP', close: 42.5},
+        {symbol: 'BHP', close: 43.0}
+      ])
+      right = Namo.new([
+        {symbol: 'BHP', pe: 14.5},
+        {symbol: 'BHP', pe: 14.7}
+      ])
+      result = left * right
+      _(result.to_a.length).must_equal 4
+      _(result.to_a).must_equal [
+        {symbol: 'BHP', close: 42.5, pe: 14.5},
+        {symbol: 'BHP', close: 42.5, pe: 14.7},
+        {symbol: 'BHP', close: 43.0, pe: 14.5},
+        {symbol: 'BHP', close: 43.0, pe: 14.7}
+      ]
+    end
+
+    it "carries formulae through from self" do
+      ohlcv[:label] = proc{|r| "#{r[:symbol]}-self"}
+      result = ohlcv * fundamentals
+      _(result.map{|row| row[:label]}).must_equal ['BHP-self', 'RIO-self']
+    end
+
+    it "merges formulae from other" do
+      fundamentals[:flag] = proc{|r| "pe=#{r[:pe]}"}
+      result = ohlcv * fundamentals
+      _(result.map{|row| row[:flag]}).must_equal ['pe=14.5', 'pe=9.2']
+    end
+
+    it "prefers self's formulae on conflict" do
+      ohlcv[:label] = proc{|r| "self: #{r[:symbol]}"}
+      fundamentals[:label] = proc{|r| "other: #{r[:symbol]}"}
+      result = ohlcv * fundamentals
+      _(result.map{|row| row[:label]}).must_equal ['self: BHP', 'self: RIO']
+    end
+
+    it "raises ArgumentError when there are no shared dimensions" do
+      a = Namo.new([{symbol: 'BHP'}])
+      b = Namo.new([{quarter: 'Q1'}])
+      err = _ { a * b }.must_raise ArgumentError
+      _(err.message).must_match(/no shared dimensions, need to have shared dimensions/)
+    end
+
+    it "raises TypeError on a non-Namo operand" do
+      _ { ohlcv * [{symbol: 'BHP'}] }.must_raise TypeError
+    end
+
+    it "returns an instance of self's class" do
+      subclass = Class.new(Namo)
+      a = subclass.new([{symbol: 'BHP', close: 42.5}])
+      b = Namo.new([{symbol: 'BHP', pe: 14.5}])
+      _((a * b).class).must_equal subclass
+    end
+  end
+
+  describe "#**" do
+    let(:products) do
+      Namo.new([{product: 'Widget'}, {product: 'Gadget'}])
+    end
+
+    let(:quarters) do
+      Namo.new([{quarter: 'Q1'}, {quarter: 'Q2'}])
+    end
+
+    it "Cartesian-products two disjoint Namos" do
+      result = products ** quarters
+      _(result.to_a).must_equal [
+        {product: 'Widget', quarter: 'Q1'},
+        {product: 'Widget', quarter: 'Q2'},
+        {product: 'Gadget', quarter: 'Q1'},
+        {product: 'Gadget', quarter: 'Q2'}
+      ]
+    end
+
+    it "has self.data.length * other.data.length rows" do
+      a = Namo.new([{x: 1}, {x: 2}, {x: 3}])
+      b = Namo.new([{y: 'a'}, {y: 'b'}])
+      _((a ** b).to_a.length).must_equal 6
+    end
+
+    it "output dimensions are self.data_dimensions + other.data_dimensions" do
+      result = products ** quarters
+      _(result.dimensions).must_equal [:product, :quarter]
+    end
+
+    it "preserves duplicates on either side multiplicatively" do
+      a = Namo.new([{x: 1}, {x: 1}])
+      b = Namo.new([{y: 'a'}, {y: 'a'}])
+      result = a ** b
+      _(result.to_a.length).must_equal 4
+    end
+
+    it "carries formulae through from self" do
+      products[:label] = proc{|r| "self: #{r[:product]}"}
+      result = products ** quarters
+      _(result.map{|row| row[:label]}).must_equal [
+        'self: Widget', 'self: Widget', 'self: Gadget', 'self: Gadget'
+      ]
+    end
+
+    it "merges formulae from other" do
+      quarters[:flag] = proc{|r| "q=#{r[:quarter]}"}
+      result = products ** quarters
+      _(result.map{|row| row[:flag]}).must_equal ['q=Q1', 'q=Q2', 'q=Q1', 'q=Q2']
+    end
+
+    it "prefers self's formulae on conflict" do
+      products[:label] = proc{|r| "self: #{r[:product]}"}
+      quarters[:label] = proc{|r| "other: #{r[:quarter]}"}
+      result = products ** quarters
+      _(result.map{|row| row[:label]}).must_equal [
+        'self: Widget', 'self: Widget', 'self: Gadget', 'self: Gadget'
+      ]
+    end
+
+    it "raises ArgumentError when any dimension is shared" do
+      a = Namo.new([{symbol: 'BHP', close: 42.5}])
+      b = Namo.new([{symbol: 'RIO', pe: 14.5}])
+      err = _ { a ** b }.must_raise ArgumentError
+      _(err.message).must_match(/dimensions in common, need no common dimensions/)
+    end
+
+    it "raises TypeError on a non-Namo operand" do
+      _ { products ** [{quarter: 'Q1'}] }.must_raise TypeError
+    end
+
+    it "returns an instance of self's class" do
+      subclass = Class.new(Namo)
+      a = subclass.new([{product: 'Widget'}])
+      b = Namo.new([{quarter: 'Q1'}])
+      _((a ** b).class).must_equal subclass
+    end
+  end
+
+  describe "#/" do
+    let(:combined) do
+      Namo.new([
+        {symbol: 'BHP', date: '2025-01-01', close: 42.5, pe: 14.5},
+        {symbol: 'RIO', date: '2025-01-01', close: 118.3, pe: 9.2}
+      ])
+    end
+
+    let(:fundamentals) do
+      Namo.new([
+        {symbol: 'BHP', pe: 14.5},
+        {symbol: 'RIO', pe: 9.2}
+      ])
+    end
+
+    it "removes dimensions present in both self and other (the intersection)" do
+      result = combined / fundamentals
+      _(result.dimensions).must_equal [:date, :close]
+    end
+
+    it "preserves dimensions exclusive to self" do
+      result = combined / fundamentals
+      _(result.to_a).must_equal [
+        {date: '2025-01-01', close: 42.5},
+        {date: '2025-01-01', close: 118.3}
+      ]
+    end
+
+    it "dedupes rows that collide after projection" do
+      a = Namo.new([
+        {symbol: 'BHP', close: 42.5},
+        {symbol: 'RIO', close: 42.5}
+      ])
+      b = Namo.new([{symbol: 'X'}])
+      result = a / b
+      _(result.to_a).must_equal [{close: 42.5}]
+    end
+
+    it "carries formulae through from self" do
+      combined[:label] = proc{|r| "row: #{r[:close]}"}
+      result = combined / fundamentals
+      _(result.map{|row| row[:label]}).must_equal ['row: 42.5', 'row: 118.3']
+    end
+
+    it "is a no-op when self and other share no dimensions" do
+      shipments = Namo.new([{order_id: 1, weight: 10}])
+      weather = Namo.new([{date: '2025-01-01', temperature: 22}])
+      _(shipments / weather).must_equal shipments
+    end
+
+    it "ignores dimensions present in other but not in self" do
+      a = Namo.new([{symbol: 'BHP', close: 42.5}])
+      b = Namo.new([{symbol: 'BHP', pe: 14.5, sector: 'Mining'}])
+      result = a / b
+      _(result.dimensions).must_equal [:close]
+    end
+
+    it "is idempotent" do
+      first = combined / fundamentals
+      second = first / fundamentals
+      _(second).must_equal first
+    end
+
+    it "raises TypeError on a non-Namo operand" do
+      _ { combined / [{symbol: 'BHP'}] }.must_raise TypeError
+    end
+
+    it "returns an instance of self's class" do
+      subclass = Class.new(Namo)
+      a = subclass.new([{symbol: 'BHP', close: 42.5}])
+      b = Namo.new([{symbol: 'BHP', pe: 14.5}])
+      _((a / b).class).must_equal subclass
+    end
+  end
+
+  describe "composition round-trip" do
+    it "satisfies (a ** b) / b == a for disjoint a and b" do
+      a = Namo.new([{symbol: 'BHP'}, {symbol: 'RIO'}])
+      b = Namo.new([{quarter: 'Q1'}, {quarter: 'Q2'}])
+      _((a ** b) / b).must_equal a
+    end
+
+    it "satisfies (a * b) / b == a[-:shared] for a and b with shared dimensions (shared dimensions lost)" do
+      a = Namo.new([{symbol: 'BHP', close: 42.5}, {symbol: 'RIO', close: 118.3}])
+      b = Namo.new([{symbol: 'BHP', pe: 14.5}, {symbol: 'RIO', pe: 9.2}])
+      _((a * b) / b).must_equal Namo.new([{close: 42.5}, {close: 118.3}])
+    end
+  end
+
   describe "#==" do
     it "is true for same data, same order" do
       a = Namo.new([{x: 1}, {x: 2}])
