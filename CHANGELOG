@@ -1,6 +1,15 @@
 CHANGELOG
 _________
 
+20260525
+0.9.1: ~ Namo#initialize: default data to [], ~ Namo#data_dimensions to handle empty data
+
+1. ~ Namo#initialize: Default `data` parameter changed from `nil` to `[]`. Construction with no arguments now produces a usable empty Namo rather than one whose introspection methods crash on `nil`.
+2. ~ Namo#data_dimensions: Handle empty `@data` with `@data.first&.keys || []`. Returns `[]` for a Namo with no rows instead of raising `NoMethodError` on `nil.keys`.
+3. ~ Namo#dimensions: Refactor to delegate as `data_dimensions + derived_dimensions`. The empty-case guard now lives in one place; `dimensions` becomes a trivial composition.
+4. ~ test/namo_test.rb: + Empty-Namo tests (dimensions, data_dimensions, formula surfacing on a Namo with no data).
+5. ~ Namo::VERSION: /0.9.0/0.9.1/
+
 20260521
 0.9.0: + composition operators: equi-join (*), Cartesian product (**), decomposition (/)
 

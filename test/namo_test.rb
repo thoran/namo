@@ -17,6 +17,22 @@ describe Namo do
     Namo.new(sample_data)
   end
 
+  describe "empty Namo" do
+    it "has empty dimensions" do
+      _(Namo.new.dimensions).must_equal []
+    end
+
+    it "has empty data_dimensions" do
+      _(Namo.new.data_dimensions).must_equal []
+    end
+
+    it "exposes formulae even with no data" do
+      namo = Namo.new
+      namo[:x] = proc{|r| 42}
+      _(namo.dimensions).must_equal [:x]
+    end
+  end
+
   describe "#dimensions" do
     it "infers dimensions from hash keys" do
       _(sales.dimensions).must_equal [:product, :quarter, :price, :quantity]

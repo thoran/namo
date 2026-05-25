@@ -12,11 +12,11 @@ class Namo
   attr_accessor :formulae
 
   def dimensions
-    @data.first.keys + @formulae.keys
+    data_dimensions + derived_dimensions
   end
 
   def data_dimensions
-    @data.first.keys
+    @data.first&.keys || []
   end
 
   def derived_dimensions
@@ -249,7 +249,7 @@ class Namo
     end
   end
 
-  def initialize(data = nil, formulae: {})
+  def initialize(data = [], formulae: {})
     @data = data
     @formulae = formulae
   end
