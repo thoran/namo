@@ -2,6 +2,12 @@ CHANGELOG
 _________
 
 20260525
+0.9.2: ~ Auto-load Namo::VERSION
+
+1. ~ lib/namo.rb: + `require_relative './Namo/VERSION'`. Namo::VERSION is now defined when `namo` is required, without needing a separate require.
+2. ~ Namo::VERSION: /0.9.1/0.9.2/
+
+20260525
 0.9.1: ~ Namo#initialize: default data to [], ~ Namo#data_dimensions to handle empty data
 
 1. ~ Namo#initialize: Default `data` parameter changed from `nil` to `[]`. Construction with no arguments now produces a usable empty Namo rather than one whose introspection methods crash on `nil`.
