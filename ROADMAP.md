@@ -627,7 +627,9 @@ end
 
 0.11.0 extends 0.2.0's Enumerable inclusion. 0.2.0 made Namo Enumerable but left Ruby's default return types in place — `select`, `reject`, and friends produce Arrays, breaking the analytical chain. Applied use has made this friction visible: every interactive session that selects rows from a Namo and tries to continue working with the result hits the `NoMethodError` for selection or projection on the Array. 0.11.0 specialises the subset-returning Enumerable methods to wrap in Namo. The Row-equality groundwork for `uniq` and `partition` is in place from 0.10.0.
 
-These are sequence-view operations: `select`, `reject`, `sort_by`, `first(n)`, `last(n)`, `take(n)`, `drop(n)`, `take_while`, `drop_while`, `uniq`, `partition`, and `group_by` all care about row order and produce ordered subsets or groupings. They sit alongside the set-view operators (`==`, `<`, `&`, `|`, etc.) introduced in 0.4.0–0.6.0. Namo's dual nature — set when membership is what matters, sequence when order is what matters — is realised across both families: set operators ignore order and produce set-correct results; Enumerable methods respect order and produce ordered results. The same Namo supports both views.
+These are sequence-view operations: `select`, `reject`, `sort_by`, `first(n)`, `last(n)`, `take(n)`, `drop(n)`, `take_while`, `drop_while`, `uniq`, and `partition` all care about row order and produce ordered subsets. They sit alongside the set-view operators (`==`, `<`, `&`, `|`, etc.) introduced in 0.4.0–0.6.0. Namo's dual nature — set when membership is what matters, sequence when order is what matters — is realised across both families: set operators ignore order and produce set-correct results; Enumerable methods respect order and produce ordered results. The same Namo supports both views.
+
+`group_by` is deliberately excluded from this pass, and not merely deferred — it is *structurally blocked*. Every method above returns a `Namo` (or `[Namo, Namo]` for `partition`), and `Namo` exists. `group_by` returns a partition — a keyed set of sub-Namos — and the right type for that is `Namo::Collection`, which doesn't exist until 0.17.0. `group_by` therefore cannot be expressed here; it lands at 0.18.0, the first release after `Collection` ships. See the 0.18.0 section for why `Collection`'s existence is what brings `group_by` forward from its original 2.x slot.
 
 ```ruby
 # Before (0.2.0–0.10.0)
@@ -654,7 +656,8 @@ Methods that return Namos:
 - `take_while`, `drop_while` — predicate-based leading subset and its complement.
 - `uniq` — dedupe rows on full-row equality (uses `Row#==` from 0.10.0). With a block, dedupe on the block's return value, following Ruby's `Enumerable#uniq` convention.
 - `partition` — returns `[Namo, Namo]` — matches and non-matches.
-- `group_by` — returns `{key => Namo}`, where each group is a Namo containing the rows that share the block's return value.
+
+`group_by` is not in this list — see the note above; it returns a `Namo::Collection` and lands at 0.18.0.
 
 Methods that do not change:
 
@@ -723,18 +726,7 @@ def partition(&block)
     self.class.new(non_matches, formulae: @formulae.dup),
   ]
 end
-
-def group_by(&block)
-  @data.group_by{|row| block.call(Row.new(row, @formulae))}
-    .transform_values{|rows| self.class.new(rows, formulae: @formulae.dup)}
-end
 ```
-
-### Coordinates on grouped Namos
-
-When `group_by` splits a Namo into groups, each group's Namo holds only its own rows. Its `coordinates` reflect its own contents — the 'BHP' group has `coordinates[:symbol] == ['BHP']`, not the parent's `['BHP', 'RIO', 'CBA']`. This follows the existing convention from 0.7.0: every Namo's `coordinates` is derived from its own `@data`. A grouped Namo is a fresh Namo, and its inspection vocabulary should describe what it actually contains.
-
-The alternative — inheriting the parent's `coordinates` — would require carrying state that contradicts the Namo's own data. A 'BHP' group reporting `coordinates[:symbol] == ['BHP', 'RIO', 'CBA']` is misleading; the analyst querying that group expects "what symbols are in this group?" to answer 'BHP'.
 
 ### Subclass considerations
 
@@ -765,8 +757,6 @@ For thoran's own code, the breakage is contained — re-pasting the construction
 - `uniq` without a block dedupes rows on `Row#==`.
 - `uniq` with a block dedupes on the block's return value.
 - `partition` returns a two-element Array of Namos summing to the original.
-- `group_by` returns `{key => Namo}`; each group's data is the rows matching that key; each group's `coordinates` reflect only that group's contents.
-- `group_by` preserves formulae across all groups.
 - Empty-Namo edge cases for each method.
 - Subclass type preservation across every method.
 - The unchanged methods (`map`, `reduce`, etc.) still return their original types.
@@ -1120,6 +1110,7 @@ class Namo::Collection < Namo
 
   def <<(*members)
     members.flatten.each do |member|
+      raise ArgumentError, "member has no name; Namo::Collection members must be named" unless member.name
       if existing = find(member.name)
         @members.delete(existing)
       end
@@ -1137,7 +1128,7 @@ class Namo::Collection < Namo
   def summary(dimension, by: :member, reducer: :sum)
     @summary_memo ||= {}
     @summary_memo[[dimension, by, reducer]] ||= Namo.new(
-      data: @members.map{|m|
+      @members.map{|m|
         {by => m.name, dimension => m.values(dimension).send(reducer)}
       }
     )
@@ -1146,7 +1137,9 @@ class Namo::Collection < Namo
   def detail(by: :member)
     @detail_memo ||= {}
     @detail_memo[by] ||= Namo.new(
-      data: @members.flat_map{|m| m.data.map{|row| row.merge(by => m.name)}}
+      @members.flat_map{|m|
+        m.data.map{|row| row.key?(by) ? row : row.merge(by => m.name)}
+      }
     )
   end
 
@@ -1177,14 +1170,57 @@ end
 
 Lives at `lib/Namo/Collection.rb` per file convention.
 
+### State model: members are the substance, `@data` is empty until a view is chosen
+
+A `Collection`'s substance is `@members`. The inherited `@data` is **empty** on a freshly-assembled Collection and stays empty until an explicit `as_summary`/`as_detail` call populates it. This is deliberate, and the choice of empty over pre-population matters:
+
+Pre-populating `@data` with a view (say, the detail view) would privilege one view over the other for no principled reason — `detail` and `summary` are two equally-valid projections of the members into rows, and neither is canonical. Worse, a pre-populated `@data` goes stale the moment another member is `<<`'d: it would reflect the members-before-the-add until re-materialised. Empty `@data` has no staleness problem, because nothing has been derived yet.
+
+Empty also makes the inherited row-level operators honest. Because `Collection < Namo`, it inherits `==`, `&`, `*`, `select`, and the rest — all of which act on `@data`. On an un-viewed Collection, `@data` is empty, so those operators act on nothing, which is the correct state of affairs: the user hasn't yet said *how* they want the members projected into rows. The contract is explicit — **choose a view via `as_detail`/`as_summary` before operating on a Collection's rows.** Two un-viewed Collections comparing `==` compare empty-to-empty, which visibly is not "same members" rather than silently returning a misleading view-comparison.
+
 ### View methods: summary, detail, as_summary, as_detail
 
 The four view methods come in two pairs:
 
-- `summary(dimension, by:, reducer:)` and `detail(by:)` are **non-mutating** — they return a fresh Namo derived from `@members`, leaving the Collection's own `@data` untouched.
-- `as_summary(dimension, by:, reducer:)` and `as_detail(by:)` are **mutating** — they set the Collection's `@data` to the summary or detail view and return `self`, enabling fluent pipelines.
+- `summary(dimension, by:, reducer:)` and `detail(by:)` are **non-mutating** — they return a fresh Namo derived from `@members`, leaving the Collection's own `@data` untouched (and empty unless previously set).
+- `as_summary(dimension, by:, reducer:)` and `as_detail(by:)` are **mutating** — they set the Collection's `@data` to the summary or detail view and return `self`, enabling fluent pipelines and making the inherited row-level operators meaningful.
 
 The non-mutating pair is the primary interface. The mutating pair exists for the case where the Collection itself wants to *be* its summary or detail view for subsequent operations.
+
+### `detail` and the inject-iff-absent rule
+
+`detail(by:)` unions the members' rows. Whether it injects the `by` dimension depends on whether that dimension already exists in the rows:
+
+- If `by` is **already a dimension** in a member's rows, `detail` leaves the row untouched — the dimension is intrinsic, already present, no injection.
+- If `by` is **not** a dimension, `detail` injects it (`row.merge(by => m.name)`) — promoting the member's name into a dimension.
+
+This single conditional (`row.key?(by) ? row : row.merge(by => m.name)`) is the only place the two arrival paths — partition vs assembly — touch, and it's what makes the round-trip properties below hold.
+
+### Round-trip properties
+
+A Collection can be arrived at two ways: by *splitting* a Namo (partition, via `group_by` at 0.18.0) or by *assembling* disparate Namos (`<<`). The two paths have different round-trip behaviour, and the difference is exactly whether the grouping axis is already a dimension.
+
+**Split round-trip — exactly idempotent.** When a Collection comes from `group_by(:symbol)`, every member retains `:symbol` (it's a pre-existing dimension, the axis grouping happened *along*, not consumed by the split). So `detail(by: :symbol)` is a pure union — `:symbol` is already present, nothing injected — and reconstructs the original rows exactly:
+
+```ruby
+namo.group_by(:symbol).as_detail(:symbol) == namo    # true (multiset equality, 0.6.0)
+```
+
+**Assembly round-trip — idempotent only after the first flatten.** When a Collection is assembled from independently-built members, those members do *not* carry a dimension identifying which is which — the identity lives in `member.name`. The first `detail(by: :assembly)` is the **dimension-creating** step: it injects `:assembly`, promoting the extrinsic member name into an intrinsic dimension. From that point the structure is in the intrinsic regime and every subsequent round-trip is exact:
+
+```ruby
+collection.as_detail(:assembly)    # injects :assembly — now a real dimension, dimension count +1
+  .group_by(:assembly)             # reconstructs members
+  .as_detail(:assembly)            # union only — :assembly already present, exact
+```
+
+The promoted `:assembly` dimension is **retained, not projected away** — it's real data now (provenance of each row), and discarding it on a subsequent round-trip would lose information. Removal, if wanted, is an explicit contraction (`[-:assembly]`, 0.3.0), never an automatic side effect.
+
+The invariant across both paths: **round-tripping never removes a dimension; the assembly path adds one (on the first flatten) and keeps it.** `as_detail(dim)` where `dim` is already present is a pure, reversible union; where `dim` is absent it is a one-way promotion that increases the dimension count by one.
+
+### Unnamed members are an error
+
+`<<` requires every member to have a `name`. `find` and replace-by-name both key on `member.name`; an unnamed member has no key and can participate in neither. Defaulting a name (`:member_0` or similar) would invent identity the user didn't ask for — exactly the extrinsic-naming conflation the design otherwise avoids. So `<<` raises `ArgumentError` on an unnamed member rather than guessing.
 
 ### Memoisation
 
@@ -1200,40 +1236,111 @@ If a member with the same `name` is already present, `<<` removes the existing o
 
 `Namo::Collection` depends on:
 
-- **Dual-form constructor (0.12.0)** — for `Namo.new(data: [...])` in `summary` and `detail`.
-- **`name:` attribute (0.13.0)** — members identify themselves; `find` works on `name`.
+- **Dual-form constructor (0.12.0)** — for `Namo.new(data: [...])` in `summary` and `detail`. (The handover-era code used keyword form; positional `Namo.new([...])` works equally for these two methods, so the dependency is ergonomic rather than strict.)
+- **`name:` attribute (0.13.0)** — members identify themselves; `find` and replace-by-name work on `name`; `<<` raises without it.
 - **`<<` with replace-by-name** — Collection-specific, defined here.
 
 Two-arity formulae (0.15.0) and parameterised formulae (0.16.0) are not required by `Collection` but compose well with it: a Collection's view can include a derived dimension that aggregates across the underlying members.
 
+This dependency stack is why `Collection` lands at 0.17.0 rather than earlier. The handover explored pulling it forward, but it needs `name:`, the dual-form constructor, and the `if name` subclass guard to be in place first. Building it once against a complete substrate beats shipping it early and amending it across every release that fills in a dependency.
+
 ### Tests
 
 - `Collection.new.members == []`.
+- `Collection.new` has empty `@data` until a mutating view is applied.
 - `<<` adds a member.
 - `<<` with an existing-name member replaces.
 - `<<` with an array adds each member.
+- `<<` raises `ArgumentError` for an unnamed member.
 - `find(:name)` returns the member with that name, or nil.
 - `find` is memoised — repeated calls don't re-iterate `@members`.
 - `<<` invalidates `find` memo.
 - `summary(:weight)` returns a Namo with `{member: <name>, weight: <sum>}` rows.
-- `summary(:weight, by: :assembly)` uses `:assembly` as the grouping dimension.
+- `summary(:weight, by: :assembly)` uses `:assembly` as the labelling dimension.
 - `summary(:weight, reducer: :mean)` uses mean instead of sum (requires `:mean` method on Array — relies on user's Statistics gem or similar).
-- `detail` flattens every member's data with a `:member` (or `by:`) column added.
+- `detail` injects the `by` dimension when absent from member rows.
+- `detail` does **not** inject when `by` is already a dimension in member rows (intrinsic case) — rows pass through untouched.
 - `detail` and `summary` are memoised; `<<` invalidates both.
 - `as_summary` sets `@data` to the summary view and returns `self`.
 - `as_detail` sets `@data` to the detail view and returns `self`.
 - After `as_summary`, the Collection's `dimensions` reflect the summary's columns.
+- Assembly round-trip: `collection.as_detail(:assembly)` injects `:assembly` and the dimension is retained through a subsequent `group_by(:assembly).as_detail(:assembly)`.
 - Subclass with default `by:` (like `Car` above) uses the override.
 
 ### Documentation
 
 - README section on `Namo::Collection`, with the GT-budget-style example.
+- Note on the empty-`@data`-until-viewed contract.
 - Note on the four view methods and their mutating/non-mutating pairs.
-- Note on the `<<` replace-by-name semantics.
+- Note on the inject-iff-absent rule and the two round-trip behaviours.
+- Note on the `<<` replace-by-name semantics and the unnamed-member error.
+
+## 0.18.0: group_by returns a Collection
+
+`Namo#group_by(dimension)` splits a Namo into a `Namo::Collection`, partitioning the rows by the values of the given dimension. This completes the Enumerable coherence pass begun at 0.11.0 — it is the one Enumerable method that produces row-shaped output and was not included there.
+
+### Why this is a separate release, and why it's here at all
+
+`group_by` was originally scheduled for 2.x. It comes forward to 0.18.0 *because* 0.17.0 built `Namo::Collection` — its return type. The dependency is the whole story:
+
+The 0.11.0 Enumerable pass shipped every method that returns a `Namo`. `group_by` was excluded not as a deferral but because it was structurally blocked: it returns a *partition* — a keyed set of sub-Namos — and the right type for that didn't exist. `{key => Array<Row>}` (Ruby's default) isn't in the Namo family, and `{key => Namo}` (a plain Hash of Namos) is a half-measure that doesn't carry the aggregation surface a partition wants. The honest type for "a Namo split into named pieces" is `Namo::Collection`, which is also the type for "named pieces assembled into a whole." Assembly and partition are the same structure reached from opposite directions; `Collection` is the structure, and `group_by` is its partition-side constructor.
+
+So `group_by` could not land until `Collection` existed. 0.17.0 built `Collection`; 0.18.0 is the first release in which `group_by` is expressible. The two-release split (0.17.0 then 0.18.0) records the causality: `Collection`'s existence is what unblocks and brings forward `group_by`.
+
+### Behaviour
+
+`group_by(dimension)` returns a `Collection` whose members are the groups — one member per distinct value of `dimension`, each a Namo holding the rows that share that value. Because `dimension` is a pre-existing dimension of the data, it is retained in every member's rows (the split happens *along* the axis, it does not consume it). This is what makes the split round-trip exactly idempotent with `as_detail` on the same dimension:
+
+```ruby
+namo.group_by(:symbol)                       # => Namo::Collection, one member per symbol
+namo.group_by(:symbol).summary(:close, reducer: :mean)   # mean close per symbol
+namo.group_by(:symbol).as_detail(:symbol) == namo        # true — exact round-trip
+```
+
+Each group member is named by its group value (`find('BHP')` returns the BHP member), so the Collection's `find` and the whole assembly API apply uniformly to a partitioned Collection. The group value *is* the member name — and because it was already a dimension in the rows, there is no extrinsic-key conflation: the name and the dimension value coincide by construction.
+
+### Relationship to the Enumerable pass
+
+With `group_by` landing here, the coherence statement from 0.11.0 completes: every Enumerable method that produces row-shaped output returns a Namo-family type. The subset methods (`select`, `reject`, `sort_by`, `uniq`, `partition`, take/drop) return `Namo` (or `[Namo, Namo]`); `group_by` returns `Namo::Collection`. The family is `Namo` and `Namo::Collection`; the rule is uniform across both.
+
+### Implementation
+
+```ruby
+def group_by(dimension)
+  collection = Namo::Collection.new
+  @data.group_by{|row| row[dimension]}.each do |value, rows|
+    collection << self.class.new(rows, formulae: @formulae.dup, name: value)
+  end
+  collection
+end
+```
+
+Each group is constructed as an instance of the receiver's class (subclass type preserved), carrying the parent's formulae, named by the group value so the Collection can key on it.
+
+A block form (`group_by{|row| ...}` computing the group key from a block rather than naming a dimension) is a natural extension. Deferred consideration: the block form's groups are keyed by a computed value with no corresponding dimension in the rows, so the split round-trip would be the *assembly* case (the computed key must be injected as a dimension on `as_detail`), not the exact-idempotent case. Worth supporting, but the dimension-named form is the primary one and the one that round-trips cleanly.
+
+### Tests
+
+- `group_by(:symbol)` returns a `Namo::Collection`.
+- The Collection has one member per distinct value of `:symbol`.
+- Each member holds exactly the rows matching its group value.
+- Each member retains `:symbol` (the grouping dimension is not consumed).
+- Each member is named by its group value (`find(value)` works).
+- Each member carries the parent's formulae.
+- Each member preserves the receiver's class (subclass type).
+- Split round-trip: `namo.group_by(:symbol).as_detail(:symbol) == namo`.
+- `group_by` on an empty Namo returns an empty Collection.
+- `summary`/`detail` work on a `group_by`-derived Collection identically to an assembled one.
+
+### Documentation
+
+- README section on `group_by` returning a Collection, with the round-trip example.
+- Note that this completes the Enumerable coherence pass started at 0.11.0.
+- Cross-reference to `Collection` (0.17.0) for the assembly side of the same structure.
 
 ## 1.0.0: Stable release
 
-The 1.0 release includes everything through 0.17.0:
+The 1.0 release includes everything through 0.18.0:
 
 - Selection (exact, array, range, proc, regex), projection, contraction.
 - Single-row formulae, two-arity formulae, parameterised formulae.
@@ -1244,7 +1351,8 @@ The 1.0 release includes everything through 0.17.0:
 - The inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`).
 - Enumerable methods returning Namos for subset operations.
 - `name:` attribute, polymorphic `[]=`, dual-form constructor.
-- `Namo::Collection` for hierarchical aggregates.
+- `Namo::Collection` for hierarchical aggregates, reachable by assembly (`<<`) or partition (`group_by`).
+- `group_by` returning a `Collection`, completing the Enumerable coherence pass.
 
 This is the correct, tested, conservative foundation. No metaprogramming magic, no `method_missing`, no `instance_eval`. Formulae work via `e[:name] = proc{|row| row[:close] / row[:book_value]}` — clear, explicit, proven.
 
@@ -1488,22 +1596,23 @@ Hashie (particularly Hashie::Mash) is the primary prior art for method-style has
 
 Profile against the 1.1 benchmarking suite. Identify and address hot paths within pure Ruby: Row object allocation, formula chain resolution, selection dispatch. No native code — just better Ruby.
 
-### Grouped Namos with bare-name ergonomics
+### Bare-name ergonomics on Collections
 
-`group_by` already returns `{key => Namo}` from 0.11.0. In 2.x, with bare name resolution in place, the aggregation pipelines that motivated this return shape become natural:
+`group_by(:symbol)` returns a `Namo::Collection` from 0.18.0; the return type is settled in 1.x. What 2.x adds is the bare-name resolution that makes aggregation over a Collection's members read cleanly:
 
 ```ruby
 # 1.x — works, but explicit
-namo.group_by{|r| r[:symbol]}
-  .transform_values{|n| n.values(:close).sum / n.length}
-# => {'BHP' => 42.8, 'RIO' => 118.3}
+namo.group_by(:symbol).summary(:close, reducer: :mean)
+# => Namo with {symbol:, close:} rows
 
-# 2.x — bare names make the same pipeline read cleanly
-namo.group_by(&:symbol)
-  .transform_values{|n| n.close.sum / n.length}
+# 1.x — explicit member-wise computation
+namo.group_by(:symbol).members.map{|n| n.values(:close).sum / n.length}
+
+# 2.x — bare names make member-wise computation read cleanly
+namo.group_by(:symbol).members.map{|n| n.close.sum / n.length}
 ```
 
-The conceptual model unifies — every Enumerable-derived subset of a Namo's rows is itself a Namo, and bare names make the post-group computation read as naturally as the pre-group selection.
+The return-type change (`group_by` → `Collection`) is *not* a 2.x concern — it landed at 0.18.0, gated on `Collection` at 0.17.0. 2.x only contributes the bare-name reading on the resulting members. The conceptual model was already unified in 1.x: assembly and partition both produce a `Collection`; bare names make the post-partition computation as ergonomic as the pre-partition selection.
 
 ### Finite module
 
