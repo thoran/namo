@@ -11,6 +11,18 @@ class Namo
       end
     end
 
+    def ==(other)
+      other.is_a?(Row) && @row == other.to_h
+    end
+
+    def eql?(other)
+      other.is_a?(Row) && @row.eql?(other.to_h)
+    end
+
+    def hash
+      @row.hash
+    end
+
     def match?(selections)
       selections.all? do |dimension, coordinate|
         case coordinate

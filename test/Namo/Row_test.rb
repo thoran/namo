@@ -215,4 +215,81 @@ describe Namo::Row do
       _(row.to_h).must_equal row_data
     end
   end
+
+  describe "#==" do
+    it "is true for two Rows with equal @row" do
+      a = Namo::Row.new({product: 'Widget', price: 10.0}, {})
+      b = Namo::Row.new({product: 'Widget', price: 10.0}, {})
+      _(a == b).must_equal true
+    end
+
+    it "is false for two Rows with different @row" do
+      a = Namo::Row.new({product: 'Widget', price: 10.0}, {})
+      b = Namo::Row.new({product: 'Gadget', price: 10.0}, {})
+      _(a == b).must_equal false
+    end
+
+    it "is false for a non-Row operand" do
+      a = Namo::Row.new({product: 'Widget'}, {})
+      _(a == {product: 'Widget'}).must_equal false
+      _(a == 'Widget').must_equal false
+      _(a == nil).must_equal false
+    end
+
+    it "ignores formulae" do
+      a = Namo::Row.new({price: 10.0, quantity: 100}, {})
+      b = Namo::Row.new({price: 10.0, quantity: 100}, {revenue: proc{|r| r[:price] * r[:quantity]}})
+      _(a == b).must_equal true
+    end
+  end
+
+  describe "#eql?" do
+    it "is true for two Rows with eql? @row" do
+      a = Namo::Row.new({product: 'Widget', price: 10.0}, {})
+      b = Namo::Row.new({product: 'Widget', price: 10.0}, {})
+      _(a.eql?(b)).must_equal true
+    end
+
+    it "is false for a non-Row operand" do
+      a = Namo::Row.new({product: 'Widget'}, {})
+      _(a.eql?({product: 'Widget'})).must_equal false
+      _(a.eql?(nil)).must_equal false
+    end
+
+    it "distinguishes numeric types the way Hash#eql? does" do
+      a = Namo::Row.new({n: 1}, {})
+      b = Namo::Row.new({n: 1.0}, {})
+      _(a == b).must_equal true
+      _(a.eql?(b)).must_equal false
+    end
+
+    it "ignores formulae" do
+      a = Namo::Row.new({price: 10.0, quantity: 100}, {})
+      b = Namo::Row.new({price: 10.0, quantity: 100}, {revenue: proc{|r| r[:price] * r[:quantity]}})
+      _(a.eql?(b)).must_equal true
+    end
+  end
+
+  describe "#hash" do
+    it "is equal for two Rows that are eql?" do
+      a = Namo::Row.new({product: 'Widget', price: 10.0}, {})
+      b = Namo::Row.new({product: 'Widget', price: 10.0}, {})
+      _(a.hash).must_equal b.hash
+    end
+
+    it "lets Rows work as Hash keys" do
+      a = Namo::Row.new({product: 'Widget'}, {})
+      b = Namo::Row.new({product: 'Gadget'}, {})
+      lookup = Namo::Row.new({product: 'Widget'}, {})
+      h = {a => :x, b => :y}
+      _(h[lookup]).must_equal :x
+    end
+
+    it "lets Array#uniq dedupe equal Rows" do
+      a = Namo::Row.new({product: 'Widget'}, {})
+      b = Namo::Row.new({product: 'Gadget'}, {})
+      duplicate_of_a = Namo::Row.new({product: 'Widget'}, {})
+      _([a, b, duplicate_of_a].uniq.length).must_equal 2
+    end
+  end
 end

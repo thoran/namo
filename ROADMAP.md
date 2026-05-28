@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.9.0
+## Current state: 0.10.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -558,17 +558,13 @@ Round-trip identity:
 
 The asymmetry between the two round-trip cases is real: `/` operates only on the two values it receives and cannot distinguish "shared dimension that belonged to both" from "exclusive dimension that belonged only to the right". Removing the intersection is the only rule expressible from the operands alone.
 
-### Summary
+### 0.10.0 (2026-05-28): Row comparison
 
-The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`), together with selection (exact, array, range, proc, regex), projection, contraction, formulae, and the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`) give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions. The next phase (0.10.0+) extends Row's value semantics to match Namo's, makes Enumerable methods return Namos, and adds block forms across the comparison, composition, and set operators for custom row-matching, then proceeds through named Namos, polymorphic assignment, richer formulae, and `Namo::Collection`.
-
-## 0.10.0: Row comparison
-
-0.10.0 extends 0.6.0's comparison work one level down. 0.6.0 settled comparison at the Namo level — `==`, `eql?`, `hash`, `===`, and the subset/superset operators — but left Row without value semantics. The omission was defensible at the time: Row read as implementation detail behind Namo's algebra. Applied use has shown otherwise. Rows leak through `each`, get reached for directly in interactive sessions, and become prerequisites for the dedup, hash-keying, and Row-against-Row equality that 0.11.0's Enumerable coherence pass needs. This release closes that gap: Row gets `==`, `eql?`, and `hash` matching its role as a hash-shaped value.
+Extends 0.6.0's comparison work one level down. 0.6.0 settled comparison at the Namo level — `==`, `eql?`, `hash`, `===`, and the subset/superset operators — but left Row without value semantics. The omission was defensible at the time: Row read as implementation detail behind Namo's algebra. Applied use showed otherwise. Rows leak through `each`, get reached for directly in interactive sessions, and become prerequisites for the dedup, hash-keying, and Row-against-Row equality that 0.11.0's Enumerable coherence pass needs. This release closes that gap: Row gets `==`, `eql?`, and `hash` matching its role as a hash-shaped value.
 
 The pattern of 0.10.0 revisiting 0.6.0 is worth flagging because 0.11.0 revisits 0.2.0 in the same way — the substrate beneath an earlier algebra needs to catch up to applied use. The "Notes on these two releases" at the end of 0.11.0 expands on the pattern.
 
-### `==`
+#### `==`
 
 Data equality. Two Rows are equal if their underlying `@row` hashes are equal. Formulae are not part of equality — they're attached by the surrounding Namo, not properties of the row.
 
@@ -580,9 +576,9 @@ end
 
 This mirrors `Namo#==` one level down. 0.6.0's `Namo#==` ignores class and formulae and compares data; `Row#==` follows the same rule. Two Rows with identical `@row` data are equal regardless of which Namo they came from.
 
-### `eql?`
+#### `eql?`
 
-Same as `==` for Row. There's no class-identity story to gate on the way `Namo#eql?` gates on `self.class == other.class` — Rows don't have a subclass hierarchy with included modules.
+Mirrors `Row#==` in shape — an `is_a?(Row)` gate followed by a hash comparison. Unlike `Namo#eql?`, there's no class-identity gate (no `self.class == other.class`); Rows don't have a subclass hierarchy with included modules, so there's no class story to enforce.
 
 ```ruby
 def eql?(other)
@@ -590,9 +586,9 @@ def eql?(other)
 end
 ```
 
-The slight difference from `==` is that `eql?` uses `Hash#eql?` for the underlying comparison rather than `Hash#==`, matching Ruby's convention (`1 == 1.0` is true but `1.eql?(1.0)` is false; Hash comparison follows from its keys' and values' comparison).
+The difference from `Row#==` is that `eql?` uses `Hash#eql?` for the underlying comparison rather than `Hash#==`, matching Ruby's convention (`1 == 1.0` is true but `1.eql?(1.0)` is false; Hash comparison follows from its keys' and values' comparison). The Row-level consequence is that `Row.new({n: 1}, {}) == Row.new({n: 1.0}, {})` is true but `.eql?` between the same two is false.
 
-### `hash`
+#### `hash`
 
 Consistent with `eql?` — Rows that are `eql?` produce the same hash, making them usable as Hash keys and Set members.
 
@@ -602,26 +598,13 @@ def hash
 end
 ```
 
-### Why these three, not the full Namo stack
+#### Why these three, not the full Namo stack
 
 `Namo` gets `==`, `eql?`, `hash`, `===`, `<`, `<=`, `>`, `>=` because a Namo is a collection of rows with set-theoretic relationships. A Row is a record — a single hash-shaped value. The set-theoretic operators don't translate: a Row isn't a "subset" of another Row in any meaningful sense, and `===` for pattern-match dispatch doesn't apply to row-level values the way it applies to analytical shapes. The three that translate are the value-semantics trio: `==`, `eql?`, `hash`. Those are what a hash-shaped value needs to participate in Ruby's collection machinery correctly.
 
-### Tests
+### Summary
 
-- `Row#==` returns true for Rows with equal `@row`.
-- `Row#==` returns false for Rows with different `@row`.
-- `Row#==` returns false for non-Row operands.
-- `Row#==` ignores `@formulae` — two Rows with the same `@row` but different `@formulae` are equal.
-- `Row#eql?` returns true for Rows with `eql?` `@row` (and the standard distinction from `==` on numerics).
-- `Row#eql?` returns false for non-Row operands.
-- `Row#hash` is consistent with `eql?` — Rows that are `eql?` have equal hashes.
-- Rows usable as Hash keys: `h = {row1 => :a, row2 => :b}; h[row1_equal_to_row1]` retrieves the right value.
-- Rows usable as Set members: `Set.new([row1, row2, row1_equal_to_row1]).size == 2`.
-
-### Documentation
-
-- Note in the README that Row participates in value-semantics (`==`, `eql?`, `hash`).
-- Brief mention in the release notes that this lands as a deliberate completion of 0.6.0, motivated by the upcoming 0.11.0 Enumerable coherence pass.
+The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`), together with selection (exact, array, range, proc, regex), projection, contraction, formulae, the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), and Row value semantics (`==`, `eql?`, `hash`), give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values. The next phase (0.11.0+) makes the subset-returning Enumerable methods return Namos, then adds block forms across the comparison, composition, and set operators for custom row-matching, then proceeds through named Namos, polymorphic assignment, richer formulae, and `Namo::Collection`.
 
 ## 0.11.0: Enumerable methods return Namos
 

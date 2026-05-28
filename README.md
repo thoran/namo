@@ -486,6 +486,18 @@ The two `:revenue` procs are independently-written and not the same object — `
 
 Each comparison operator answers a distinct question: `eql?` is strictest (class + data + formula names); `==` is data identity; `===` is analytical identity; the subset operators are data containment.
 
+Rows participate in value semantics on the same data-only basis. `Row#==`, `Row#eql?`, and `Row#hash` compare the underlying row hash and ignore the surrounding Namo's formulae — two Rows with the same data are equal regardless of which Namo yielded them. This makes Rows usable as Hash keys and Set members, and underwrites whole-row deduplication on the Enumerable side:
+
+```ruby
+a = Namo.new([{x: 1}]).first
+b = Namo.new([{x: 1}]).first
+a == b           # => true
+a.eql?(b)        # => true
+{a => :found}[b] # => :found
+```
+
+The omission of `Row#===` and Row-level `<`/`<=`/`>`/`>=` is deliberate: a Row is a record, not a collection, so the set-theoretic operators don't translate. The value-semantics trio (`==`, `eql?`, `hash`) is what a hash-shaped value needs to behave correctly in Ruby's collection machinery; that's the whole Row-comparison story.
+
 ### Subset and Superset
 
 `<`, `<=`, `>`, `>=` are multiset subset and superset relations on rows.
