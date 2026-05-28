@@ -395,7 +395,7 @@ namo.derived_dimensions    # => [:revenue]
 namo.values(:revenue)      # => [1000.0, 1500.0]
 ```
 
-The performance cost compared to a memoised implementation is real but unmeasured at typical sizes (hundreds to low thousands of rows). Single-column laziness — `values(:dim)` computing only the requested column — covers the case where it matters most: a million-row Namo with expensive derived dimensions, where materialising the full Hash would be wasteful. Wholesale aspect caching (e.g. freeze-aware materialisation) is a candidate for a later release, not 0.7.0.
+The performance cost compared to a memoised implementation is real but unmeasured at typical sizes (hundreds to low thousands of rows). Single-column laziness — `values(:dim)` computing only the requested column — covers the case where it matters most: a million-row Namo with expensive derived dimensions, where materialising the full Hash would be wasteful. Wholesale aspect caching (freeze-aware materialisation) lands in 2.x as an opt-in, transparent optimisation — see 2.x's caching subsection. It is deliberately not in 1.x: the whole 1.x line is pure-live, recomputing derived views from current state on every access, so that liveness is unconditional and there is no staleness to reason about. Caching is a 2.x performance concern gated on `freeze`, never a behaviour change.
 
 #### Composition through plain types
 
@@ -1104,88 +1104,27 @@ The `Car` class overrides set `by: :assembly` as the per-class default. A bare `
 
 ### Implementation
 
-```ruby
-class Namo::Collection < Namo
-  attr_accessor :members
-
-  def <<(*members)
-    members.flatten.each do |member|
-      raise ArgumentError, "member has no name; Namo::Collection members must be named" unless member.name
-      if existing = find(member.name)
-        @members.delete(existing)
-      end
-      @members << member
-    end
-    invalidate_memos!
-    self
-  end
-
-  def find(name)
-    @find_memo ||= {}
-    @find_memo[name] ||= @members.find{|m| m.name == name}
-  end
-
-  def summary(dimension, by: :member, reducer: :sum)
-    @summary_memo ||= {}
-    @summary_memo[[dimension, by, reducer]] ||= Namo.new(
-      @members.map{|m|
-        {by => m.name, dimension => m.values(dimension).send(reducer)}
-      }
-    )
-  end
-
-  def detail(by: :member)
-    @detail_memo ||= {}
-    @detail_memo[by] ||= Namo.new(
-      @members.flat_map{|m|
-        m.data.map{|row| row.key?(by) ? row : row.merge(by => m.name)}
-      }
-    )
-  end
-
-  def as_summary(dimension, by: :member, reducer: :sum)
-    @data = summary(dimension, by: by, reducer: reducer).data
-    self
-  end
-
-  def as_detail(by: :member)
-    @data = detail(by: by).data
-    self
-  end
-
-  private
-
-  def invalidate_memos!
-    @find_memo = nil
-    @summary_memo = nil
-    @detail_memo = nil
-  end
-
-  def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
-    super
-    @members = []
-  end
-end
-```
 
 Lives at `lib/Namo/Collection.rb` per file convention.
 
-### State model: members are the substance, `@data` is empty until a view is chosen
+### State model: members are the substance, `@data` is a lazily-materialised view
 
-A `Collection`'s substance is `@members`. The inherited `@data` is **empty** on a freshly-assembled Collection and stays empty until an explicit `as_summary`/`as_detail` call populates it. This is deliberate, and the choice of empty over pre-population matters:
+A `Collection`'s substance is `@members`. The inherited `@data` is a *derived view* of those members, not independently-stored state. Any inherited row-operation (selection, projection, `each`, the set/composition/comparison operators, `values`) reads `@data`, so the Collection lazily materialises `@data` from `@members` — via the detail view — on demand. The user never has to call anything first: `collection[symbol: 'BHP']` just works, materialising detail under the hood.
 
-Pre-populating `@data` with a view (say, the detail view) would privilege one view over the other for no principled reason — `detail` and `summary` are two equally-valid projections of the members into rows, and neither is canonical. Worse, a pre-populated `@data` goes stale the moment another member is `<<`'d: it would reflect the members-before-the-add until re-materialised. Empty `@data` has no staleness problem, because nothing has been derived yet.
+The lazy view is **detail**, and the choice is principled rather than arbitrary. `detail` is the lossless view — the union of the members' rows. `summary` is a *reduction*, something you explicitly ask for. A Collection's rows simply *are* its members' rows; the summary is a computed question you pose against them. So falling into the detail view on a bare row-operation is "treat the Collection as its line items," while the summary is never reached by accident — only via `summary(...)` or `as_summary`.
 
-Empty also makes the inherited row-level operators honest. Because `Collection < Namo`, it inherits `==`, `&`, `*`, `select`, and the rest — all of which act on `@data`. On an un-viewed Collection, `@data` is empty, so those operators act on nothing, which is the correct state of affairs: the user hasn't yet said *how* they want the members projected into rows. The contract is explicit — **choose a view via `as_detail`/`as_summary` before operating on a Collection's rows.** Two un-viewed Collections comparing `==` compare empty-to-empty, which visibly is not "same members" rather than silently returning a misleading view-comparison.
+Materialisation is **pure-live in 1.x**: every row-operation recomputes `@data` from `@members` via `detail`, with no memoisation. This matches 0.7.0's discipline for `values`/`coordinates` — derived views recompute from current state, no caching. There is therefore no staleness problem: `<<` a member, then select, and the selection sees the new member because `@data` was just rebuilt. The cost of recomputing on every access is real but, per the 0.7.0 reasoning, invisible at typical sizes. Freeze-gated caching is a 2.x optimisation (see 2.x) and never changes this observable behaviour.
+
+Because the lazy view is detail with the default `by: :member` (inject-iff-absent, below), the inherited operators behave correctly without ceremony — a `group_by`-derived Collection materialises with its intrinsic grouping dimension present (no injection), and an assembled Collection materialises with `:member` injected, exactly as an explicit `as_detail` would have produced.
 
 ### View methods: summary, detail, as_summary, as_detail
 
 The four view methods come in two pairs:
 
-- `summary(dimension, by:, reducer:)` and `detail(by:)` are **non-mutating** — they return a fresh Namo derived from `@members`, leaving the Collection's own `@data` untouched (and empty unless previously set).
-- `as_summary(dimension, by:, reducer:)` and `as_detail(by:)` are **mutating** — they set the Collection's `@data` to the summary or detail view and return `self`, enabling fluent pipelines and making the inherited row-level operators meaningful.
+- `summary(dimension, by:, reducer:)` and `detail(by:)` are **non-mutating** — they return a fresh Namo derived from `@members`, leaving `@data` untouched. Use these when you want a view to *keep* — assign the returned Namo to a variable and operate on it independently of the Collection.
+- `as_summary(dimension, by:, reducer:)` and `as_detail(by:)` are **mutating** — they set the Collection's `@data` to the chosen view and return `self`, for an immediate fluent step. Because 1.x is pure-live, an explicit `as_*` set is *transient*: the next inherited row-operation re-materialises detail and overwrites it. So `as_summary` is for "be the summary for this immediate chain," not for a persistent mode. To hold a summary, use the non-mutating `summary(...)` and keep its result.
 
-The non-mutating pair is the primary interface. The mutating pair exists for the case where the Collection itself wants to *be* its summary or detail view for subsequent operations.
+The non-mutating pair is the primary interface. The mutating pair is the explicit, transient counterpart to the lazy detail materialisation — useful when you want a *non-default* tag (`as_detail(by: :assembly)`) or the summary view for an immediate operation.
 
 ### `detail` and the inject-iff-absent rule
 
@@ -1218,13 +1157,22 @@ The promoted `:assembly` dimension is **retained, not projected away** — it's 
 
 The invariant across both paths: **round-tripping never removes a dimension; the assembly path adds one (on the first flatten) and keeps it.** `as_detail(dim)` where `dim` is already present is a pure, reversible union; where `dim` is absent it is a one-way promotion that increases the dimension count by one.
 
-### Unnamed members are an error
+### Names, and unnamed members
 
-`<<` requires every member to have a `name`. `find` and replace-by-name both key on `member.name`; an unnamed member has no key and can participate in neither. Defaulting a name (`:member_0` or similar) would invent identity the user didn't ask for — exactly the extrinsic-naming conflation the design otherwise avoids. So `<<` raises `ArgumentError` on an unnamed member rather than guessing.
+A member's `name` is used for two things: `find(name)` lookup, and replace-by-name on `<<`. Neither is load-bearing for materialisation — `detail` unions rows and (for assembled Collections) injects the member name as a dimension, but the lazy detail and the round-trips work regardless of how names are populated.
 
-### Memoisation
+Enforcement is therefore at the *point of use*, not at insertion. `<<` accepts any member, named or not — there is no insertion guard. The consequences of an unnamed member are simply the honest ones:
 
-`find`, `summary`, and `detail` are memoised. The memos invalidate on `<<` — adding or replacing a member clears all cached views. The invalidation is wholesale (every memo cleared) rather than selective (only memos involving the affected member); selective invalidation is a 2.x performance concern, not a 0.17.0 concern.
+- `find(name)` matches on `member.name`; an unnamed member matches nothing and is never found. That is the truthful result of having no name, not an error.
+- Replace-by-name engages only when the incoming member *has* a name that collides with an existing member's. Unnamed members always append (no name to collide on).
+
+This is deliberately *not* an eager guard. An earlier draft raised `ArgumentError` on unnamed `<<`, but that guard fires on a condition that isn't always a mistake — `group_by` (0.18.0) constructs members named by their group value, and a nil-valued group key produces a legitimately nil-named member. Forbidding nil names eagerly would either break `group_by`'s nil-group case or force a sentinel. Moving enforcement to use-site avoids all of that: a nil-named group member is unfindable-by-name but its rows still materialise and round-trip correctly via the intrinsic grouping dimension, and a genuinely-forgotten assembly name surfaces as "not found" when you try to `find` it. This matches Namo's broader lazy, compute-on-access discipline — don't validate what you haven't been asked about.
+
+### Memoisation — deferred to 2.x
+
+`find`, `summary`, `detail`, and the lazy `@data` materialisation are **not memoised in 1.x**. Every call recomputes from `@members`. This is the same pure-live discipline 0.7.0 applies to `values`/`coordinates`, held uniformly: 1.x is correctness and coherence, pure-live throughout.
+
+Memoisation is a 2.x performance feature, opt-in via `freeze` and transparent (see 2.x's caching subsection). A user who never freezes a Collection gets pure-live recomputation forever; caching engages only on frozen instances, where immutability guarantees cached views stay correct. It never changes observable behaviour or liveness — it only changes cost, and only when the user has opted in by freezing.
 
 ### Replace-by-name on `<<`
 
@@ -1237,43 +1185,45 @@ If a member with the same `name` is already present, `<<` removes the existing o
 `Namo::Collection` depends on:
 
 - **Dual-form constructor (0.12.0)** — for `Namo.new(data: [...])` in `summary` and `detail`. (The handover-era code used keyword form; positional `Namo.new([...])` works equally for these two methods, so the dependency is ergonomic rather than strict.)
-- **`name:` attribute (0.13.0)** — members identify themselves; `find` and replace-by-name work on `name`; `<<` raises without it.
+- **`name:` attribute (0.13.0)** — members identify themselves; `find` and replace-by-name work on `name`. (Unnamed members are accepted but unfindable-by-name; see "Names, and unnamed members" above.)
 - **`<<` with replace-by-name** — Collection-specific, defined here.
 
 Two-arity formulae (0.15.0) and parameterised formulae (0.16.0) are not required by `Collection` but compose well with it: a Collection's view can include a derived dimension that aggregates across the underlying members.
 
-This dependency stack is why `Collection` lands at 0.17.0 rather than earlier. The handover explored pulling it forward, but it needs `name:`, the dual-form constructor, and the `if name` subclass guard to be in place first. Building it once against a complete substrate beats shipping it early and amending it across every release that fills in a dependency.
+This dependency stack is why `Collection` lands at 0.17.0 rather than earlier. The handover explored pulling it forward, but it needs `name:`, the dual-form constructor, and the `if name` subclass guard (0.13.0) to be in place first. Building it once against a complete substrate beats shipping it early and amending it across every release that fills in a dependency — including the memoisation that 2.x will add, which is cleaner to attach to a settled, pure-live 1.x Collection than to retrofit.
 
 ### Tests
 
 - `Collection.new.members == []`.
-- `Collection.new` has empty `@data` until a mutating view is applied.
+- A bare row-operation on a Collection lazily materialises detail — `collection[symbol: 'BHP']` works without a prior `as_detail`.
+- Lazy materialisation is pure-live: `<<` a member, then select, and the selection reflects the new member.
 - `<<` adds a member.
 - `<<` with an existing-name member replaces.
 - `<<` with an array adds each member.
-- `<<` raises `ArgumentError` for an unnamed member.
+- `<<` accepts an unnamed member (no error); the member is appended and is unfindable by name.
 - `find(:name)` returns the member with that name, or nil.
-- `find` is memoised — repeated calls don't re-iterate `@members`.
-- `<<` invalidates `find` memo.
+- `find` on an unnamed member's would-be key returns nil (never matches).
 - `summary(:weight)` returns a Namo with `{member: <name>, weight: <sum>}` rows.
 - `summary(:weight, by: :assembly)` uses `:assembly` as the labelling dimension.
 - `summary(:weight, reducer: :mean)` uses mean instead of sum (requires `:mean` method on Array — relies on user's Statistics gem or similar).
 - `detail` injects the `by` dimension when absent from member rows.
 - `detail` does **not** inject when `by` is already a dimension in member rows (intrinsic case) — rows pass through untouched.
-- `detail` and `summary` are memoised; `<<` invalidates both.
+- `find`, `summary`, `detail`, and lazy `@data` recompute live — no memoisation in 1.x (a mutation via `<<` is reflected on the next call).
 - `as_summary` sets `@data` to the summary view and returns `self`.
 - `as_detail` sets `@data` to the detail view and returns `self`.
-- After `as_summary`, the Collection's `dimensions` reflect the summary's columns.
+- `as_*` is transient: after `as_summary`, a subsequent bare row-operation re-materialises detail (explicit views do not persist across operations in 1.x).
+- After `as_summary` (immediately, before another operation), the Collection's `dimensions` reflect the summary's columns.
 - Assembly round-trip: `collection.as_detail(:assembly)` injects `:assembly` and the dimension is retained through a subsequent `group_by(:assembly).as_detail(:assembly)`.
 - Subclass with default `by:` (like `Car` above) uses the override.
 
 ### Documentation
 
 - README section on `Namo::Collection`, with the GT-budget-style example.
-- Note on the empty-`@data`-until-viewed contract.
-- Note on the four view methods and their mutating/non-mutating pairs.
+- Note on the lazy detail materialisation (a Collection behaves as its detail view on any row-operation) and the pure-live, no-memo discipline.
+- Note on the four view methods, the non-mutating/mutating split, and the transience of `as_*` in 1.x.
 - Note on the inject-iff-absent rule and the two round-trip behaviours.
-- Note on the `<<` replace-by-name semantics and the unnamed-member error.
+- Note on the `<<` replace-by-name semantics and the use-site (not insertion-time) treatment of unnamed members.
+- Forward-note that freeze-gated memoisation is a 2.x optimisation, opt-in and transparent.
 
 ## 0.18.0: group_by returns a Collection
 
@@ -1298,6 +1248,8 @@ namo.group_by(:symbol).as_detail(:symbol) == namo        # true — exact round-
 ```
 
 Each group member is named by its group value (`find('BHP')` returns the BHP member), so the Collection's `find` and the whole assembly API apply uniformly to a partitioned Collection. The group value *is* the member name — and because it was already a dimension in the rows, there is no extrinsic-key conflation: the name and the dimension value coincide by construction.
+
+The nil-key case falls out cleanly from the use-site naming decision (0.17.0). If some rows have `dimension` missing or nil-valued, they form a group keyed by `nil`, and that member is named `nil`. There is no insertion guard to trip — `<<` accepts it — and the member is simply unfindable by `find` (you can't `find(nil)` meaningfully), but its rows still materialise into the detail view and round-trip correctly, because the grouping dimension (nil-valued for those rows, but present) is intrinsic. No rows are dropped, no sentinel is invented; the nil group is a first-class member that happens to have a nil name. This is exactly why 0.17.0 moved name-enforcement to use-site rather than guarding `<<`.
 
 ### Relationship to the Enumerable pass
 
@@ -1330,6 +1282,7 @@ A block form (`group_by{|row| ...}` computing the group key from a block rather 
 - Each member preserves the receiver's class (subclass type).
 - Split round-trip: `namo.group_by(:symbol).as_detail(:symbol) == namo`.
 - `group_by` on an empty Namo returns an empty Collection.
+- `group_by(:sector)` where some rows have nil `:sector` produces a nil-named member holding those rows; no rows are dropped; the split round-trip still holds.
 - `summary`/`detail` work on a `group_by`-derived Collection identically to an assembled one.
 
 ### Documentation
@@ -1396,6 +1349,8 @@ Each extends Namo with a class method (`from_csv`, `from_sequel`, `from_json`). 
 ## 2.x: Bare names and Ruby-side optimisation
 
 Theme: the expressive leap.
+
+The 1.x / 2.x boundary is a discipline boundary as much as a feature one. **1.x is correctness and coherence, and pure-live throughout** — every derived view (`values`, `coordinates`, `to_h`, and Collection's `find`/`summary`/`detail`/lazy `@data`) recomputes from current state on every access, with no memoisation anywhere. Liveness is unconditional; there is no staleness to reason about. **2.x is the performance phase**, where memoisation lands across the board, alongside bare names, `method_missing`, `DefineAccessors`, and Finite. Caching is introduced uniformly here rather than piecemeal in 1.x, so the rule is simple to state and simple to trust.
 
 Estimated performance: `method_missing` on Row adds ~5-10% overhead versus 1.x on first access per dimension per Row. The `DefineAccessors` optimisation (below) recovers most of this by defining real methods on first access. After warm-up, 2.x should be within ~2-3% of 1.x. Pure Ruby performance tuning against the 1.1 benchmarking suite may yield further gains. All estimates — actual numbers depend on the 1.1 baseline.
 
@@ -1595,6 +1550,26 @@ Hashie (particularly Hashie::Mash) is the primary prior art for method-style has
 ### Pure Ruby performance tuning
 
 Profile against the 1.1 benchmarking suite. Identify and address hot paths within pure Ruby: Row object allocation, formula chain resolution, selection dispatch. No native code — just better Ruby.
+
+### Caching / memoisation (opt-in via freeze, transparent)
+
+1.x is pure-live: `values`, `coordinates`, `to_h`, and Collection's `find`/`summary`/`detail`/lazy `@data` all recompute on every access. 2.x adds memoisation as a performance layer, with two non-negotiable properties:
+
+1. **Transparent.** Memoisation never changes observable behaviour, output, or liveness. Same inputs produce same outputs with the same currentness guarantees; only the cost differs. A user never has to reason about whether a cached value is stale — that is the cache's problem, and if it can't be guaranteed correct, the cache does not engage.
+
+2. **Correct by construction, opt-in via `freeze`.** Caching engages only on **frozen** instances. An unfrozen Namo or Collection can mutate (`[]=`, `<<`, `@data`/`@members` changes), so its derived views could go stale under a cache — therefore an unfrozen instance always recomputes live, exactly as in 1.x. A frozen instance cannot change, so a cached derived value stays correct forever. The rule:
+
+   - **Unfrozen** → pure-live, always recompute, no caching. (The 1.x default, unchanged.)
+   - **Frozen** → caching may engage, because immutability guarantees freshness.
+
+This makes memoisation genuinely optional without a flag, a mode, or a config the user must learn. The user opts in by doing the thing they would do anyway when finished mutating — `freeze` for sharing, hash-keying, or thread-safety (see the Mutability open question) — and the caching rides along for free. A user who never freezes never caches and never thinks about it. The optionality is about *whether caching engages* (the freeze decision), never about *whether a cache is correct* — a cache only ever exists on immutable state, so stale-cache wrong answers are impossible by construction.
+
+Scope of the 2.x caching work:
+
+- **Namo inspection aspects** — memoise `values`/`coordinates`/`to_h` on frozen Namos (the "wholesale aspect caching" the 0.7.0 note defers to here).
+- **Collection views** — memoise `find`/`summary`/`detail`/`@data` materialisation on frozen Collections. This is the memo-and-invalidation apparatus that was deliberately *removed* from the 0.17.0 implementation; it returns here, where it is measured against the 1.1 benchmark suite and justified — and where freeze makes invalidation-on-mutation unnecessary (a frozen Collection never mutates, so there is nothing to invalidate).
+
+Contingency: this work is gated on the **freeze semantics**, currently in the Open Questions section rather than a scheduled release. Caching attaches to freeze, so resolving the freeze semantics is a prerequisite for the caching workstream. If freeze lands before 2.x's performance phase, caching can attach to it directly; if the freeze semantics are still open when this work begins, settling them comes first.
 
 ### Bare-name ergonomics on Collections
 
