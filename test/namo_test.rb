@@ -33,6 +33,113 @@ describe Namo do
     end
   end
 
+  describe "construction" do
+    it "accepts positional data" do
+      _(Namo.new([{x: 1}]).data).must_equal [{x: 1}]
+    end
+
+    it "accepts positional data with keyword formulae" do
+      namo = Namo.new([{x: 1}], formulae: {y: proc{|r| r[:x] * 2}})
+      _(namo.data).must_equal [{x: 1}]
+      _(namo.values(:y)).must_equal [2]
+    end
+
+    it "produces an empty Namo with no arguments" do
+      namo = Namo.new
+      _(namo.data).must_equal []
+      _(namo.formulae).must_equal({})
+    end
+
+    it "accepts keyword formulae with no data" do
+      namo = Namo.new(formulae: {y: proc{|r| r[:x] * 2}})
+      _(namo.data).must_equal []
+      _(namo.derived_dimensions).must_equal [:y]
+    end
+
+    it "honours an explicit empty positional array over the nil sentinel" do
+      _(Namo.new([]).data).must_equal []
+    end
+
+    it "accepts data by keyword" do
+      _(Namo.new(data: [{x: 1}]).data).must_equal [{x: 1}]
+    end
+
+    it "lets positional data win when both positional and keyword data are given" do
+      _(Namo.new([{x: 1}], data: [{x: 2}]).data).must_equal [{x: 1}]
+    end
+
+    it "survives a round-trip through a set operator" do
+      a = Namo.new([{x: 1}])
+      b = Namo.new([{x: 2}])
+      _((a + b).data).must_equal [{x: 1}, {x: 2}]
+    end
+
+    it "survives a round-trip through an Enumerable method" do
+      namo = Namo.new([{x: 1}, {x: 2}])
+      _(namo.select{|row| row[:x] > 1}.data).must_equal [{x: 2}]
+    end
+  end
+
+  describe "#name" do
+    it "stores a name passed by keyword" do
+      _(Namo.new([{x: 1}], name: :foo).name).must_equal :foo
+    end
+
+    it "defaults to nil when no name is passed" do
+      _(Namo.new([{x: 1}]).name).must_be_nil
+    end
+
+    it "is settable post-construction" do
+      namo = Namo.new([{x: 1}])
+      namo.name = :bar
+      _(namo.name).must_equal :bar
+    end
+
+    it "is nil on a Namo derived from a set operator" do
+      a = Namo.new([{x: 1}], name: :a)
+      b = Namo.new([{x: 2}], name: :b)
+      _((a + b).name).must_be_nil
+    end
+
+    it "is nil on a Namo derived from an Enumerable method" do
+      namo = Namo.new([{x: 1}, {x: 2}], name: :original)
+      _(namo.select{|row| row[:x] > 1}.name).must_be_nil
+    end
+  end
+
+  describe "subclass side-effect guard" do
+    before do
+      @guard_class = Class.new(Namo) do
+        def self.fired
+          @fired ||= []
+        end
+        def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
+          super
+          return unless name
+          self.class.fired << name
+        end
+      end
+    end
+
+    it "fires guarded side effects for an explicitly named construction" do
+      @guard_class.new(data: [{x: 1}], name: :foo)
+      _(@guard_class.fired).must_equal [:foo]
+    end
+
+    it "skips guarded side effects for an unnamed construction" do
+      @guard_class.new(data: [{x: 1}])
+      _(@guard_class.fired).must_equal []
+    end
+
+    it "skips guarded side effects for an operator result" do
+      a = @guard_class.new(data: [{x: 1}], name: :a)
+      b = @guard_class.new(data: [{x: 2}], name: :b)
+      @guard_class.fired.clear
+      _((a + b).name).must_be_nil
+      _(@guard_class.fired).must_equal []
+    end
+  end
+
   describe "#dimensions" do
     it "infers dimensions from hash keys" do
       _(sales.dimensions).must_equal [:product, :quarter, :price, :quantity]

@@ -2,6 +2,16 @@ CHANGELOG
 _________
 
 20260601
+0.12.0: Constructor widening — keyword data: and name:.
+
+1. ~ lib/namo.rb: Namo#initialize widened from `(data = [], formulae: {})` to `(positional_data = nil, data: [], formulae: {}, name: nil)`. Data may now be passed positionally or by the `data:` keyword; positional wins when both are given (`@data = positional_data || data`). The positional default changes from `[]` to `nil` so it acts as a "not supplied" sentinel that lets `|| data` fall through to the keyword path; an explicit `Namo.new([])` still yields `@data == []` because the truthy empty array short-circuits. + `name:` keyword, stored in `@name`. Every pre-existing call site (positional data, positional data + keyword formulae, no-arg, formulae-only, and the operators' internal `self.class.new(rows, formulae: ...)`) is unaffected.
+2. + lib/namo.rb: `attr_accessor :name`, alongside the existing `:data` and `:formulae` accessors. Gives `name` reading and `name=` post-construction mutation. Operator results carry `name == nil` (the operators construct without `name:`), establishing the subclass guard convention: subclasses guard `initialize` side effects with `return unless name`, so operator-derived instances skip them and only explicitly-named constructions fire them.
+3. ~ test/namo_test.rb: + "construction" describe (positional data, positional + keyword formulae, no-arg empty, formulae-only, explicit `[]` honoured over the nil sentinel, keyword `data:`, positional-wins-over-keyword, and round-trips through a set operator and an Enumerable method). + "#name" describe (stored from keyword, defaults to nil, settable post-construction, nil on set-operator and Enumerable-derived results). + "subclass side-effect guard" describe — an anonymous Class.new(Namo) with a `return unless name`-guarded counter, asserting it fires for a named construction and stays untouched for an unnamed construction and an operator result.
+4. ~ README.md: + note in the Usage section that data may be passed positionally or by `data:`, with positional winning when both are given. + "Named Namos" section: the `name:` keyword, the `name`/`name=` accessor, nil-on-derivation for operator results, and the subclass guard convention with the TradingAnalysis / argument-less `super` example.
+5. ~ ROADMAP.md: Promote 0.12.0 from upcoming to shipped — `## Current state` bumped to 0.12.0, a `### 0.12.0 (2026-06-01)` entry added in the shipped section (written in shipped voice), and the now-redundant `## 0.12.0` upcoming section removed; fold the widened constructor into the Summary's completed vocabulary and point "next phase" at 0.13.0+.
+6. ~ Namo::VERSION: /0.11.1/0.12.0/
+
+20260601
 0.11.1: Extract the subset Enumerable methods into a Namo::Enumerable module.
 
 1. + lib/Namo/Enumerable.rb: New module Namo::Enumerable holding each and the subset-returning Enumerable methods (select plus its filter/find_all aliases, reject, sort_by, first, last, take, drop, take_while, drop_while, uniq, partition), moved verbatim from Namo. The module does `include ::Enumerable` — the leading :: is required, because under the nested `class Namo; module Enumerable` scope a bare `Enumerable` resolves to Namo::Enumerable itself and raises a cyclic-include error.

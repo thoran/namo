@@ -12,6 +12,7 @@ class Namo
 
   attr_accessor :data
   attr_accessor :formulae
+  attr_accessor :name
 
   def dimensions
     data_dimensions + derived_dimensions
@@ -246,8 +247,9 @@ class Namo
     end
   end
 
-  def initialize(data = [], formulae: {})
-    @data = data
+  def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
+    @data = positional_data || data
     @formulae = formulae
+    @name = name
   end
 end

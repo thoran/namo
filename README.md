@@ -33,6 +33,16 @@ sales = Namo.new([
 ])
 ```
 
+Data may be passed positionally, as above, or by the `data:` keyword where that reads more explicitly:
+
+```ruby
+sales = Namo.new(data: [
+  {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100}
+])
+```
+
+When both are given, the positional argument wins and the keyword `data:` is ignored.
+
 Dimensions and coordinates are inferred:
 
 ```ruby
@@ -714,6 +724,39 @@ sales[:product, :quarter, :revenue].to_h
 #   revenue: [1000.0, 1500.0, 1000.0, 1500.0]
 # }
 ```
+
+### Named Namos
+
+A Namo can carry a name, passed by the `name:` keyword and read or set through the `name` accessor:
+
+```ruby
+sales = Namo.new(data: rows, name: :sales)
+sales.name
+# => :sales
+
+sales.name = :renamed
+```
+
+A name defaults to `nil`, and operator results are name-less by design — the result of `+`, `*`, `select`, and the rest is a derived object, not the original, so giving it the parent's name would mislead:
+
+```ruby
+(sales + more).name
+# => nil
+```
+
+This `nil`-on-derivation behaviour is what lets subclasses with side effects in `initialize` guard those effects on the name. Operator-derived instances are name-less and skip the side effects; explicitly constructed instances pass `name:` and the side effects fire:
+
+```ruby
+class TradingAnalysis < Namo
+  def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
+    super
+    return unless name
+    register_indicators
+  end
+end
+```
+
+`super` with no parentheses forwards every argument — positional and keyword — to `Namo#initialize` unchanged. The `return unless name` guard means a subclass need not override every operator to stop the result of `*` or `select` from re-running its construction side effects: it guards on `name` instead.
 
 ## Why?
 

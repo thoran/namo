@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.11.0
+## Current state: 0.12.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -691,16 +691,12 @@ The pattern of revisiting earlier releases is worth flagging because it recurs. 
 
 Applied use stresses different parts. Interactive sessions reveal that `select` returning Array breaks chaining. Wanting to dedupe rows reveals that Row never got the value semantics the Namo level got. The substrate beneath the algebra needs to catch up to applied use. This is healthy: the earlier releases are sound — the revisits are extensions, not corrections. If applied use were revealing genuine design errors that would be different; instead it reveals where deliberate scope limits in earlier releases were tighter than the applied surface needs. Future releases may follow the same pattern.
 
-### Summary
+### 0.12.0 (2026-06-01): Constructor widening — keyword data and name:
 
-The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`), together with selection (exact, array, range, proc, regex), projection, contraction, formulae, the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), and the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values and analytical chains that stay closed through filtering and ordering. The next phase (0.12.0+) widens the constructor with keyword data and a `name:` attribute, adds block forms across the comparison, composition, and set operators for custom row-matching, then proceeds through polymorphic assignment, richer formulae, and `Namo::Collection`.
-
-## 0.12.0: Constructor widening — keyword data and name:
-
-One coherent edit to `initialize`: the constructor learns two new optional keyword arguments. Data can now be passed by keyword as well as positionally, and a Namo can carry a `name`. Both are additive — every existing call site (`Namo.new([{...}])`, `Namo.new([{...}], formulae: {})`) is unaffected.
+One coherent edit to `initialize`: the constructor grew two optional keyword arguments. Data can now be passed by the `data:` keyword as well as positionally, and a Namo can carry a `name`. Both are additive — every existing call site (`Namo.new([{...}])`, `Namo.new([{...}], formulae: {})`, the no-arg and formulae-only forms, and the operators' internal `self.class.new(rows, formulae: ...)`) is unaffected.
 
 ```ruby
-# Current (0.9.0)
+# Before (through 0.11.x)
 def initialize(data = [], formulae: {})
 
 # 0.12.0 — widened
@@ -711,88 +707,35 @@ def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
 end
 ```
 
-These two changes ship together because they are the same modification: the constructor's signature growing optional keyword parameters. Polymorphic `[]=` (0.13.0) is deliberately *not* bundled here — it changes assignment dispatch, a different method and a different concern. The seam is "constructor-signature changes together; assignment-dispatch changes separately."
-
-### Keyword `data:`
-
-The current constructor already takes data positionally and `formulae:` by keyword. 0.12.0 adds `data:` as a keyword too, with positional winning when both are present:
+Positional data wins when both positional and keyword `data:` are present. The positional default changed from `[]` to `nil` so it acts as a "not supplied" sentinel that lets `|| data` fall through to the keyword path; an explicit `Namo.new([])` still yields `@data == []` because the truthy empty array short-circuits.
 
 ```ruby
 Namo.new([{x: 1}])              # positional — unchanged
 Namo.new(data: [{x: 1}])        # keyword — new
-Namo.new                        # empty — already worked, default data
-Namo.new(formulae: {...})       # formulae-only, empty data — already worked
+Namo.new([{x: 1}], data: [{x: 2}])   # positional wins → @data == [{x: 1}]
 ```
 
-This is ergonomic rather than load-bearing. The operators (`+`, `*`, …) already construct via `self.class.new(rows, formulae: ...)` against the current positional-data signature, and `Namo::Collection`'s `summary`/`detail` (0.17.0) can use either positional or keyword data. Keyword `data:` simply lets construction read explicitly (`Namo.new(data: rows)`) where that's clearer, and rounds out the keyword-argument surface so `data`, `formulae`, and `name` are all expressible the same way.
+`name:` is the load-bearing half — the driver is `Namo::Collection` (0.17.0), where members identify themselves so the collection can find them by name, replace them on re-add, and label them in summaries. `Namo` gains `attr_accessor :name`; `name=` gives post-construction mutation. Operator-derived Namos (`+`, `*`, `select`, …) construct without `name:`, so their `@name` is `nil` — a derived object is not the original, and giving it the parent's name would mislead.
 
-### `name:` attribute
-
-`Namo` gains `attr_accessor :name`, set via the constructor keyword:
-
-```ruby
-powertrain = SubAssembly.new(name: :powertrain, data: [...])
-chassis    = SubAssembly.new(name: :chassis, data: [...])
-
-powertrain.name   # => :powertrain
-```
-
-The motivation comes from composition patterns — particularly `Namo::Collection` (0.17.0), where members identify themselves so the collection can find them by name, replace them on re-add, and label them in summaries. Outside of `Collection`, `name:` is useful anywhere a Namo participates in a larger structure that needs to talk about it.
-
-#### Subclass guard pattern
-
-Operator-derived Namos (results of `+`, `*`, `&`, `select`, etc.) don't carry their parents' names. The operator implementations construct results without `name:`, so the result's `@name` is `nil`. This is intentional — the operator result is a derived object, not the original, and giving it the parent's name would be misleading.
-
-This creates a documented convention for subclasses with side effects in `initialize`:
+That nil-on-derivation behaviour is what makes the subclass guard convention work: subclasses guard `initialize` side effects with `return unless name`, so operator-derived instances skip them and only explicitly-named constructions fire them. `super` with no parentheses forwards every argument unchanged.
 
 ```ruby
 class TradingAnalysis < Namo
   def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
     super
     return unless name
-    # side effects (e.g. registering indicators) — only fire for explicitly-constructed analyses
+    register_indicators
   end
 end
 ```
 
-The pattern: subclasses guard side effects with `if name` (or equivalent). Operator-derived instances are name-less and skip the side effects; explicitly constructed instances pass `name:` and the side effects fire. This is the answer to the "operator return type" question from the open questions section — subclasses don't need to override every operator to handle the "result of `*` is still a TradingAnalysis but shouldn't re-register everything" problem; they guard on `name`.
+This is the answer to the "operator return type" open question for subclasses with side effects in `initialize` — they need not override every operator to stop the result of `*` or `select` from re-running construction; they guard on `name`. The convention is documented in the README and applied throughout Namo's own subclasses.
 
-This convention is documented in the README and applied throughout Namo's own subclasses.
+These two changes shipped together because they are the same modification: the constructor's signature growing optional keyword parameters. Polymorphic `[]=` (0.13.0) was deliberately not bundled — it changes assignment dispatch, a different method and a different concern. The seam is "constructor-signature changes together; assignment-dispatch changes separately."
 
-### Implementation
+### Summary
 
-```ruby
-private
-
-def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
-  @data = positional_data || data
-  @formulae = formulae
-  @name = name
-end
-```
-
-`initialize` placed at the top of the private section per house style. The `private` keyword is technically a no-op (Ruby makes `initialize` private regardless) but is used for grouping. `attr_accessor :name` joins the existing `attr_accessor :data` / `attr_accessor :formulae` declarations.
-
-### Tests
-
-- `Namo.new([{x: 1}])` continues to work — positional data, no keyword.
-- `Namo.new(data: [{x: 1}])` works — keyword form.
-- `Namo.new` (no args) produces an empty Namo with no data and no formulae.
-- `Namo.new(formulae: {y: proc{|r| r[:x] * 2}})` produces an empty-data Namo with formulae.
-- `Namo.new([{x: 1}], formulae: {y: proc{|r| r[:x] * 2}})` works — positional data, keyword formulae.
-- `Namo.new([{x: 1}], data: [{x: 2}])` uses the positional data (`[{x: 1}]`) and ignores the keyword `data:`.
-- Existing operator implementations (`*`, `+`, etc.) continue to work — they construct via the keyword-`formulae` form internally, which the widened constructor still accepts.
-- `name:` is stored on the Namo and accessible via `name`.
-- `name` defaults to `nil` when not passed.
-- `name=` sets the name post-construction.
-- Operator-derived Namos have `name == nil`.
-- `Namo.new([{x: 1}], name: :foo).name == :foo`.
-- Subclass guard pattern: a subclass with `if name`-guarded side effects fires them for `MyClass.new(data: [], name: :foo)` and skips them for operator results.
-
-### Documentation
-
-- README example showing positional and keyword construction, and that positional data wins when both are present.
-- README section on named Namos, including the subclass guard convention.
+The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`), together with selection (exact, array, range, proc, regex), projection, contraction, formulae, the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, and a constructor that takes data positionally or by keyword and carries an optional `name:`, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values and analytical chains that stay closed through filtering and ordering. The next phase (0.13.0+) adds polymorphic assignment, block forms across the comparison, composition, and set operators for custom row-matching, then proceeds through richer formulae and `Namo::Collection`.
 
 ## 0.13.0: Polymorphic []=
 
