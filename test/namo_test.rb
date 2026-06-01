@@ -560,6 +560,93 @@ describe Namo do
     end
   end
 
+  describe "#[]= polymorphic dispatch" do
+    it "registers a formula when assigned a proc (existing behaviour preserved)" do
+      namo = Namo.new([{price: 10.0, quantity: 100}])
+      namo[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      _(namo.derived_dimensions).must_include :revenue
+      _(namo.values(:revenue)).must_equal [1000.0]
+    end
+
+    it "clears any data column of the same name when assigned a proc" do
+      namo = Namo.new([{x: 1}, {x: 2}])
+      _(namo.data_dimensions).must_include :x
+      namo[:x] = proc{|r| 99}
+      _(namo.data_dimensions).wont_include :x
+      _(namo.derived_dimensions).must_include :x
+      _(namo.values(:x)).must_equal [99, 99]
+    end
+
+    it "broadcasts a scalar to every row" do
+      namo = Namo.new([{a: 1}, {a: 2}, {a: 3}])
+      namo[:status] = 'active'
+      _(namo.values(:status)).must_equal ['active', 'active', 'active']
+    end
+
+    it "clears any formula of the same name when assigned a scalar" do
+      namo = Namo.new([{price: 10.0, quantity: 100}])
+      namo[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      namo[:revenue] = 0
+      _(namo.derived_dimensions).wont_include :revenue
+      _(namo.data_dimensions).must_include :revenue
+      _(namo.values(:revenue)).must_equal [0]
+    end
+
+    it "broadcasts an array as the value (array is not a proc)" do
+      namo = Namo.new([{a: 1}, {a: 2}])
+      namo[:weights] = [1, 2, 3]
+      _(namo.values(:weights)).must_equal [[1, 2, 3], [1, 2, 3]]
+    end
+
+    it "is last-write-wins: scalar then proc leaves a formula only" do
+      namo = Namo.new([{y: 7}])
+      namo[:x] = 5
+      namo[:x] = proc{|r| r[:y]}
+      _(namo.derived_dimensions).must_include :x
+      _(namo.data_dimensions).wont_include :x
+      _(namo.values(:x)).must_equal [7]
+    end
+
+    it "is last-write-wins: proc then scalar leaves a broadcast value only" do
+      namo = Namo.new([{y: 7}])
+      namo[:x] = proc{|r| r[:y]}
+      namo[:x] = 5
+      _(namo.data_dimensions).must_include :x
+      _(namo.derived_dimensions).wont_include :x
+      _(namo.values(:x)).must_equal [5]
+    end
+
+    it "surfaces a proc-assigned name as derived, not data, exactly once in dimensions" do
+      namo = Namo.new([{x: 1}, {x: 2}])
+      namo[:x] = proc{|r| 99}
+      _(namo.data_dimensions).wont_include :x
+      _(namo.derived_dimensions).must_include :x
+      _(namo.dimensions.count(:x)).must_equal 1
+    end
+
+    it "surfaces a scalar-assigned name as data, not derived, exactly once in dimensions" do
+      namo = Namo.new([{x: 1}])
+      namo[:rev] = proc{|r| r[:x]}
+      namo[:rev] = 5
+      _(namo.data_dimensions).must_include :rev
+      _(namo.derived_dimensions).wont_include :rev
+      _(namo.dimensions.count(:rev)).must_equal 1
+    end
+
+    it "does not walk rows to clear when no data column of that name exists" do
+      namo = Namo.new([{a: 1}])
+      namo[:b] = proc{|r| r[:a]}
+      _(namo.derived_dimensions).must_include :b
+      _(namo.values(:b)).must_equal [1]
+    end
+
+    it "handles an empty Namo without error" do
+      namo = Namo.new([])
+      namo[:x] = proc{|r| 1}
+      _(namo.derived_dimensions).must_include :x
+    end
+  end
+
   describe "#each" do
     it "yields Row objects" do
       rows = []

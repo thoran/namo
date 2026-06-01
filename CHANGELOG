@@ -2,6 +2,15 @@ CHANGELOG
 _________
 
 20260601
+0.13.0: Polymorphic []= — proc registers a formula, scalar broadcasts to every row.
+
+1. ~ lib/namo.rb: Namo#[]= now dispatches on value type. Parameter renamed `proc` -> `value`. A Proc registers a formula and clears any data column of the same name (`@data.each{|row| row.delete(name)} if @data.first&.key?(name)`); anything else broadcasts the value to every row and clears any formula of the same name (`@formulae.delete(name)`). Enforces the exclusive-storage invariant — a name is data or derived, never both — at the assignment site. Existing proc-registration behaviour preserved.
+2. ~ test/namo_test.rb: + "#[]= polymorphic dispatch" describe — proc registration (regression), data-column clear on proc assign, scalar broadcast, formula clear on scalar assign, array-broadcasts-as-value, both last-write-wins orderings, derived/data surfacing exactly once in `dimensions`, the no-data-column clear-guard short-circuit, and the empty-Namo case. Existing "#[]= formulae" describe unchanged.
+3. ~ README.md: + Polymorphic []= section (two branches, exclusivity rule, last-write-wins, symmetry with []), with the scalar-broadcast-vs-formula contrast and a note tying exclusivity to data_dimensions/derived_dimensions.
+4. ~ ROADMAP.md: Promote 0.13.0 from upcoming to shipped — `## Current state` bumped to 0.13.0, a `### 0.13.0 (2026-06-01)` entry added in the shipped section, the now-redundant `## 0.13.0` upcoming section removed, polymorphic []= folded into the Summary's completed vocabulary, "next phase" pointed at 0.14.0+.
+5. ~ Namo::VERSION: /0.12.0/0.13.0/
+
+20260601
 0.12.0: Constructor widening — keyword data: and name:.
 
 1. ~ lib/namo.rb: Namo#initialize widened from `(data = [], formulae: {})` to `(positional_data = nil, data: [], formulae: {}, name: nil)`. Data may now be passed positionally or by the `data:` keyword; positional wins when both are given (`@data = positional_data || data`). The positional default changes from `[]` to `nil` so it acts as a "not supplied" sentinel that lets `|| data` fall through to the keyword path; an explicit `Namo.new([])` still yields `@data == []` because the truthy empty array short-circuits. + `name:` keyword, stored in `@name`. Every pre-existing call site (positional data, positional data + keyword formulae, no-arg, formulae-only, and the operators' internal `self.class.new(rows, formulae: ...)`) is unaffected.

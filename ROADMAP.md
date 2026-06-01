@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.12.0
+## Current state: 0.13.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -733,13 +733,9 @@ This is the answer to the "operator return type" open question for subclasses wi
 
 These two changes shipped together because they are the same modification: the constructor's signature growing optional keyword parameters. Polymorphic `[]=` (0.13.0) was deliberately not bundled — it changes assignment dispatch, a different method and a different concern. The seam is "constructor-signature changes together; assignment-dispatch changes separately."
 
-### Summary
+### 0.13.0 (2026-06-01): Polymorphic []=
 
-The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`), together with selection (exact, array, range, proc, regex), projection, contraction, formulae, the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, and a constructor that takes data positionally or by keyword and carries an optional `name:`, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values and analytical chains that stay closed through filtering and ordering. The next phase (0.13.0+) adds polymorphic assignment, block forms across the comparison, composition, and set operators for custom row-matching, then proceeds through richer formulae and `Namo::Collection`.
-
-## 0.13.0: Polymorphic []=
-
-`[]=` dispatches on value type. A proc registers a formula and clears any data column of that name. A scalar broadcasts to every row and clears any formula of that name.
+`[]=` dispatches on the type of the value assigned. A `Proc` registers a formula; anything else broadcasts the value to every row. The two branches are mirror images that together enforce **exclusive storage** — a name is either a data dimension or a derived dimension, never both.
 
 ```ruby
 def []=(name, value)
@@ -754,45 +750,19 @@ def []=(name, value)
 end
 ```
 
-The Proc-branch guard (`if @data.first&.key?(name)`) avoids walking all rows when there's no data column to clear. The scalar branch's broadcast and formula-delete are unconditional — both cheap or the operation's actual work.
+The Proc branch clears any data column of that name before registering the formula; the else branch deletes any formula of that name before broadcasting. Last write wins, and there is no shadowing. The Proc-branch clear is guarded (`if @data.first&.key?(name)`) so it walks the rows only when there's actually a data column to clear; the `&.` also handles the empty-data case where `@data.first` is `nil`. The else branch's `@formulae.delete(name)` and broadcast are unconditional — `Hash#delete` on an absent key is a cheap no-op, and the broadcast is the operation's actual work. The match is on `Proc` specifically (`Proc === value`), consistent with `Row#match?`'s proc-selection branch from 0.8.0, so an array is not a proc and `namo[:weights] = [1, 2, 3]` broadcasts the array as each row's value.
 
-#### Why polymorphic
+Exclusivity is self-enforcing because the inspection vocabulary is derived live. `data_dimensions` reads the keys of the first row and `derived_dimensions` reads the keys of `@formulae`, so clearing the data column is what removes a name from `data_dimensions`, and deleting the formula is what removes it from `derived_dimensions`. There's no separate bookkeeping to keep in sync. A name assigned a scalar shows up in `data_dimensions`; a name assigned a proc shows up in `derived_dimensions`; never both, so it appears in `dimensions` (their concatenation) exactly once.
 
-Before 0.13.0, `[]=` only handled procs (registering formulae). Adding broadcast assignment as a separate method (`broadcast` or `set_all`) would have worked, but the polymorphic dispatch reads more naturally for the common case:
+#### Why polymorphic, not a separate method
 
-```ruby
-# Polymorphic — same syntax, dispatch on value
-namo[:status] = 'active'                          # broadcast scalar
-namo[:revenue] = proc{|r| r[:price] * r[:quantity]}  # register formula
+The alternative — `[]=` for formulae plus a separate `broadcast`/`set_all` for scalars — was considered and rejected. `[]` already dispatches polymorphically over exact values, arrays, ranges, procs, and regexes (0.8.0); `[]=` follows the same convention rather than introduce a parallel naming scheme. The exclusivity rule then lives at the one place assignment happens, instead of being pushed onto the user, who could otherwise leave a formula shadowed by a data column of the same name (or vice versa) — stale state that, with the live-derived inspection methods, would surface as a name listed in both `data_dimensions` and `derived_dimensions`. And it reads naturally: `namo[:status] = 'active'` is "set status to active across this Namo," which is exactly what it does.
 
-# Without polymorphism, two different APIs
-namo[:revenue] = proc{|r| r[:price] * r[:quantity]}
-namo.broadcast(:status, 'active')
-```
+This shipped separately from the 0.12.0 constructor widening by design: that release changed the constructor's signature; this one changes assignment dispatch — a different method and a different concern. The seam is "constructor-signature changes together; assignment-dispatch changes separately."
 
-The exclusive-storage semantics — proc clears data column, scalar clears formula — reflect the unified treatment of data and derived dimensions from the design philosophy: a name is either data or derived, never both. Last-write-wins, no shadowing.
+### Summary
 
-#### Why not separate methods
-
-The alternative of `[]=` for formulae and a separate method (`broadcast`, `[]=!`, etc.) for scalar broadcast was considered and rejected. Reasons:
-
-1. **Symmetry with selection.** `[]` handles many types polymorphically (exact values, arrays, ranges, procs, regexes from 0.8.0). `[]=` should follow the same convention.
-2. **The exclusivity rule.** A name can be data or derived, not both. Polymorphic `[]=` makes the exclusivity explicit at the assignment site. Separate methods would require the user to manage the exclusivity themselves (or risk leaving stale state).
-3. **Reads naturally.** `namo[:status] = 'active'` reads as "set status to active across this Namo," which is what it does.
-
-### Tests
-
-- `[]=` with a proc registers a formula (existing behaviour preserved).
-- `[]=` with a proc clears any data column of the same name.
-- `[]=` with a scalar broadcasts to every row.
-- `[]=` with a scalar clears any formula of the same name.
-- `[]=` with an array broadcasts the array as the value (scalar branch — Array is not Proc).
-- Last-write-wins: `namo[:x] = 5; namo[:x] = proc{|r| r[:y]}` leaves `:x` as a formula only.
-- Conversely: `namo[:x] = proc{|r| r[:y]}; namo[:x] = 5` leaves `:x` as a broadcast value only.
-
-### Documentation
-
-- README section on polymorphic `[]=`, including the exclusivity rule.
+The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`), together with selection (exact, array, range, proc, regex), projection, contraction, formulae, polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, and a constructor that takes data positionally or by keyword and carries an optional `name:`, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values and analytical chains that stay closed through filtering and ordering. The next phase (0.14.0+) adds block forms across the comparison, composition, and set operators for custom row-matching, then proceeds through richer formulae and `Namo::Collection`.
 
 ## 0.14.0: Blocks on comparison, composition, and set operators
 

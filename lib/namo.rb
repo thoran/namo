@@ -74,8 +74,15 @@ class Namo
     self.class.new(projected, formulae: @formulae.dup)
   end
 
-  def []=(name, proc)
-    @formulae[name] = proc
+  def []=(name, value)
+    case value
+    when Proc
+      @data.each{|row| row.delete(name)} if @data.first&.key?(name)
+      @formulae[name] = value
+    else
+      @formulae.delete(name)
+      @data.each{|row| row[name] = value}
+    end
   end
 
   def +(other)

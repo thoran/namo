@@ -585,6 +585,42 @@ sales[product: 'Widget'][:revenue, :quarter]
 
 Formulae carry through selection — a filtered Namo instance remembers its formulae.
 
+### Polymorphic `[]=`
+
+`[]=` dispatches on the type of the value assigned. A proc registers a formula, as above. Anything else broadcasts the value to every row:
+
+```ruby
+sales[:status] = 'active'
+sales.values(:status)
+# => ['active', 'active', 'active', 'active']
+
+sales[:revenue] = proc{|row| row[:price] * row[:quantity]}
+sales.values(:revenue)
+# => [1000.0, 1500.0, 1000.0, 1500.0]
+```
+
+The two branches mirror the polymorphism `[]` already has on the selection side, where a single bracket call dispatches over exact values, arrays, ranges, procs, and regexes. Rather than introduce a separate `broadcast` or `set_all` method for the scalar case, `[]=` reads the same way for both: `sales[:status] = 'active'` says "set status to active across this Namo," and `sales[:revenue] = proc{…}` says "derive revenue from each row."
+
+The two branches enforce **exclusive storage**: a name is either a data dimension or a derived dimension, never both. Assigning a proc clears any data column of that name; assigning anything else clears any formula of that name. The last write wins, and there is no shadowing:
+
+```ruby
+sales[:x] = 5                       # :x is a broadcast data value
+sales[:x] = proc{|row| row[:price]} # :x is now a formula — the broadcast value is gone
+
+sales[:x] = proc{|row| row[:price]} # :x is a formula
+sales[:x] = 5                       # :x is now a broadcast data value — the formula is gone
+```
+
+Exclusivity ties directly to the inspection vocabulary: a name assigned a scalar shows up in `data_dimensions`; a name assigned a proc shows up in `derived_dimensions`; never in both, so it appears in `dimensions` exactly once.
+
+Only a `Proc` takes the formula branch. An array is a value like any other, so it broadcasts as the per-row value rather than registering as a formula:
+
+```ruby
+sales[:weights] = [1, 2, 3]
+sales.values(:weights)
+# => [[1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2, 3]]
+```
+
 ### Coordinates and values
 
 `dimensions` covers the *queryable namespace* — every name you can ask for, whether it lives in the row data or is computed by a formula. Once formulae are defined, they appear alongside data dimensions:
