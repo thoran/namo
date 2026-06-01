@@ -511,6 +511,408 @@ describe Namo do
     end
   end
 
+  describe "#select" do
+    it "returns a Namo of matching rows" do
+      result = sales.select{|row| row[:price] < 20.0}
+      _(result).must_be_kind_of Namo
+      _(result.to_a).must_equal [
+        {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+        {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+      ]
+    end
+
+    it "selects using formula references in the block" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales.select{|row| row[:revenue] >= 1500.0}
+      _(result.to_a).must_equal [
+        {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+        {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+      ]
+    end
+
+    it "preserves formulae through to the returned Namo" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales.select{|row| row[:price] < 20.0}
+      _(result.values(:revenue)).must_equal [1000.0, 1500.0]
+    end
+
+    it "returns an empty Namo when nothing matches" do
+      result = sales.select{|row| row[:price] > 1000.0}
+      _(result).must_be_kind_of Namo
+      _(result.to_a).must_equal []
+    end
+
+    it "returns an instance of self's class" do
+      subclass = Class.new(Namo)
+      result = subclass.new(sample_data).select{|row| row[:price] < 20.0}
+      _(result.class).must_equal subclass
+    end
+
+    it "is aliased as filter, returning a Namo" do
+      result = sales.filter{|row| row[:price] < 20.0}
+      _(result).must_be_kind_of Namo
+      _(result.values(:product)).must_equal ['Widget', 'Widget']
+    end
+
+    it "is aliased as find_all, returning a Namo" do
+      result = sales.find_all{|row| row[:price] < 20.0}
+      _(result).must_be_kind_of Namo
+      _(result.values(:product)).must_equal ['Widget', 'Widget']
+    end
+  end
+
+  describe "#reject" do
+    it "returns the complement of select" do
+      result = sales.reject{|row| row[:price] < 20.0}
+      _(result).must_be_kind_of Namo
+      _(result.to_a).must_equal [
+        {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+        {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+      ]
+    end
+
+    it "together with select sums to the original" do
+      selected = sales.select{|row| row[:price] < 20.0}
+      rejected = sales.reject{|row| row[:price] < 20.0}
+      _((selected.to_a + rejected.to_a).length).must_equal sample_data.length
+    end
+
+    it "preserves formulae through to the returned Namo" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales.reject{|row| row[:price] < 20.0}
+      _(result.values(:revenue)).must_equal [1000.0, 1500.0]
+    end
+
+    it "returns an instance of self's class" do
+      subclass = Class.new(Namo)
+      result = subclass.new(sample_data).reject{|row| row[:price] < 20.0}
+      _(result.class).must_equal subclass
+    end
+  end
+
+  describe "#sort_by" do
+    it "returns rows in the specified order" do
+      result = sales.sort_by{|row| row[:quantity]}
+      _(result).must_be_kind_of Namo
+      _(result.values(:quantity)).must_equal [40, 60, 100, 150]
+    end
+
+    it "sorts using formula references in the block" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales.sort_by{|row| row[:revenue]}
+      _(result.values(:revenue)).must_equal [1000.0, 1000.0, 1500.0, 1500.0]
+    end
+
+    it "returns an instance of self's class" do
+      subclass = Class.new(Namo)
+      result = subclass.new(sample_data).sort_by{|row| row[:quantity]}
+      _(result.class).must_equal subclass
+    end
+  end
+
+  describe "#first" do
+    it "with an argument returns a Namo of the first n rows" do
+      result = sales.first(2)
+      _(result).must_be_kind_of Namo
+      _(result.to_a).must_equal [
+        {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+        {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+      ]
+    end
+
+    it "with an argument of 0 returns an empty Namo" do
+      result = sales.first(0)
+      _(result).must_be_kind_of Namo
+      _(result.to_a).must_equal []
+    end
+
+    it "without an argument returns a Row" do
+      result = sales.first
+      _(result).must_be_kind_of Namo::Row
+      _(result[:product]).must_equal 'Widget'
+    end
+
+    it "without an argument on an empty Namo returns nil" do
+      _(Namo.new.first).must_be_nil
+    end
+
+    it "preserves formulae through to the returned Namo" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      _(sales.first(2).values(:revenue)).must_equal [1000.0, 1500.0]
+    end
+
+    it "returns an instance of self's class with an argument" do
+      subclass = Class.new(Namo)
+      _(subclass.new(sample_data).first(2).class).must_equal subclass
+    end
+  end
+
+  describe "#last" do
+    it "with an argument returns a Namo of the last n rows" do
+      result = sales.last(2)
+      _(result).must_be_kind_of Namo
+      _(result.to_a).must_equal [
+        {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+        {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+      ]
+    end
+
+    it "with an argument of 0 returns an empty Namo" do
+      result = sales.last(0)
+      _(result).must_be_kind_of Namo
+      _(result.to_a).must_equal []
+    end
+
+    it "without an argument returns a Row" do
+      result = sales.last
+      _(result).must_be_kind_of Namo::Row
+      _(result[:product]).must_equal 'Gadget'
+      _(result[:quarter]).must_equal 'Q2'
+    end
+
+    it "without an argument on an empty Namo returns nil" do
+      _(Namo.new.last).must_be_nil
+    end
+
+    it "preserves formulae through to the returned Namo" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      _(sales.last(2).values(:revenue)).must_equal [1000.0, 1500.0]
+    end
+
+    it "returns an instance of self's class with an argument" do
+      subclass = Class.new(Namo)
+      _(subclass.new(sample_data).last(2).class).must_equal subclass
+    end
+  end
+
+  describe "#take" do
+    it "returns a Namo of the first n rows" do
+      result = sales.take(2)
+      _(result).must_be_kind_of Namo
+      _(result.values(:quantity)).must_equal [100, 150]
+    end
+
+    it "returns an empty Namo for n of 0" do
+      _(sales.take(0).to_a).must_equal []
+    end
+
+    it "returns all rows when n exceeds the length" do
+      _(sales.take(10).to_a).must_equal sample_data
+    end
+
+    it "returns an instance of self's class" do
+      subclass = Class.new(Namo)
+      _(subclass.new(sample_data).take(2).class).must_equal subclass
+    end
+  end
+
+  describe "#drop" do
+    it "returns a Namo of all rows past the first n" do
+      result = sales.drop(2)
+      _(result).must_be_kind_of Namo
+      _(result.values(:quantity)).must_equal [40, 60]
+    end
+
+    it "returns all rows for n of 0" do
+      _(sales.drop(0).to_a).must_equal sample_data
+    end
+
+    it "returns an empty Namo when n exceeds the length" do
+      _(sales.drop(10).to_a).must_equal []
+    end
+
+    it "returns an instance of self's class" do
+      subclass = Class.new(Namo)
+      _(subclass.new(sample_data).drop(2).class).must_equal subclass
+    end
+  end
+
+  describe "#take_while" do
+    it "returns a Namo of leading rows while the predicate holds" do
+      result = sales.take_while{|row| row[:price] < 20.0}
+      _(result).must_be_kind_of Namo
+      _(result.values(:product)).must_equal ['Widget', 'Widget']
+    end
+
+    it "evaluates the predicate against formula references" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales.take_while{|row| row[:revenue] < 1500.0}
+      _(result.values(:revenue)).must_equal [1000.0]
+    end
+
+    it "returns an instance of self's class" do
+      subclass = Class.new(Namo)
+      _(subclass.new(sample_data).take_while{|row| row[:price] < 20.0}.class).must_equal subclass
+    end
+  end
+
+  describe "#drop_while" do
+    it "returns a Namo of rows from the first predicate failure" do
+      result = sales.drop_while{|row| row[:price] < 20.0}
+      _(result).must_be_kind_of Namo
+      _(result.values(:product)).must_equal ['Gadget', 'Gadget']
+    end
+
+    it "evaluates the predicate against formula references" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      result = sales.drop_while{|row| row[:revenue] < 1500.0}
+      _(result.values(:revenue)).must_equal [1500.0, 1000.0, 1500.0]
+    end
+
+    it "returns an instance of self's class" do
+      subclass = Class.new(Namo)
+      _(subclass.new(sample_data).drop_while{|row| row[:price] < 20.0}.class).must_equal subclass
+    end
+  end
+
+  describe "#uniq" do
+    let(:dup_data) do
+      [
+        {product: 'Widget', quarter: 'Q1'},
+        {product: 'Widget', quarter: 'Q1'},
+        {product: 'Gadget', quarter: 'Q1'},
+        {product: 'Widget', quarter: 'Q2'}
+      ]
+    end
+
+    it "without a block dedupes rows on full-row equality" do
+      result = Namo.new(dup_data).uniq
+      _(result).must_be_kind_of Namo
+      _(result.to_a).must_equal [
+        {product: 'Widget', quarter: 'Q1'},
+        {product: 'Gadget', quarter: 'Q1'},
+        {product: 'Widget', quarter: 'Q2'}
+      ]
+    end
+
+    it "distinguishes numeric types, matching Row#eql? semantics" do
+      result = Namo.new([{n: 1}, {n: 1.0}]).uniq
+      _(result.to_a).must_equal [{n: 1}, {n: 1.0}]
+    end
+
+    it "with a block dedupes on the block's return value" do
+      result = Namo.new(dup_data).uniq{|row| row[:product]}
+      _(result.to_a).must_equal [
+        {product: 'Widget', quarter: 'Q1'},
+        {product: 'Gadget', quarter: 'Q1'}
+      ]
+    end
+
+    it "preserves formulae through to the returned Namo" do
+      namo = Namo.new(dup_data)
+      namo[:label] = proc{|r| "#{r[:product]}-#{r[:quarter]}"}
+      result = namo.uniq
+      _(result.values(:label)).must_equal ['Widget-Q1', 'Gadget-Q1', 'Widget-Q2']
+    end
+
+    it "returns an instance of self's class" do
+      subclass = Class.new(Namo)
+      _(subclass.new(dup_data).uniq.class).must_equal subclass
+    end
+  end
+
+  describe "#partition" do
+    it "returns a two-element Array of Namos" do
+      result = sales.partition{|row| row[:price] < 20.0}
+      _(result).must_be_kind_of Array
+      _(result.length).must_equal 2
+      _(result[0]).must_be_kind_of Namo
+      _(result[1]).must_be_kind_of Namo
+    end
+
+    it "splits into matches and non-matches summing to the original" do
+      matches, non_matches = sales.partition{|row| row[:price] < 20.0}
+      _(matches.to_a).must_equal [
+        {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+        {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+      ]
+      _(non_matches.to_a).must_equal [
+        {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
+        {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+      ]
+      _((matches.to_a + non_matches.to_a).length).must_equal sample_data.length
+    end
+
+    it "partitions using formula references in the block" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      matches, non_matches = sales.partition{|row| row[:revenue] >= 1500.0}
+      _(matches.values(:revenue)).must_equal [1500.0, 1500.0]
+      _(non_matches.values(:revenue)).must_equal [1000.0, 1000.0]
+    end
+
+    it "preserves formulae through to both returned Namos" do
+      sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      matches, non_matches = sales.partition{|row| row[:price] < 20.0}
+      _(matches.values(:revenue)).must_equal [1000.0, 1500.0]
+      _(non_matches.values(:revenue)).must_equal [1000.0, 1500.0]
+    end
+
+    it "returns instances of self's class" do
+      subclass = Class.new(Namo)
+      matches, non_matches = subclass.new(sample_data).partition{|row| row[:price] < 20.0}
+      _(matches.class).must_equal subclass
+      _(non_matches.class).must_equal subclass
+    end
+  end
+
+  describe "subset methods on an empty Namo" do
+    let(:empty) { Namo.new }
+
+    it "select returns an empty Namo" do
+      _(empty.select{|row| true}.to_a).must_equal []
+    end
+
+    it "reject returns an empty Namo" do
+      _(empty.reject{|row| true}.to_a).must_equal []
+    end
+
+    it "sort_by returns an empty Namo" do
+      _(empty.sort_by{|row| row[:x]}.to_a).must_equal []
+    end
+
+    it "first(n) returns an empty Namo" do
+      _(empty.first(2).to_a).must_equal []
+    end
+
+    it "last(n) returns an empty Namo" do
+      _(empty.last(2).to_a).must_equal []
+    end
+
+    it "take and drop return empty Namos" do
+      _(empty.take(2).to_a).must_equal []
+      _(empty.drop(2).to_a).must_equal []
+    end
+
+    it "take_while and drop_while return empty Namos" do
+      _(empty.take_while{|row| true}.to_a).must_equal []
+      _(empty.drop_while{|row| true}.to_a).must_equal []
+    end
+
+    it "uniq returns an empty Namo" do
+      _(empty.uniq.to_a).must_equal []
+    end
+
+    it "partition returns two empty Namos" do
+      matches, non_matches = empty.partition{|row| true}
+      _(matches.to_a).must_equal []
+      _(non_matches.to_a).must_equal []
+    end
+  end
+
+  describe "unchanged Enumerable methods" do
+    it "map still returns an Array" do
+      _(sales.map{|row| row[:product]}).must_be_kind_of Array
+    end
+
+    it "flat_map still returns an Array" do
+      _(sales.flat_map{|row| [row[:price]]}).must_be_kind_of Array
+    end
+
+    it "reduce still returns a scalar" do
+      _(sales.reduce(0){|sum, row| sum + row[:quantity]}).must_equal 350
+    end
+  end
+
   describe "#+" do
     let(:more_data) do
       [

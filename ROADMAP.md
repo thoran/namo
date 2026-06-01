@@ -1,6 +1,6 @@
 # Namo Roadmap
 
-Date: 20260528
+Date: 20260531
 
 ## Design philosophy
 
@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.10.0
+## Current state: 0.11.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -602,67 +602,47 @@ end
 
 `Namo` gets `==`, `eql?`, `hash`, `===`, `<`, `<=`, `>`, `>=` because a Namo is a collection of rows with set-theoretic relationships. A Row is a record — a single hash-shaped value. The set-theoretic operators don't translate: a Row isn't a "subset" of another Row in any meaningful sense, and `===` for pattern-match dispatch doesn't apply to row-level values the way it applies to analytical shapes. The three that translate are the value-semantics trio: `==`, `eql?`, `hash`. Those are what a hash-shaped value needs to participate in Ruby's collection machinery correctly.
 
-### Summary
+### 0.11.0 (2026-05-31): Enumerable methods return Namos
 
-The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`), together with selection (exact, array, range, proc, regex), projection, contraction, formulae, the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), and Row value semantics (`==`, `eql?`, `hash`), give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values. The next phase (0.11.0+) makes the subset-returning Enumerable methods return Namos, then adds block forms across the comparison, composition, and set operators for custom row-matching, then proceeds through named Namos, polymorphic assignment, richer formulae, and `Namo::Collection`.
+Extends 0.2.0's Enumerable inclusion. 0.2.0 made Namo Enumerable but left Ruby's default return types in place — `select`, `reject`, and friends produced Arrays, breaking the analytical chain. Applied use made the friction visible: every interactive session that selects rows from a Namo and tries to continue working with the result hit a `NoMethodError` for selection or projection on the Array. 0.11.0 specialises the subset-returning Enumerable methods to wrap in Namo. The Row-equality groundwork for `uniq` and `partition` came in from 0.10.0.
 
-## 0.11.0: Enumerable methods return Namos
-
-0.11.0 extends 0.2.0's Enumerable inclusion. 0.2.0 made Namo Enumerable but left Ruby's default return types in place — `select`, `reject`, and friends produce Arrays, breaking the analytical chain. Applied use has made this friction visible: every interactive session that selects rows from a Namo and tries to continue working with the result hits the `NoMethodError` for selection or projection on the Array. 0.11.0 specialises the subset-returning Enumerable methods to wrap in Namo. The Row-equality groundwork for `uniq` and `partition` is in place from 0.10.0.
-
-These are sequence-view operations: `select`, `reject`, `sort_by`, `first(n)`, `last(n)`, `take(n)`, `drop(n)`, `take_while`, `drop_while`, `uniq`, and `partition` all care about row order and produce ordered subsets. They sit alongside the set-view operators (`==`, `<`, `&`, `|`, etc.) introduced in 0.4.0–0.6.0. Namo's dual nature — set when membership is what matters, sequence when order is what matters — is realised across both families: set operators ignore order and produce set-correct results; Enumerable methods respect order and produce ordered results. The same Namo supports both views.
-
-`group_by` is deliberately excluded from this pass, and not merely deferred — it is *structurally blocked*. Every method above returns a `Namo` (or `[Namo, Namo]` for `partition`), and `Namo` exists. `group_by` returns a partition — a keyed set of sub-Namos — and the right type for that is `Namo::Collection`, which doesn't exist until 0.17.0. `group_by` therefore cannot be expressed here; it lands at 0.18.0, the first release after `Collection` ships. See the 0.18.0 section for why `Collection`'s existence is what brings `group_by` forward from its original 2.x slot.
+These are sequence-view operations: `select`, `reject`, `sort_by`, `first(n)`, `last(n)`, `take(n)`, `drop(n)`, `take_while`, `drop_while`, `uniq`, and `partition` all care about row order and produce ordered subsets. They sit alongside the set-view operators (`==`, `<`, `&`, `|`, etc.) from 0.4.0–0.6.0. Namo's dual nature — set when membership is what matters, sequence when order is what matters — is now realised across both families: set operators ignore order and produce set-correct results; Enumerable methods respect order and produce ordered results. The same Namo supports both views.
 
 ```ruby
 # Before (0.2.0–0.10.0)
 filtered = namo.select{|row| row[:close] > 40.0}
 filtered.class             # => Array
-filtered[symbol: 'BHP']   # => NoMethodError
-filtered = Namo.new(filtered)
-filtered[symbol: 'BHP']   # works
+filtered[symbol: 'BHP']    # => NoMethodError
 
 # After (0.11.0)
 filtered = namo.select{|row| row[:close] > 40.0}
 filtered.class             # => Namo
-filtered[symbol: 'BHP']   # works — selection, projection, formulae, everything
+filtered[symbol: 'BHP']    # works — selection, projection, formulae, everything
 ```
 
-### Scope
+#### Scope
 
 Methods that return Namos:
 
-- `select`, `reject` — predicate-based subset, formulae carry through.
+- `select`, `reject` — predicate-based subset, formulae carry through. `select`'s Enumerable aliases `filter` and `find_all` are aliased to the override, so they return Namos too — the only overridden method that has aliases to keep in step.
 - `sort_by` — reordered Namo, formulae carry through.
 - `first(n)`, `last(n)` — leading and trailing subsets. Without an argument, return a single Row (or nil for empty); with an argument, return a Namo.
 - `take(n)`, `drop(n)` — leading subset and its complement.
 - `take_while`, `drop_while` — predicate-based leading subset and its complement.
-- `uniq` — dedupe rows on full-row equality (uses `Row#==` from 0.10.0). With a block, dedupe on the block's return value, following Ruby's `Enumerable#uniq` convention.
+- `uniq` — dedupe rows on full-row equality (`Row#==`/`eql?` from 0.10.0). With a block, dedupe on the block's return value, following `Enumerable#uniq`'s convention.
 - `partition` — returns `[Namo, Namo]` — matches and non-matches.
 
-`group_by` is not in this list — see the note above; it returns a `Namo::Collection` and lands at 0.18.0.
+Methods that did not change: `map`, `flat_map` (transformed values, possibly not row-shaped), `reduce`, `sum`, `min_by`, `max_by`, `count` (scalars), and `each` (already returns an Enumerator or yields Rows).
 
-Methods that do not change:
+`group_by` is deliberately excluded, and not merely deferred — it is *structurally blocked*. Every method above returns a `Namo` (or `[Namo, Namo]`), and `Namo` exists. `group_by` returns a keyed set of sub-Namos, and the right type for that is `Namo::Collection`, which doesn't exist until 0.17.0. It lands at 0.18.0.
 
-- `map`, `flat_map` — return type is genuinely different (transformed values, possibly not row-shaped).
-- `reduce`, `sum`, `min_by`, `max_by`, `count` — scalars.
-- `each` — already returns Enumerator or yields Rows.
+#### Implementation pattern
 
-### Implementation pattern
-
-Subset-returning methods construct a Namo via `self.class.new` so subclass type is preserved. Formulae carry through (duped to avoid shared mutation).
+Subset-returning methods construct via `self.class.new` so subclass type is preserved; formulae carry through, duped to avoid shared mutation.
 
 ```ruby
 def select(&block)
   self.class.new(@data.select{|row| block.call(Row.new(row, @formulae))}, formulae: @formulae.dup)
-end
-
-def reject(&block)
-  self.class.new(@data.reject{|row| block.call(Row.new(row, @formulae))}, formulae: @formulae.dup)
-end
-
-def sort_by(&block)
-  self.class.new(@data.sort_by{|row| block.call(Row.new(row, @formulae))}, formulae: @formulae.dup)
 end
 
 def first(n = nil)
@@ -671,30 +651,6 @@ def first(n = nil)
   else
     @data.first ? Row.new(@data.first, @formulae) : nil
   end
-end
-
-def last(n = nil)
-  if n
-    self.class.new(@data.last(n), formulae: @formulae.dup)
-  else
-    @data.last ? Row.new(@data.last, @formulae) : nil
-  end
-end
-
-def take(n)
-  self.class.new(@data.take(n), formulae: @formulae.dup)
-end
-
-def drop(n)
-  self.class.new(@data.drop(n), formulae: @formulae.dup)
-end
-
-def take_while(&block)
-  self.class.new(@data.take_while{|row| block.call(Row.new(row, @formulae))}, formulae: @formulae.dup)
-end
-
-def drop_while(&block)
-  self.class.new(@data.drop_while{|row| block.call(Row.new(row, @formulae))}, formulae: @formulae.dup)
 end
 
 def uniq(&block)
@@ -711,58 +667,31 @@ def partition(&block)
 end
 ```
 
-### Subclass considerations
+The no-block `uniq` dedupes raw `@data` hashes via `Array#uniq`, which uses `eql?`/`hash` — exactly what `Row#eql?`/`Row#hash` delegate to — so it matches Row equality while avoiding Row allocations. The practical consequence is numeric type strictness: `Namo.new([{n: 1}, {n: 1.0}]).uniq` keeps both rows, matching `Row#eql?`.
 
-Same trap as operators — `self.class.new(...)` constructs an instance of the subclass, which fires its `initialize` side effects. The `if name` guard pattern (introduced in 0.12.0 alongside the `name:` attribute) is the documented convention for subclasses with side effects in `initialize`. Until 0.12.0, subclasses with side effects need to handle the operator-derived and Enumerable-derived cases via whatever pattern they currently use.
+#### Subclass considerations
 
-### Backward compatibility
+Same trap as the operators — `self.class.new(...)` constructs an instance of the subclass, firing its `initialize` side effects. The `if name` guard pattern (introduced in 0.12.0 alongside the `name:` attribute) is the documented convention for subclasses with side effects in `initialize`.
 
-This is a breaking change for code expecting Array returns from these methods. In 0.x, breaking changes are allowed; worth a clear release note: "Subset Enumerable methods now return Namos. If your code expected Arrays, call `.entries` or `.to_a` on the result."
+#### Backward compatibility
 
-For thoran's own code, the breakage is contained — re-pasting the construction lines is the standard interactive workflow, and any older scripts can be updated or pinned.
+A breaking change for code expecting Array returns from these methods. In 0.x, breaking changes are allowed; the release note: "Subset Enumerable methods now return Namos. If your code expected Arrays, call `.entries` or `.to_a` on the result."
 
-### Tests to cover
+#### Performance note
 
-- `select` returns a Namo of matching rows.
-- `select` with formula references in the block.
-- `select` preserves formulae through to the returned Namo.
-- `reject` returns the complement of `select`.
-- `sort_by` returns rows in the specified order.
-- `sort_by` with formula references in the block.
-- `first(0)` returns an empty Namo.
-- `first(n)` for n > 0 returns a Namo with the first n rows.
-- `first` without arg returns a Row.
-- `first` on an empty Namo returns nil.
-- `last(n)` mirrors `first(n)`.
-- `last` without arg mirrors `first`.
-- `take(n)`, `drop(n)` work for various n including 0 and n > length.
-- `take_while`, `drop_while` work with formula references.
-- `uniq` without a block dedupes rows on `Row#==`.
-- `uniq` with a block dedupes on the block's return value.
-- `partition` returns a two-element Array of Namos summing to the original.
-- Empty-Namo edge cases for each method.
-- Subclass type preservation across every method.
-- The unchanged methods (`map`, `reduce`, etc.) still return their original types.
+`last(n)` goes straight to `@data.last(n)`, the efficient path. No fall-through to Enumerable's materialise-then-slice behaviour.
 
-### Documentation
+#### Notes on these two releases
 
-- Update the README's overview to note that subset operations return Namos.
-- Add a short section showing the chaining benefit: `namo.select{|r| r[:close] > 40}.values(:close).sum`.
-- Note in the release announcement that this is a behaviour change from previous releases.
+0.10.0 and 0.11.0 are a single conceptual move. 0.10.0 extends 0.6.0's comparison work to Row; 0.11.0 extends 0.2.0's Enumerable inclusion to make subset-returning methods produce Namos. They pair because 0.11.0's `uniq` and `partition` need Row equality to work correctly, and 0.10.0 puts that in place.
 
-### Performance note
+The pattern of revisiting earlier releases is worth flagging because it recurs. Namo's earlier releases closed algebras cleanly at one conceptual level — Enumerable at 0.2.0, the set algebra at 0.4.0–0.5.0, comparison at 0.6.0, composition at 0.9.0. Each was a coherence statement: a complete, deliberately-bounded piece of algebra. Theoretical design closes algebras at their natural level; the substrate beneath the algebra (return types, value semantics on the underlying objects) tends to get left at Ruby defaults because the design effort goes into the structural completeness above.
 
-The `last(n)` performance is unoptimised in 0.11.0 — falls through to Enumerable's implementation which materialises before slicing. The performance fix (Finite module's direct `@data.last(n)` access) lands in 2.x. Acceptable for 1.0 since the target use cases are interactive at thousands-of-rows scale where the performance gap is invisible.
+Applied use stresses different parts. Interactive sessions reveal that `select` returning Array breaks chaining. Wanting to dedupe rows reveals that Row never got the value semantics the Namo level got. The substrate beneath the algebra needs to catch up to applied use. This is healthy: the earlier releases are sound — the revisits are extensions, not corrections. If applied use were revealing genuine design errors that would be different; instead it reveals where deliberate scope limits in earlier releases were tighter than the applied surface needs. Future releases may follow the same pattern.
 
-### Notes on these two releases
+### Summary
 
-0.10.0 and 0.11.0 are a single conceptual move. 0.10.0 extends 0.6.0's comparison work to Row, and 0.11.0 extends 0.2.0's Enumerable inclusion to make subset-returning methods produce Namos. They pair because 0.11.0's `uniq` and `partition` need Row equality to work correctly; 0.10.0 puts that in place.
-
-The pattern of revisiting earlier releases is worth flagging because it's likely to recur. Namo's earlier releases tended to close algebras cleanly at one conceptual level — Enumerable at 0.2.0, the set algebra at 0.4.0–0.5.0, comparison at 0.6.0, composition at 0.9.0. Each was a coherence statement: a complete, deliberately-bounded piece of algebra. Theoretical design closes algebras at their natural level; the substrate beneath the algebra (return types, value semantics on the underlying objects) tends to get left at Ruby defaults because the design effort goes into the structural completeness above.
-
-Applied use stresses different parts. Interactive sessions reveal that `select` returning Array breaks chaining. Wanting to dedupe rows reveals that Row never got the value semantics the Namo level got. The substrate beneath the algebra needs to catch up to applied use.
-
-This is healthy. The earlier releases are sound — the revisits are extensions, not corrections. 0.10.0 doesn't change what 0.6.0 did; it adds Row comparison alongside the Namo comparison that already exists. 0.11.0 doesn't change what 0.2.0 did; it specialises Enumerable's return types where Namo can do better. If applied use were revealing genuine design errors — "comparison should never have been multiset-based" or "Enumerable was the wrong interface" — that would be different. Instead it's revealing where deliberate scope limits in earlier releases were tighter than the applied surface needs. Future releases may follow the same pattern. Naming it here makes the pattern less surprising when it recurs.
+The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`), together with selection (exact, array, range, proc, regex), projection, contraction, formulae, the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), and the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values and analytical chains that stay closed through filtering and ordering. The next phase (0.12.0+) widens the constructor with keyword data and a `name:` attribute, adds block forms across the comparison, composition, and set operators for custom row-matching, then proceeds through polymorphic assignment, richer formulae, and `Namo::Collection`.
 
 ## 0.12.0: Constructor widening — keyword data and name:
 

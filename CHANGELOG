@@ -1,6 +1,19 @@
 CHANGELOG
 _________
 
+20260531
+0.11.0: ~ Subset Enumerable methods (select, reject, sort_by, first, last, take, drop, take_while, drop_while, uniq, partition) return Namos
+
+1. + Namo#select, Namo#reject, Namo#sort_by, Namo#take_while, Namo#drop_while: Predicate and ordering subset methods that wrap the @data Array result in `self.class.new(..., formulae: @formulae.dup)`, shadowing Enumerable's Array-returning defaults. Blocks receive a Row, so formulae resolve inside the predicate, and formulae carry through to the returned Namo. Namo#select is aliased as filter and find_all (the only overridden method with Enumerable aliases), so the aliases return Namos too.
+2. + Namo#first, Namo#last: With an argument, return a Namo of the first/last n rows. Without an argument, return a single Row (or nil on an empty Namo), per Ruby's Enumerable#first / Array#last convention. first(0) returns an empty Namo (n is truthy). last(n) reads @data.last(n) directly — the efficient path, no Enumerable materialise-then-slice fall-through.
+3. + Namo#take, Namo#drop: Leading subset and its complement, wrapping @data.take(n) / @data.drop(n).
+4. + Namo#uniq: Full-row dedupe. The no-block path dedupes raw @data hashes via Array#uniq, which uses eql?/hash — matching Row#eql?/Row#hash from 0.10.0, so numeric types stay distinct ({n: 1} and {n: 1.0} are both kept) and Row allocations are avoided. With a block, dedupes on the block's return value, per Enumerable#uniq.
+5. + Namo#partition: Returns [Namo, Namo] — matches and non-matches — each wrapped via self.class.new with duped formulae. map, flat_map, reduce, sum, min_by, max_by, count, and each are deliberately left unchanged (transformed values, scalars, or already-correct). group_by is structurally blocked — it needs Namo::Collection (0.17.0) and lands at 0.18.0.
+6. ~ test/namo_test.rb: + describe blocks for each new method — return-as-Namo, formula references in blocks, formula carry-through, empty-Namo edges, n=0 and n>length boundaries, uniq full-row dedupe plus numeric strictness plus block form, partition summing to the original, and subclass type preservation via Class.new(Namo). + Tests that select's filter and find_all aliases return Namos. + Guard tests that map/flat_map/reduce keep their original return types.
+7. ~ README.md: + Note in the Enumerable section that the subset-returning methods return Namos, with a chaining example and a first/last/uniq semantics paragraph. ~ Overview design-stance sentence to fold the Enumerable subset methods into "Namos in, Namos out".
+8. ~ ROADMAP.md: Promote 0.11.0 from upcoming to shipped under "Current state: 0.11.0"; fold the subset Enumerable methods into the Summary's completed vocabulary and point "next phase" at 0.12.0+; bump Date to 20260531.
+9. ~ Namo::VERSION: /0.10.0/0.11.0/
+
 20260528
 0.10.0: + Row value semantics: ==, eql?, hash
 

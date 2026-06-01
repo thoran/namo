@@ -4,7 +4,7 @@ Named dimensional data for Ruby.
 
 Namo is a Ruby library for working with multi-dimensional data using named dimensions. It infers dimensions and coordinates from plain arrays of hashes — the same shape you get from databases, CSV files, JSON, and YAML — so there's no reshaping step.
 
-The design rests on a few stances: every hash key is a dimension and none is privileged as a coordinate or value; formulae attach to a Namo alongside data and re-evaluate on each access, appearing as derived dimensions alongside the data dimensions; operators that combine Namos all take Namos and return Namos, so analytical pipelines close; and the formula mechanism is type-agnostic — strings, dates, booleans, and arbitrary Ruby objects work as readily as numbers.
+The design rests on a few stances: every hash key is a dimension and none is privileged as a coordinate or value; formulae attach to a Namo alongside data and re-evaluate on each access, appearing as derived dimensions alongside the data dimensions; operators that combine Namos all take Namos and return Namos — as do the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `uniq`, and the rest) — so analytical pipelines close; and the formula mechanism is type-agnostic — strings, dates, booleans, and arbitrary Ruby objects work as readily as numbers.
 
 ## Installation
 
@@ -675,6 +675,20 @@ sales.min_by{|row| row[:price]}[:product]
 sales.flat_map{|row| [row[:price]]}
 # => [10.0, 10.0, 25.0, 25.0]
 ```
+
+The subset-returning Enumerable methods — `select`, `reject`, `sort_by`, `first(n)`, `last(n)`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, and `partition` — return Namos rather than Arrays (`partition` returns `[Namo, Namo]`), carrying formulae through. This keeps the analytical chain closed: the result of a filter is still selectable, projectable, and operable, exactly like the operators that combine Namos:
+
+```ruby
+sales.select{|row| row[:price] < 20.0}.values(:price).sum
+# => 20.0
+
+sales.select{|row| row[:price] < 20.0}[product: 'Widget'][:quarter, :revenue].to_a
+# => [{quarter: 'Q1', revenue: 1000.0}, {quarter: 'Q2', revenue: 1500.0}]
+```
+
+Without an argument, `first` and `last` return a single `Row` (or `nil` on an empty Namo), following Ruby's convention; with an argument they return a Namo of that many rows. `uniq` dedupes on full-row equality (`Row#==`), or on a block's return value when given one. `select`'s aliases `filter` and `find_all` follow the override and return Namos too.
+
+The transforming and reducing methods are deliberately left as Enumerable's defaults, because their results aren't row-shaped and so can't be a Namo: `map`/`collect` and `flat_map` return Arrays of whatever the block produces; `reduce`/`inject`, `sum`, `count`, `min_by`, and `max_by` return scalars. `each` is unchanged — it yields Rows, or returns an Enumerator with no block.
 
 ### Extracting data
 
