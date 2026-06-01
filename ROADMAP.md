@@ -1,6 +1,6 @@
 # Namo Roadmap
 
-Date: 20260531
+Date: 20260601
 
 ## Design philosophy
 
@@ -668,6 +668,8 @@ end
 ```
 
 The no-block `uniq` dedupes raw `@data` hashes via `Array#uniq`, which uses `eql?`/`hash` — exactly what `Row#eql?`/`Row#hash` delegate to — so it matches Row equality while avoiding Row allocations. The practical consequence is numeric type strictness: `Namo.new([{n: 1}, {n: 1.0}]).uniq` keeps both rows, matching `Row#eql?`.
+
+As of 0.11.1, these methods (and `each`) live in a `Namo::Enumerable` module included into `Namo`, rather than inline on the class — a behaviour-preserving reorganisation. The module `include ::Enumerable`s itself and sits above stdlib `Enumerable` in `Namo`'s ancestor chain, so the overrides win while `map`/`reduce`/etc. fall through unchanged.
 
 #### Subclass considerations
 

@@ -1,6 +1,15 @@
 CHANGELOG
 _________
 
+20260601
+0.11.1: Extract the subset Enumerable methods into a Namo::Enumerable module.
+
+1. + lib/Namo/Enumerable.rb: New module Namo::Enumerable holding each and the subset-returning Enumerable methods (select plus its filter/find_all aliases, reject, sort_by, first, last, take, drop, take_while, drop_while, uniq, partition), moved verbatim from Namo. The module does `include ::Enumerable` — the leading :: is required, because under the nested `class Namo; module Enumerable` scope a bare `Enumerable` resolves to Namo::Enumerable itself and raises a cyclic-include error.
+2. ~ lib/namo.rb: Remove the inline each and the eleven subset methods; remove `include Enumerable`; + `require_relative './Namo/Enumerable'` and `include Namo::Enumerable` (which transitively brings stdlib Enumerable into the ancestor chain below the module, so the overrides win and map/reduce/etc. still fall through). Pure reorganisation — no behaviour change.
+3. ~ test/namo_test.rb: + Namo::Enumerable module tests — it is a Module, Namo includes it and stdlib Enumerable, and it precedes ::Enumerable in Namo.ancestors so the overrides resolve first. The existing Enumerable subset tests are unchanged and remain green, evidencing the move is behaviour-preserving.
+4. ~ ROADMAP.md: + note in the 0.11.0 section that, as of 0.11.1, these methods live in the Namo::Enumerable module; bump Date to 20260601.
+5. ~ Namo::VERSION: /0.11.0/0.11.1/
+
 20260531
 0.11.0: ~ Subset Enumerable methods (select, reject, sort_by, first, last, take, drop, take_while, drop_while, uniq, partition) return Namos
 

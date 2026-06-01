@@ -913,6 +913,22 @@ describe Namo do
     end
   end
 
+  describe "Namo::Enumerable module" do
+    it "is a Module supplying the subset methods" do
+      _(Namo::Enumerable).must_be_kind_of Module
+    end
+
+    it "is included in Namo, transitively including stdlib Enumerable" do
+      _(Namo.include?(Namo::Enumerable)).must_equal true
+      _(Namo.include?(Enumerable)).must_equal true
+    end
+
+    it "sits above stdlib Enumerable so its overrides win" do
+      ancestors = Namo.ancestors
+      _(ancestors.index(Namo::Enumerable) < ancestors.index(::Enumerable)).must_equal true
+    end
+  end
+
   describe "#+" do
     let(:more_data) do
       [
