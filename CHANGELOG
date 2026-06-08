@@ -1,6 +1,23 @@
 CHANGELOG
 _________
 
+20260608
+0.13.2: Narrow the planned 0.14.0 block-form scope to the composition operators and document the rationale.
+
+1. ~ ROADMAP.md: Rewrite the 0.14.0 section from "blocks on comparison, composition, and
+   set operators" to "blocks on composition operators (*, **)". State the governing
+   principle (a block belongs only where the operator's matching is underdetermined).
+   Remove the comparison-operator and set-operator block subsections; note that their use
+   cases are expressed by comparing projections and by projection + proc selection
+   respectively. State explicitly that / takes no block. Replace "The unifying pattern"
+   with the composition-only rationale.
+2. ~ ROADMAP.md: Rescope the Summary's "next phase" pointer to composition-only block forms.
+3. ~ COMPARISON.md: Replace the "Blocks on set operators" subsection (feature no longer
+   planned) with a shipped "Keyed anti-join" entry expressing keyed exclusion via projection
+   + proc selection; repoint the composition "Conditional join with block" entry to planned
+   (0.14.0). Date bumped to 20260608.
+4. ~ Namo::VERSION: /0.13.1/0.13.2/
+
 20260604
 0.13.1: Correct the row-order claim across the docs and document the same-dimension-order precondition.
 

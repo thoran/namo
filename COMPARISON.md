@@ -1,6 +1,6 @@
 # Namo Feature Comparison
 
-Date: 20260521
+Date: 20260608
 
 Feature-by-feature comparison of Namo against Pandas, Polars, R/dplyr, xarray, and Julia/DataFrames.jl. Covers both where the tools are the same and where they differ.
 
@@ -743,7 +743,7 @@ innerjoin(ohlcv, fundamentals, on = [:symbol, :exchange])
 
 ### Conditional join with block
 
-**Namo** — planned (0.10.0)
+**Namo** — planned (0.14.0)
 
 Custom matching logic — find the most recent quarterly report as of each daily observation.
 
@@ -907,14 +907,15 @@ vcat(a, b)
 
 **Summary:** R/dplyr comes closest with `intersect`, `union`, `setdiff` as named functions. Namo provides all five as operators that read like algebraic expressions and compose naturally. No other tool has symmetric difference as a first-class operation. No other tool carries formulae through set operations.
 
-### Blocks on set operators
+### Keyed anti-join
 
-**Namo** — planned (0.10.0)
+**Namo** — shipped (0.8.0)
 
-Relax exact row matching to a custom predicate.
+The set operators are whole-row and dimension-blind — they ask "same row?", never "same on this key?". To exclude rows by a key, compose two shipped primitives: project the keys to exclude, then select the rows whose key isn't among them. No block on `-` is needed, and none is planned; keyed matching is a selection concern, handled where selection lives.
 
 ```ruby
-today.-(exclusions){|a, b| a[:symbol] == b[:symbol]}
+excluded = exclusions.values(:symbol)
+today[symbol: ->(s){ !excluded.include?(s) }]
 ```
 
 **Pandas** — anti-join on a column. Works for single-column matching. Multi-column or complex matching requires merge with indicator.
@@ -943,7 +944,7 @@ anti_join(today, exclusions, by = 'symbol')
 antijoin(today, exclusions, on = :symbol)
 ```
 
-**Summary:** Other tools handle column-name-based matching via anti-joins. Namo's blocks accept arbitrary predicates — the matching logic is not restricted to column equality. A block could match on computed values, fuzzy comparisons, or any other criterion.
+**Summary:** Other tools express keyed exclusion through dedicated anti-join functions, restricted to column-name matching. Namo composes it from projection and proc selection, so the predicate is arbitrary Ruby — membership, computed values, fuzzy comparisons, any criterion — and the set operators stay whole-row and dimension-blind. The keyed match is a selection, not a set operation.
 
 ### Worked example: comparing yesterday's screen to today's
 
