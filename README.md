@@ -226,7 +226,7 @@ all_sales = q1_sales + q2_sales
 # ]>
 ```
 
-The dimensions must match — concatenating Namo objects with different dimensions raises an `ArgumentError`. Formulae carry through from the left-hand side.
+The dimensions must match — the same dimension names in the same order — or the operator raises an `ArgumentError`. Two Namos holding the same columns in a different order must be normalised to a common column order before they can be combined. Formulae carry through from the left-hand side.
 
 ### Row Removal
 
@@ -449,7 +449,7 @@ This is the same pattern that makes `Array#-` useful with arrays that aren't sub
 
 ### Equality
 
-Comparison on Namos is **multiset-theoretic on rows**: row order is ignored (it's an accident of ingestion, not data), but row multiplicities count (they *are* data). The same stance carries across the equality, pattern-match, and subset/superset operators below.
+Comparison on Namos is **multiset-theoretic on rows**: the comparison operators — `==`, `eql?`, `===`, `<`, `<=`, `>`, `>=` — ignore row order, so two Namos holding the same rows in a different order compare equal, while row multiplicities count (they *are* data). That stance is shared across the equality, pattern-match, and subset/superset operators documented below. Row order is otherwise preserved: `to_h` and `values` depend on it for columnar alignment, and `each`, `first`, `last`, `take`, `drop`, and `+` all observe it. It is the comparison operators alone that treat the sequence of rows as a multiset.
 
 `==` is multiset equality on rows. Class and formulae are ignored; row order is ignored; row multiplicities are not.
 

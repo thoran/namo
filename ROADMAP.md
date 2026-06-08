@@ -1,6 +1,6 @@
 # Namo Roadmap
 
-Date: 20260601
+Date: 20260604
 
 ## Design philosophy
 
@@ -222,7 +222,7 @@ All three require matching dimensions, raise `ArgumentError` otherwise. Formulae
 
 ### 0.6.0 (2026-05-11): Equality, pattern-match, subset, and superset
 
-Equality, pattern-match, and subset/superset operators, multiset-theoretic on rows where row-content matters. Two Namos with the same rows in different orders are equal; two Namos where one's rows are contained in the other are in a subset relation regardless of how either was ordered. Duplicate rows count — `[{a: 1}, {a: 1}]` is not equal to `[{a: 1}]`. This follows from Namo's identity as a multidimensional database rather than a sequence: row order is an accident of ingestion, not a property of the data, but row count is data.
+Equality, pattern-match, and subset/superset operators, multiset-theoretic on rows where row-content matters. Two Namos with the same rows in different orders are equal; two Namos where one's rows are contained in the other are in a subset relation regardless of how either was ordered. Duplicate rows count — `[{a: 1}, {a: 1}]` is not equal to `[{a: 1}]`. This follows from Namo's identity as a multidimensional database rather than a sequence: the comparison operators treat the rows as a multiset, so their order does not affect equality, while row count does. Row order is preserved by the row-sequence operations (`to_h`/`values`, `each`, `first`/`last`/`take`/`drop`, `+`); it is the comparison operators specifically that disregard it.
 
 The equality hierarchy mirrors Ruby's standard convention, extended with `===` for pattern-match dispatch:
 

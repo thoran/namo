@@ -1,6 +1,20 @@
 CHANGELOG
 _________
 
+20260604
+0.13.1: Correct the row-order claim across the docs and document the same-dimension-order precondition.
+
+1. ~ README.md: Scope the "row order is ignored" statement to the comparison operators
+   (==, eql?, ===, <, <=, >, >=) in the Equality section; drop "accident of ingestion".
+   + Positive note that row order is preserved through to_h/values, each, first, last,
+   take, drop, and +.
+2. ~ README.md: At Concatenation, state that the set operators require the same dimension
+   names in the same order, with guidance to normalise inputs to a common column order
+   before combining.
+3. ~ ROADMAP.md: Scope the 0.6.0 section's "row order is an accident of ingestion" to the
+   comparison operators; drop "accident of ingestion". Date bumped to 20260604.
+4. ~ Namo::VERSION: /0.13.0/0.13.1/
+
 20260601
 0.13.0: Polymorphic []= — proc registers a formula, scalar broadcasts to every row.
 
