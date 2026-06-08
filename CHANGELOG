@@ -2,6 +2,37 @@ CHANGELOG
 _________
 
 20260608
+0.14.0: + blocks on the composition operators (*, **) for custom match refinement.
+
+1. ~ lib/namo.rb: Namo#* takes an optional block. Without a block, behaviour is unchanged.
+   With a block, the right rows matched on the shared data dimensions are passed as a Namo
+   (candidates, carrying other's formulae) alongside the left Row (carrying self's
+   formulae); the block returns a Namo of the rows to pair, each merged into the left row.
+   An empty returned Namo drops the left row (inner-join semantics). Result formulae are
+   other.formulae.merge(@formulae) as before — the block does not affect result formulae.
+   The shared-dimension precondition still applies with a block present.
+2. ~ lib/namo.rb: Namo#** takes an optional block, same contract, with candidates being all
+   of other's rows (no shared-dimension pre-filter). The disjoint-dimensions precondition
+   still applies with a block present.
+3. ~ test/namo_test.rb: + "with a block" context under #* (single-match one-row return, empty-return
+   drop, multi-row return, selection on other's derived dimension, reference to self's
+   derived dimension, result-formulae parity with no-block, derived-not-stored-but-resolves,
+   subclass type, preconditions still raise) and under #** (selector filtering one-to-many,
+   empty-return drop, full-candidates reproduces no-block, selection on other's derived
+   dimension, result-formulae parity, disjoint precondition still raises, subclass type).
+   Existing no-block #* and #** tests unchanged and green.
+4. ~ README.md: + block subsections under Composition and Cartesian product, with the
+   price/quarterly matching and orders/tiers worked examples and the (row, candidates) ->
+   Namo contract.
+5. ~ ROADMAP.md: Promote 0.14.0 to shipped (composition blocks only); Current state -> 0.14.0;
+   Summary folds in composition blocks; next phase -> 0.15.0. + the governing principle
+   (a block form is warranted iff the operation gives consideration to a dimension in
+   isolation), tied to the orthogonality/efficiency rationale for why set-operator/`/`
+   blocks were not added. The now-redundant upcoming 0.14.0 section removed.
+6. ~ COMPARISON.md: "Conditional join with block" -> shipped (0.14.0).
+7. ~ Namo::VERSION: /0.13.2/0.14.0/
+
+20260608
 0.13.2: Narrow the planned 0.14.0 block-form scope to the composition operators and document the rationale.
 
 1. ~ ROADMAP.md: Rewrite the 0.14.0 section from "blocks on comparison, composition, and

@@ -1450,6 +1450,126 @@ describe Namo do
       b = Namo.new([{symbol: 'BHP', pe: 14.5}])
       _((a * b).class).must_equal subclass
     end
+
+    context "with a block" do
+      let(:prices) do
+        Namo.new([
+          {symbol: 'BHP', date: '2025-02-15', close: 42.5},
+          {symbol: 'BHP', date: '2025-05-20', close: 44.0}
+        ])
+      end
+
+      let(:quarterly) do
+        Namo.new([
+          {symbol: 'BHP', quarter_end: '2024-12-31', eps: 1.0},
+          {symbol: 'BHP', quarter_end: '2025-03-31', eps: 1.2}
+        ])
+      end
+
+      let(:most_recent_quarter) do
+        proc do |row, candidates|
+          candidates[quarter_end: ->(qe){qe <= row[:date]}].sort_by{|f| f[:quarter_end]}.last(1)
+        end
+      end
+
+      it "pairs each left row with the single match the block returns" do
+        result = prices.*(quarterly, &most_recent_quarter)
+        _(result.to_a).must_equal [
+          {symbol: 'BHP', date: '2025-02-15', close: 42.5, quarter_end: '2024-12-31', eps: 1.0},
+          {symbol: 'BHP', date: '2025-05-20', close: 44.0, quarter_end: '2025-03-31', eps: 1.2}
+        ]
+      end
+
+      it "drops a left row whose block returns an empty Namo" do
+        early = Namo.new([
+          {symbol: 'BHP', date: '2024-06-01', close: 40.0},
+          {symbol: 'BHP', date: '2025-05-20', close: 44.0}
+        ])
+        result = early.*(quarterly, &most_recent_quarter)
+        _(result.to_a).must_equal [
+          {symbol: 'BHP', date: '2025-05-20', close: 44.0, quarter_end: '2025-03-31', eps: 1.2}
+        ]
+      end
+
+      it "pairs each row when the block returns a multi-row Namo (selector, not reducer)" do
+        left = Namo.new([{symbol: 'BHP', date: '2025-05-20', close: 44.0}])
+        result = left.*(quarterly){|row, candidates| candidates}
+        _(result.to_a).must_equal [
+          {symbol: 'BHP', date: '2025-05-20', close: 44.0, quarter_end: '2024-12-31', eps: 1.0},
+          {symbol: 'BHP', date: '2025-05-20', close: 44.0, quarter_end: '2025-03-31', eps: 1.2}
+        ]
+      end
+
+      it "selects on a derived dimension of other inside the block" do
+        prices = Namo.new([
+          {symbol: 'BHP', close: 42.5},
+          {symbol: 'RIO', close: 118.3}
+        ])
+        funds = Namo.new([
+          {symbol: 'BHP', price: 42.5, eps: 3.0},
+          {symbol: 'RIO', price: 118.3, eps: 13.0}
+        ])
+        funds[:pe] = proc{|f| f[:price] / f[:eps]}
+        result = prices.*(funds){|row, candidates| candidates[pe: ->(v){v && v < 10}]}
+        _(result.values(:symbol)).must_equal ['RIO']
+        _(result.values(:close)).must_equal [118.3]
+      end
+
+      it "resolves a derived dimension of self referenced in the block" do
+        dated = Namo.new([{symbol: 'BHP', date: '2025-05-20', close: 44.0}])
+        dated[:cutoff] = proc{|r| r[:date]}
+        result = dated.*(quarterly){|row, candidates| candidates[quarter_end: ->(qe){qe <= row[:cutoff]}].sort_by{|f| f[:quarter_end]}.last(1)}
+        _(result.to_a).must_equal [
+          {symbol: 'BHP', date: '2025-05-20', close: 44.0, quarter_end: '2025-03-31', eps: 1.2}
+        ]
+      end
+
+      it "produces the same result formulae as the no-block form" do
+        ohlcv = Namo.new([
+          {symbol: 'BHP', close: 42.5},
+          {symbol: 'RIO', close: 118.3}
+        ])
+        fundamentals = Namo.new([
+          {symbol: 'BHP', pe: 14.5},
+          {symbol: 'RIO', pe: 9.2}
+        ])
+        ohlcv[:label] = proc{|r| "#{r[:symbol]}-self"}
+        fundamentals[:flag] = proc{|r| "pe=#{r[:pe]}"}
+        blocked = ohlcv.*(fundamentals){|row, candidates| candidates}
+        plain = ohlcv * fundamentals
+        _(blocked.derived_dimensions).must_equal plain.derived_dimensions
+        _(blocked.values(:label)).must_equal plain.values(:label)
+        _(blocked.values(:flag)).must_equal plain.values(:flag)
+      end
+
+      it "leaves other's derived dimension unstored but resolvable on the result" do
+        prices = Namo.new([{symbol: 'BHP', close: 42.5}])
+        funds = Namo.new([{symbol: 'BHP', price: 42.5, eps: 3.0}])
+        funds[:pe] = proc{|f| f[:price] / f[:eps]}
+        result = prices.*(funds){|row, candidates| candidates}
+        _(result.data_dimensions).wont_include :pe
+        _(result.derived_dimensions).must_include :pe
+        _(result.values(:pe)).must_equal [42.5 / 3.0]
+      end
+
+      it "returns an instance of self's class" do
+        subclass = Class.new(Namo)
+        a = subclass.new([{symbol: 'BHP', close: 42.5}])
+        b = Namo.new([{symbol: 'BHP', pe: 14.5}])
+        result = a.*(b){|row, candidates| candidates}
+        _(result.class).must_equal subclass
+      end
+
+      it "still raises ArgumentError on no shared dimensions" do
+        a = Namo.new([{symbol: 'BHP'}])
+        b = Namo.new([{quarter: 'Q1'}])
+        _ { a.*(b){|row, candidates| candidates} }.must_raise ArgumentError
+      end
+
+      it "still raises TypeError on a non-Namo operand" do
+        _ { ohlcv.*([{symbol: 'BHP'}]){|row, candidates| candidates} }.must_raise TypeError
+      end
+    end
   end
 
   describe "#**" do
@@ -1528,6 +1648,90 @@ describe Namo do
       a = subclass.new([{product: 'Widget'}])
       b = Namo.new([{quarter: 'Q1'}])
       _((a ** b).class).must_equal subclass
+    end
+
+    context "with a block" do
+      let(:orders) do
+        Namo.new([
+          {order: 'A', weight: 5},
+          {order: 'B', weight: 15}
+        ])
+      end
+
+      let(:tiers) do
+        Namo.new([
+          {tier: 'light', max_weight: 10},
+          {tier: 'heavy', max_weight: 20}
+        ])
+      end
+
+      it "filters pairings by the selector block (one-to-many)" do
+        result = orders.**(tiers){|row, candidates| candidates[max_weight: ->(w){w >= row[:weight]}]}
+        _(result.to_a).must_equal [
+          {order: 'A', weight: 5, tier: 'light', max_weight: 10},
+          {order: 'A', weight: 5, tier: 'heavy', max_weight: 20},
+          {order: 'B', weight: 15, tier: 'heavy', max_weight: 20}
+        ]
+      end
+
+      it "drops a left row whose block returns an empty Namo" do
+        with_unservable = Namo.new([
+          {order: 'C', weight: 50},
+          {order: 'A', weight: 5}
+        ])
+        result = with_unservable.**(tiers){|row, candidates| candidates[max_weight: ->(w){w >= row[:weight]}]}
+        _(result.to_a).must_equal [
+          {order: 'A', weight: 5, tier: 'light', max_weight: 10},
+          {order: 'A', weight: 5, tier: 'heavy', max_weight: 20}
+        ]
+      end
+
+      it "reproduces the no-block product when the block returns all candidates" do
+        blocked = products.**(quarters){|row, candidates| candidates}
+        plain = products ** quarters
+        _(blocked.to_a).must_equal plain.to_a
+      end
+
+      it "selects on a derived dimension of other inside the block" do
+        weighted_tiers = Namo.new([
+          {tier: 'light', max_weight: 10},
+          {tier: 'heavy', max_weight: 20}
+        ])
+        weighted_tiers[:premium] = proc{|t| t[:max_weight] > 15}
+        result = orders.**(weighted_tiers){|row, candidates| candidates[premium: ->(v){v}]}
+        _(result.to_a).must_equal [
+          {order: 'A', weight: 5, tier: 'heavy', max_weight: 20},
+          {order: 'B', weight: 15, tier: 'heavy', max_weight: 20}
+        ]
+      end
+
+      it "produces the same result formulae as the no-block form" do
+        products[:plabel] = proc{|r| "p=#{r[:product]}"}
+        quarters[:qlabel] = proc{|r| "q=#{r[:quarter]}"}
+        blocked = products.**(quarters){|row, candidates| candidates}
+        plain = products ** quarters
+        _(blocked.derived_dimensions).must_equal plain.derived_dimensions
+        _(blocked.values(:plabel)).must_equal plain.values(:plabel)
+        _(blocked.values(:qlabel)).must_equal plain.values(:qlabel)
+      end
+
+      it "returns an instance of self's class" do
+        subclass = Class.new(Namo)
+        a = subclass.new([{product: 'Widget'}])
+        b = Namo.new([{quarter: 'Q1'}])
+        result = a.**(b){|row, candidates| candidates}
+        _(result.class).must_equal subclass
+      end
+
+      it "still raises ArgumentError when a dimension is shared" do
+        a = Namo.new([{symbol: 'BHP', close: 42.5}])
+        b = Namo.new([{symbol: 'RIO', pe: 14.5}])
+        _ { a.**(b){|row, candidates| candidates} }.must_raise ArgumentError
+      end
+
+      it "still raises TypeError on a non-Namo operand" do
+        _ { products.**([{quarter: 'Q1'}]){|row, candidates| candidates} }.must_raise TypeError
+      end
     end
   end
 

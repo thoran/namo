@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.13.0
+## Current state: 0.14.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -760,70 +760,43 @@ The alternative — `[]=` for formulae plus a separate `broadcast`/`set_all` for
 
 This shipped separately from the 0.12.0 constructor widening by design: that release changed the constructor's signature; this one changes assignment dispatch — a different method and a different concern. The seam is "constructor-signature changes together; assignment-dispatch changes separately."
 
+### 0.14.0 (2026-06-08): Blocks on composition operators (*, **)
+
+`*` and `**` take an optional block that refines which rows pair. Without a block, both behave exactly as they did in 0.9.0 — `*` pairs every shared-dimension match, `**` pairs every row with every row. With a block, the operator hands it the current left row and a Namo of candidate right rows, and the block returns the subset to pair.
+
+```ruby
+block.call(row, candidates) # => Namo
+```
+
+`row` is the `Row` for the current left row, carrying self's formulae (the same object `each` yields), so `row[:date]` and any self formula resolve inside the block. `candidates` is a Namo of right rows carrying other's formulae — for `*`, the rows already matched on the shared data dimensions; for `**`, all of other's rows, with no pre-filter — so the block can select on other's derived dimensions as readily as its data. The block returns a Namo of the rows to pair, each merged into the left row. It is a selector, not a reducer: zero, one, or many rows are all valid returns. An empty returned Namo pairs nothing, dropping that left row — inner-join semantics preserved.
+
+The canonical use is a matching rule plain `*` cannot express because it pairs every match: match each daily price to a single quarterly report — the most recent one dated on or before it.
+
+```ruby
+prices.*(quarterly) do |row, candidates|
+  candidates[quarter_end: ->(qe){qe <= row[:date]}].sort_by{|f| f[:quarter_end]}.last(1)
+end
+```
+
+`**`'s block is the parallel for the no-shared-dimensions case — a conditional product, pairing each order with only the shipping tiers that can carry it:
+
+```ruby
+orders.**(tiers) do |row, candidates|
+  candidates[max_weight: ->(w){w >= row[:weight]}]
+end
+```
+
+The block decides only which rows pair; it does not touch the result's formulae. Those are set once by the operator, `other.formulae.merge(@formulae)`, identical to the no-block path — `candidates` carries other's formulae only so block selection on other's derived dimensions resolves, read-only and local to the block, and the returned Namo contributes row data only. So formula handling is byte-identical between the block and no-block forms. A derived dimension of other (a formula, not a stored key) does not become stored data on merge; it reappears on the result because the result carries other's formulae, resolving to the same value. The operators' preconditions are unchanged and additive: `*` still requires a shared dimension and `**` still requires disjoint dimensions, block or no block. A `**` block that returns its candidates unchanged reproduces the no-block product, and one that matches on shared dimensions by hand reproduces no-block `*` — `*` is `**` with the shared-dimension match applied first.
+
+#### The governing principle
+
+A block form is warranted exactly when the operation gives consideration to a dimension in isolation. The composition operators do — `*` singles out the shared dimensions as the join axis and the block reasons about particular dimensions' values; `**` gives no such consideration itself, and the block is where the user supplies it. The set operators (`+`, `-`, `&`, `|`, `^`) do not: they act on the whole row as an indivisible value (whole-row equality via `eql?`/`hash`), singling out no dimension, so there is nothing for a block to refine or supply. Decomposition (`/`) considers dimensions collectively — a set of names operated on wholesale — never a dimension in isolation, so it too takes no block.
+
+This ties to orthogonality: where a conditional operation can be expressed by composing existing orthogonal operations, it should be, rather than by adding a block to an operator. The anti-join a set-operator block would have served is one such case — `today[symbol: ->(s){!excluded.include?(s)}]` (with `excluded` a Set for an O(today + exclusions) lookup) expresses it using only shipped features, and is at least as efficient as a block form would be. A block earns its place only where no such composition exists — precisely the composition operators, where the dimension-in-isolation matching is underdetermined and cannot be assembled from existing parts. The comparison operators are excluded on the same ground: a keyed comparison is already `today[:symbol] == yesterday[:symbol]`, a comparison of projections, so no block is needed; and `eql?` would not take one regardless, its job being the strictest equality.
+
 ### Summary
 
-The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`), together with selection (exact, array, range, proc, regex), projection, contraction, formulae, polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, and a constructor that takes data positionally or by keyword and carries an optional `name:`, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values and analytical chains that stay closed through filtering and ordering. The next phase (0.14.0) adds block forms on the composition operators (`*`, `**`) for custom match refinement, then proceeds through richer formulae and `Namo::Collection`.
-
-## 0.14.0: Blocks on composition operators (*, **)
-
-A block belongs on an operator only where the operator's matching step is underdetermined — where pairing rows leaves a free parameter the operation cannot fix on its own. By that test, blocks land on the composition operators `*` and `**`, and nowhere else. The set operators, the comparison operators, and `/` have either no matching step or a fully-determined one, so a block on any of them would answer a question the operator doesn't ask.
-
-### Blocks on `*` and `**`
-
-`*` joins on shared dimensions, but which of several matching right rows to pair with a given left row is a choice the operator can't make alone. The canonical case is an asof join: of several quarterly fundamentals rows, take the most recent on or before this daily date. The block fills that underdetermination — it receives the left row and the candidates already matched on shared dimensions, and chooses among them.
-
-```ruby
-ohlcv.*(fundamentals) do |row, candidates|
-  candidates.select{|f| f[:quarter_end] <= row[:date]}.max_by{|f| f[:quarter_end]}
-end
-```
-
-The block can be passed as a named proc:
-
-```ruby
-MOST_RECENT_QUARTER = proc do |row, candidates|
-  candidates.select{|f| f[:quarter_end] <= row[:date]}.max_by{|f| f[:quarter_end]}
-end
-
-ohlcv.*(fundamentals, &MOST_RECENT_QUARTER)
-```
-
-`**` pairs every left row with every right row; its block receives the left row and all right rows, with no pre-filtering, and refines which pairings to keep.
-
-```ruby
-ohlcv.**(fundamentals) do |row, candidates|
-  # full control, including shared-dimension matching if wanted
-end
-```
-
-`**` with a block that matches on shared dimensions by hand reproduces `*` without a block — `*` is `**` with the shared-dimension match applied first. The block's exact return contract — for `*`, whether it returns a single right row or an array of them, and the corresponding shape for `**` — is settled in the 0.14.0 implementation plan, not here.
-
-### Why not the comparison operators
-
-A block on `==`, `<`, `<=`, `>`, `>=` would relax which rows count as equal for the multiset comparison, so there is a free parameter — the equality notion. But relaxing whole-row equality to a key comparison turns a structural question ("are the same keys present?") into the shape of a set question, and the keyed version is already expressible by comparing projections:
-
-```ruby
-today[:symbol] == yesterday[:symbol]
-```
-
-No comparison-with-block use has been found that resists rewriting as a comparison of projections, so the comparison operators take no block. `eql?` would not take one regardless: its job is the strictest equality (class + data + formulae), which relaxation would undo.
-
-### Why not the set operators
-
-The set operators (`+`, `-`, `&`, `|`, `^`) are whole-row algebra. Their matching is total and fixed — a row either equals another row (`Row#eql?`/`hash`) or it does not. `+` appends with no matching at all; `|` appends then dedupes on whole-row equality; `-`, `&`, `^` test whole-row membership. None has an underdetermined step for a block to fill. They are deliberately dimension-blind: they ask "same row?", never "same on this key?". A block that referenced specific dimensions (`a[:symbol] == b[:symbol]`) would force a dimension-blind operator to become dimension-aware — a relational/join concern wearing set-algebra clothing.
-
-The case that motivated set-operator blocks was a keyed anti-join — "remove from today any row whose symbol is in exclusions", written `today.-(exclusions){|a, b| a[:symbol] == b[:symbol]}`. That is a semi-join on a key, not a set difference with relaxed equality, and it is already expressible with projection and proc selection (0.8.0), no new feature:
-
-```ruby
-excluded = exclusions.values(:symbol)
-today[symbol: ->(s){ !excluded.include?(s) }]
-```
-
-Each tool does the one thing it is shaped for: set difference stays dimension-blind and self-contained, projection reconciles shape, proc selection expresses keyed membership.
-
-### `/` takes no block
-
-`/` pairs no rows. It removes the shared dimension names (`data_dimensions - other.data_dimensions`), projects each left row onto what remains, and dedupes. It never reads `other`'s rows — only its dimension names. There is no matching step and no candidates, so no block contract is even expressible.
+The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae, polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, and a constructor that takes data positionally or by keyword and carries an optional `name:`, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values and analytical chains that stay closed through filtering and ordering. The next phase (0.15.0) adds two-arity formulae for cross-row computation, then proceeds through richer formulae and `Namo::Collection`.
 
 ## 0.15.0: Two-arity formulae
 

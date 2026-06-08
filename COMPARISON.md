@@ -743,13 +743,13 @@ innerjoin(ohlcv, fundamentals, on = [:symbol, :exchange])
 
 ### Conditional join with block
 
-**Namo** — planned (0.14.0)
+**Namo** — shipped (0.14.0)
 
-Custom matching logic — find the most recent quarterly report as of each daily observation.
+Custom matching logic — match each daily observation to the quarterly report in force on its date (the most recent one dated on or before it). Other tools call this an asof join (pandas `merge_asof`, Polars `join_asof`); Namo expresses it as a matching block. The block receives the left row and a Namo of candidates, and returns the Namo of rows to pair.
 
 ```ruby
 ohlcv.*(fundamentals) do |row, candidates|
-  candidates.select{|f| f[:quarter_end] <= row[:date]}.max_by{|f| f[:quarter_end]}
+  candidates[quarter_end: ->(qe){qe <= row[:date]}].sort_by{|f| f[:quarter_end]}.last(1)
 end
 ```
 

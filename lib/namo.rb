@@ -115,28 +115,35 @@ class Namo
     self.class.new((@data - other.data) + (other.data - @data), formulae: other.formulae.merge(@formulae))
   end
 
-  def *(other)
+  def *(other, &block)
     raise_unless_namo(other)
     raise_unless_shared_data_dimensions(other)
     shared = data_dimensions & other.data_dimensions
     combined_data = []
     @data.each do |left_row|
-      other.data.each do |right_row|
-        if shared.all?{|dim| left_row[dim] == right_row[dim]}
-          combined_data << left_row.merge(right_row)
-        end
+      matched = other.data.select{|right_row| shared.all?{|dim| left_row[dim] == right_row[dim]}}
+      if block
+        candidates = other.class.new(matched, formulae: other.formulae.dup)
+        chosen = block.call(Row.new(left_row, @formulae), candidates)
+        chosen.data.each{|right_row| combined_data << left_row.merge(right_row)}
+      else
+        matched.each{|right_row| combined_data << left_row.merge(right_row)}
       end
     end
     self.class.new(combined_data, formulae: other.formulae.merge(@formulae))
   end
 
-  def **(other)
+  def **(other, &block)
     raise_unless_namo(other)
     raise_unless_disjoint_data_dimensions(other)
     combined_data = []
     @data.each do |left_row|
-      other.data.each do |right_row|
-        combined_data << left_row.merge(right_row)
+      if block
+        candidates = other.class.new(other.data, formulae: other.formulae.dup)
+        chosen = block.call(Row.new(left_row, @formulae), candidates)
+        chosen.data.each{|right_row| combined_data << left_row.merge(right_row)}
+      else
+        other.data.each{|right_row| combined_data << left_row.merge(right_row)}
       end
     end
     self.class.new(combined_data, formulae: other.formulae.merge(@formulae))

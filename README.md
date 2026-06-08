@@ -355,6 +355,36 @@ Inner-join semantics: unmatched rows from either side are dropped. Output dimens
 
 The two Namos must have at least one shared data dimension. No overlap raises an `ArgumentError` — the asymmetry with `**` is deliberate, and falling through to a Cartesian product would silently turn a logic error into a large pile of nonsense rows. Formulae merge from both sides; the left-hand side wins on conflict.
 
+#### Conditional join
+
+`*` takes an optional block that decides which matched rows to pair with each left row. Without a block, every shared-dimension match pairs, as above. With one, the block is handed the current left row and the right rows already matched on the shared dimensions, and returns the subset to pair — the refinement plain `*` can't express, because it pairs every match.
+
+The canonical case is matching each daily price to a single quarterly report — the most recent one dated on or before it. Plain `*` pairs *every* matching quarter; the block narrows that to the one the matching rule picks.
+
+```ruby
+prices = Namo.new([
+  {symbol: 'BHP', date: '2025-02-15', close: 42.5},
+  {symbol: 'BHP', date: '2025-05-20', close: 44.0}
+])
+
+quarterly = Namo.new([
+  {symbol: 'BHP', quarter_end: '2024-12-31', eps: 1.0},
+  {symbol: 'BHP', quarter_end: '2025-03-31', eps: 1.2}
+])
+
+prices.*(quarterly) do |row, candidates|
+  candidates[quarter_end: ->(qe){qe <= row[:date]}].sort_by{|f| f[:quarter_end]}.last(1)
+end
+# => #<Namo [
+#   {symbol: 'BHP', date: '2025-02-15', close: 42.5, quarter_end: '2024-12-31', eps: 1.0},
+#   {symbol: 'BHP', date: '2025-05-20', close: 44.0, quarter_end: '2025-03-31', eps: 1.2}
+# ]>
+```
+
+`row` is the `Row` for the current left row, carrying self's formulae, so `row[:date]` and any self formula resolve inside the block. `candidates` is a Namo of the shared-dimension matches, carrying other's formulae, so the block can select on other's derived dimensions too. The block returns a Namo of the rows to pair: one row for the single-match rule above, though it may return zero, one, or many — it's a selector, not a reducer. An empty returned Namo pairs nothing, so that left row is dropped, preserving inner-join semantics. The block can also be passed as a named proc, `prices.*(quarterly, &most_recent_quarter)`.
+
+The block changes only which rows pair. Formulae carry through exactly as in the no-block form — other's merged under self's, self winning on conflict — and the rows the block returns contribute data only.
+
 ### Cartesian product
 
 `**` is the Cartesian product. Every row from the left paired with every row from the right:
@@ -377,6 +407,35 @@ Output has `self.data.length * other.data.length` rows. Output dimensions are `s
 The two Namos must have **no** shared data dimensions — the precondition is the mirror image of `*`. Any overlap raises an `ArgumentError`; allowing it would produce rows with the same dimension named twice. Formulae merge from both sides; the left-hand side wins on conflict.
 
 The visual relationship is intentional: `*` is the filtered version, `**` is the explosive version — more sigil, more output.
+
+#### Conditional product
+
+`**` takes an optional block on the same contract. Where `*`'s block receives the rows pre-matched on the shared dimensions, `**`'s receives *all* of other's rows — there are no shared dimensions to match on — and returns the subset to pair with each left row.
+
+This expresses a conditional product: pair each order with only the shipping tiers that can carry it.
+
+```ruby
+orders = Namo.new([
+  {order: 'A', weight: 5},
+  {order: 'B', weight: 15}
+])
+
+tiers = Namo.new([
+  {tier: 'light', max_weight: 10},
+  {tier: 'heavy', max_weight: 20}
+])
+
+orders.**(tiers) do |row, candidates|
+  candidates[max_weight: ->(w){w >= row[:weight]}]
+end
+# => #<Namo [
+#   {order: 'A', weight: 5, tier: 'light', max_weight: 10},
+#   {order: 'A', weight: 5, tier: 'heavy', max_weight: 20},
+#   {order: 'B', weight: 15, tier: 'heavy', max_weight: 20}
+# ]>
+```
+
+The contract matches `*`'s: `row` carries self's formulae, `candidates` carries other's, the block returns a Namo of rows to pair, and an empty return drops the left row. A block that returns its `candidates` unchanged reproduces the no-block product exactly — `**` is its own block form with the identity selector, just as `*` is `**` with the shared-dimension match applied first.
 
 ### Decomposition
 
