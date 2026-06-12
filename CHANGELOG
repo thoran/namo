@@ -2,6 +2,51 @@ CHANGELOG
 _________
 
 20260612
+0.16.0: ~ data/formula exclusivity — projection drops the formulae it materialises; * and ** raise on a data/formula name collision.
+
+1. ~ lib/namo.rb: Namo#[]'s positive-projection branch carries @formulae minus the projected
+   derived names — naming a derived dimension materialises it (stored values, computed against
+   the yielding Namo, windowed over any same-call selection) and drops the formula; omitted
+   formulae carry live and recompute from the result's own rows. Contraction and selection-only
+   calls are unchanged. The projection list is the materialise/live selector.
+2. ~ lib/namo.rb: Namo#* and Namo#** raise ArgumentError via the new private
+   raise_unless_data_formula_exclusivity when one operand's data dimension is the other's
+   derived dimension, block and no-block forms alike. Formula-vs-formula stays left-wins; the
+   set operators need no guard (matching-data-dimensions blocks the asymmetric case); the
+   constructor stays unguarded.
+3. ~ test/namo_test.rb: + "data/formula exclusivity" describe — access-path agreement on a
+   materialised dimension, dimension-listing, dependent-formula carry, omitted-formula
+   liveness, live-without-inputs caveat, two-arity windowing at materialisation,
+   contraction/selection unchanged, subclass type, composition collision raises (both
+   directions, both operators, block forms), left-wins formula merge, contraction-first
+   resolution.
+4. ~ test/namo_test.rb: + "range selection" context under #[] — basic range, beginless and
+   endless forms, range composed with projection, range on a formula-defined dimension
+   (Row_test holds the predicate matrix; these pin the Namo-level wiring).
+5. ~ README.md: + Projection of derived dimensions subsection under Formulae (naming
+   materialises, omitting carries live); data/formula collision sentences under Composition
+   and Cartesian product.
+6. ~ ROADMAP.md: Promote 0.16.0 to shipped; Current state -> 0.16.0; Summary folds in
+   exclusivity; next phase -> 0.17.0. window.length -> window.count and n.length -> n.count
+   in the remaining future-release examples (0.17.0, 2.x, 4.x) — Namo has no #length,
+   extending the 0.15.0 correction.
+7. ~ COMPARISON.md: Repoint the pre-renumbering planned markers to what shipped — proc-based,
+   regex-based, and mixed selection -> shipped (0.8.0); Enumerable methods return Namos ->
+   shipped (0.11.0), with the entry summary's parity sentence and the Sorting entry's
+   "as of 0.14.0" corrected to 0.11.0; values and to_h -> shipped (0.7.0). Aspect classes ->
+   not planned, the entry rewritten to record 0.7.0's plain-return-types decision (Namo#===
+   and subclassing cover case dispatch; a Matcher factory can serve a finer split later).
+   Aggregation repointed from 2.x to group_by returning a Namo::Collection at 0.19.0 (gated
+   on Collection at 0.18.0), with summary/members examples; bare names stay 2.x. Parameterised
+   formulae stays planned (0.17.0), its example's window.length -> window.count.
+8. ~ EXAMPLES.md: + Epidemiology / public health section — a cross-row (two-arity) rolling
+   weekly average in the four-stage format (Polars, then Namo 1.x/2.x/3.x), with the
+   (row, namo) window over the yielding Namo and a one-arity formula referencing the
+   two-arity one. window.length -> window.count in the finance 1.x and 2.x stages. Date
+   bumped to 20260612.
+9. ~ Namo::VERSION: /0.15.0/0.16.0/
+
+20260612
 0.15.0: + two-arity formulae — procs with arity 2 receive (row, namo) for cross-row computation.
 
 1. ~ lib/Namo/Row.rb: Row's constructor gains an optional third parameter, namo (default nil),

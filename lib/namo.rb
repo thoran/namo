@@ -71,7 +71,8 @@ class Namo
         rows.map(&:to_h)
       end
     )
-    self.class.new(projected, formulae: @formulae.dup)
+    carried = positive.any? ? @formulae.reject{|name, _| positive.include?(name)} : @formulae.dup
+    self.class.new(projected, formulae: carried)
   end
 
   def []=(name, value)
@@ -118,6 +119,7 @@ class Namo
   def *(other, &block)
     raise_unless_namo(other)
     raise_unless_shared_data_dimensions(other)
+    raise_unless_data_formula_exclusivity(other)
     shared = data_dimensions & other.data_dimensions
     combined_data = []
     @data.each do |left_row|
@@ -136,6 +138,7 @@ class Namo
   def **(other, &block)
     raise_unless_namo(other)
     raise_unless_disjoint_data_dimensions(other)
+    raise_unless_data_formula_exclusivity(other)
     combined_data = []
     @data.each do |left_row|
       if block
@@ -264,6 +267,13 @@ class Namo
   def raise_unless_disjoint_data_dimensions(other)
     if (data_dimensions & other.data_dimensions).any?
       raise ArgumentError, "dimensions in common, need no common dimensions: #{data_dimensions} vs #{other.data_dimensions}"
+    end
+  end
+
+  def raise_unless_data_formula_exclusivity(other)
+    collisions = (data_dimensions & other.derived_dimensions) | (derived_dimensions & other.data_dimensions)
+    if collisions.any?
+      raise ArgumentError, "name collision between data and formulae: #{collisions.inspect}"
     end
   end
 end

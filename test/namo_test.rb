@@ -491,6 +491,36 @@ describe Namo do
       end
     end
 
+    context "range selection" do
+      it "selects rows whose value falls within the range" do
+        result = sales[price: 5.0..15.0]
+        _(result.to_a.count).must_equal 2
+        _(result.to_a.map{|row| row[:product]}).must_equal ['Widget', 'Widget']
+      end
+
+      it "supports beginless and endless ranges" do
+        _(sales[price: ..15.0].to_a.count).must_equal 2
+        _(sales[quantity: 100..].to_a.count).must_equal 2
+      end
+
+      it "composes with projection in a single call" do
+        result = sales[:product, :quantity, quantity: 50..120]
+        _(result.to_a).must_equal [
+          {product: 'Widget', quantity: 100},
+          {product: 'Gadget', quantity: 60}
+        ]
+      end
+
+      it "selects on a formula-defined dimension" do
+        sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+        result = sales[revenue: 1200.0..]
+        _(result.to_a).must_equal [
+          {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+          {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+        ]
+      end
+    end
+
     context "mixed proc and regex selection" do
       it "combines a proc and a regex across dimensions" do
         result = sales[product: /^W/, quantity: ->(v){v > 100}]
@@ -764,6 +794,176 @@ describe Namo do
       empty = Namo.new([], formulae: {sma: ->(row, namo){invoked = true; 0}})
       _(empty.values(:sma)).must_equal []
       _(invoked).must_equal false
+    end
+  end
+
+  describe "data/formula exclusivity" do
+    context "projection" do
+      let(:price_data) do
+        [
+          {symbol: 'AAA', date: 1, close: 10.0},
+          {symbol: 'AAA', date: 2, close: 20.0},
+          {symbol: 'AAA', date: 3, close: 30.0},
+        ]
+      end
+
+      let(:prices) do
+        Namo.new(price_data)
+      end
+
+      let(:sma) do
+        ->(row, namo){
+          window = namo[symbol: row[:symbol], date: ->(d){d <= row[:date]}]
+          window.values(:close).sum / window.count.to_f
+        }
+      end
+
+      it "agrees across all access paths on a materialised dimension" do
+        prices[:sma] = sma
+        projected = prices[:date, :sma]
+        _(projected.values(:sma)).must_equal [10.0, 15.0, 20.0]
+        _(projected.first[:sma]).must_equal projected.values(:sma).first
+        _(projected[sma: ->(v){v > 12.0}].values(:date)).must_equal [2, 3]
+      end
+
+      it "lists a materialised dimension as data, not derived, exactly once" do
+        prices[:sma] = sma
+        projected = prices[:date, :sma]
+        _(projected.data_dimensions).must_include :sma
+        _(projected.derived_dimensions).wont_include :sma
+        _(projected.dimensions.count(:sma)).must_equal 1
+      end
+
+      it "carries a dependent formula not named in the projection, resolving off the materialised column" do
+        prices[:sma] = sma
+        prices[:double_sma] = ->(row){row[:sma] * 2}
+        projected = prices[:date, :sma]
+        _(projected.derived_dimensions).must_equal [:double_sma]
+        _(projected.values(:double_sma)).must_equal [20.0, 30.0, 40.0]
+      end
+
+      it "carries an omitted formula live, recomputing from the result's own rows" do
+        sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+        projected = sales[:price, :quantity]
+        _(projected.derived_dimensions).must_equal [:revenue]
+        _(projected.values(:revenue)).must_equal [1000.0, 1500.0, 1000.0, 1500.0]
+        projected.data.first[:quantity] = 200
+        _(projected.values(:revenue).first).must_equal 2000.0
+      end
+
+      it "breaks on access when a carried formula's inputs were dropped (caveat emptor)" do
+        sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+        projected = sales[:product]
+        _(projected.derived_dimensions).must_equal [:revenue]
+        _ { projected.values(:revenue) }.must_raise NoMethodError
+      end
+
+      it "materialises a two-arity formula windowed over the yielding Namo" do
+        prices[:sma] = sma
+        _(prices[:date, :sma].values(:sma)).must_equal [10.0, 15.0, 20.0]
+      end
+
+      it "windows a two-arity materialisation over a same-call selection" do
+        prices[:sma] = sma
+        projected = prices[:date, :sma, date: 2..3]
+        _(projected.values(:sma)).must_equal [20.0, 25.0]
+      end
+
+      it "carries all formulae through a selection-only call" do
+        sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+        result = sales[price: ..15.0]
+        _(result.derived_dimensions).must_equal [:revenue]
+        _(result.values(:revenue)).must_equal [1000.0, 1500.0]
+      end
+
+      it "carries all formulae through contraction" do
+        sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
+        result = sales[-:quarter]
+        _(result.derived_dimensions).must_equal [:revenue]
+        _(result.values(:revenue)).must_equal [1000.0, 1500.0, 1000.0, 1500.0]
+      end
+
+      it "returns pure materialised values and empty formulae when only derived names are projected" do
+        prices[:sma] = sma
+        projected = prices[:sma]
+        _(projected.to_a).must_equal [{sma: 10.0}, {sma: 15.0}, {sma: 20.0}]
+        _(projected.formulae).must_equal({})
+      end
+
+      it "returns an instance of self's class" do
+        subclass = Class.new(Namo)
+        namo = subclass.new([{x: 1}])
+        namo[:double] = ->(row){row[:x] * 2}
+        _(namo[:double].class).must_equal subclass
+      end
+    end
+
+    context "composition" do
+      let(:audited) do
+        Namo.new([
+          {symbol: 'BHP', margin: 0.3},
+          {symbol: 'RIO', margin: 0.25}
+        ])
+      end
+
+      let(:modelled) do
+        namo = Namo.new([
+          {symbol: 'BHP', price: 10.0, cost: 6.0},
+          {symbol: 'RIO', price: 20.0, cost: 16.0}
+        ])
+        namo[:margin] = proc{|r| (r[:price] - r[:cost]) / r[:price]}
+        namo
+      end
+
+      let(:audited_orders) do
+        Namo.new([{order: 'A', margin: 0.3}])
+      end
+
+      let(:modelled_tiers) do
+        namo = Namo.new([{tier: 'light', price: 10.0, cost: 6.0}])
+        namo[:margin] = proc{|r| (r[:price] - r[:cost]) / r[:price]}
+        namo
+      end
+
+      it "raises on * when self's data dimension is other's derived dimension" do
+        _ { audited * modelled }.must_raise ArgumentError
+      end
+
+      it "raises on * when self's derived dimension is other's data dimension" do
+        _ { modelled * audited }.must_raise ArgumentError
+      end
+
+      it "raises on ** when self's data dimension is other's derived dimension" do
+        _ { audited_orders ** modelled_tiers }.must_raise ArgumentError
+      end
+
+      it "raises on ** when self's derived dimension is other's data dimension" do
+        _ { modelled_tiers ** audited_orders }.must_raise ArgumentError
+      end
+
+      it "raises in the block forms of both operators" do
+        _ { audited.*(modelled){|row, candidates| candidates} }.must_raise ArgumentError
+        _ { audited_orders.**(modelled_tiers){|row, candidates| candidates} }.must_raise ArgumentError
+      end
+
+      it "names the colliding dimensions in the message" do
+        err = _ { audited * modelled }.must_raise ArgumentError
+        _(err.message).must_match(/name collision between data and formulae/)
+        _(err.message).must_include ':margin'
+      end
+
+      it "does not raise on a formula-vs-formula collision — left wins" do
+        left = Namo.new([{symbol: 'BHP', close: 42.5}])
+        right = Namo.new([{symbol: 'BHP', pe: 14.5}])
+        left[:margin] = proc{|r| :left}
+        right[:margin] = proc{|r| :right}
+        _((left * right).values(:margin)).must_equal [:left]
+      end
+
+      it "composes after explicit resolution by contraction" do
+        result = audited[-:margin] * modelled
+        _(result.values(:margin)).must_equal [0.4, 0.2]
+      end
     end
   end
 

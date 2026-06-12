@@ -353,7 +353,7 @@ ohlcv * fundamentals
 
 Inner-join semantics: unmatched rows from either side are dropped. Output dimensions are `self.data_dimensions` followed by `other.data_dimensions` exclusive to other. Duplicates on shared coordinates are preserved multiplicatively — output multiplicity is the product of input multiplicities on each matching key.
 
-The two Namos must have at least one shared data dimension. No overlap raises an `ArgumentError` — the asymmetry with `**` is deliberate, and falling through to a Cartesian product would silently turn a logic error into a large pile of nonsense rows. Formulae merge from both sides; the left-hand side wins on conflict.
+The two Namos must have at least one shared data dimension. No overlap raises an `ArgumentError` — the asymmetry with `**` is deliberate, and falling through to a Cartesian product would silently turn a logic error into a large pile of nonsense rows. Formulae merge from both sides; the left-hand side wins on conflict. A name that is data on one side and a formula on the other also raises an `ArgumentError` — the operands disagree about what the name means, with no last-write order to appeal to — so resolve before composing: `audited[-:margin] * modelled`.
 
 #### Conditional join
 
@@ -404,7 +404,7 @@ products ** quarters
 
 Output has `self.data.length * other.data.length` rows. Output dimensions are `self.data_dimensions + other.data_dimensions`, in operand order. Duplicates are preserved multiplicatively.
 
-The two Namos must have **no** shared data dimensions — the precondition is the mirror image of `*`. Any overlap raises an `ArgumentError`; allowing it would produce rows with the same dimension named twice. Formulae merge from both sides; the left-hand side wins on conflict.
+The two Namos must have **no** shared data dimensions — the precondition is the mirror image of `*`. Any overlap raises an `ArgumentError`; allowing it would produce rows with the same dimension named twice. Formulae merge from both sides; the left-hand side wins on conflict, and a data/formula name collision between the operands raises, as for `*`.
 
 The visual relationship is intentional: `*` is the filtered version, `**` is the explosive version — more sigil, more output.
 
@@ -643,6 +643,20 @@ sales[product: 'Widget'][:revenue, :quarter]
 ```
 
 Formulae carry through selection — a filtered Namo instance remembers its formulae.
+
+#### Projection of derived dimensions
+
+Naming a derived dimension in a projection asks for its values: they are computed against the source and stored in the result's rows, and the formula is dropped — the name is a data dimension of the result. Omitting it carries the formula live, recomputing from the result's own rows on every access:
+
+```ruby
+sales[:price, :quantity, :revenue].derived_dimensions
+# => [] — :revenue is stored values, a snapshot taken at projection
+
+sales[:price, :quantity].derived_dimensions
+# => [:revenue] — :revenue recomputes from the projected rows on every access
+```
+
+The projection list is the selector: name a derived dimension for a snapshot, omit it to keep it as computation. A carried formula whose inputs the projection dropped breaks on access — the same caveat as contracting away a formula's inputs.
 
 #### Cross-row formulae
 

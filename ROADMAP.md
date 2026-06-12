@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.15.0
+## Current state: 0.16.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -813,30 +813,26 @@ Row's constructor gains an optional third parameter, `namo`, defaulting to `nil`
 
 A two-arity formula's body typically scans the parent, so materialising a full column is O(n²)-shaped. This is the accepted pure-live cost; benchmarking (1.1) measures it and freeze-gated caching (2.x) relieves it. No memoisation in this release.
 
-### Summary
+### 0.16.0 (2026-06-12): Data/formula exclusivity
 
-The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped and two-arity collection-scoped, mixing freely), polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, and a constructor that takes data positionally or by keyword and carries an optional `name:`, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase (0.16.0) extends the data/formula exclusivity invariant through projection and composition, then proceeds through parameterised formulae (0.17.0) and `Namo::Collection`.
+A name is data or derived, never both. `[]=` already enforced this at assignment — a proc deletes the data column of the same name, a scalar deletes the formula. Two library paths violated it, and the violation surfaced as a precedence disagreement between the access paths: `values_for` resolves a name data-first, `Row#[]` formula-first, so an aliased Namo answered differently depending on how it was asked. This release extends enforcement to both paths.
 
-## 0.16.0: Data/formula exclusivity
+**Projection.** Through 0.15.0, `prices[:date, :sma]` materialised the formula's values into the projected rows and carried the formula forward. The result answered `values(:sma)` from the stored data but recomputed `first[:sma]` through the formula — over the projected Namo, whose input columns (`:symbol`, `:close`) were just dropped. Row access and selection on the projected dimension raised.
 
-A name is data or derived, never both. `[]=` already enforces this at assignment — a proc deletes the data column of the same name, a scalar deletes the formula. Two library paths currently violate it, and the violation surfaces as a precedence disagreement between the access paths: `values_for` resolves a name data-first, `Row#[]` formula-first, so an aliased Namo answers differently depending on how it's asked.
-
-**Projection.** `prices[:date, :sma]` materialises the formula's values into the projected rows and carries the formula forward. The result answers `values(:sma)` from the stored data but recomputes `first[:sma]` through the formula — over the projected Namo, whose input columns (`:symbol`, `:close`) were just dropped. Row access and selection on the projected dimension raise.
-
-The fix: projection drops the formulae it materialised.
+The fix: projection drops the formulae it materialises.
 
 ```ruby
-carried = @formulae.reject{|name, _| positive.include?(name)}
+carried = positive.any? ? @formulae.reject{|name, _| positive.include?(name)} : @formulae.dup
 self.class.new(projected, formulae: carried)
 ```
 
-All access paths then agree, `dimensions` lists the name once, and a dependent formula *not* named in the projection carries through and resolves off the materialised column — project `[:date, :sma]` with a `:double_sma` formula referencing `:sma`, and `:double_sma` keeps working against the stored values. No liveness is lost: projection already snapshots data into fresh hashes (unlike selection, which shares row objects with its source), so "values current at the moment of projection" was its semantic for data dimensions all along; derived dimensions now follow the same reading.
+All access paths then agree, `dimensions` lists the name once, and a dependent formula *not* named in the projection carries through and resolves off the materialised column — project `[:date, :sma]` with a `:double_sma` formula referencing `:sma`, and `:double_sma` keeps working against the stored values. No liveness is lost: projection already snapshots data into fresh hashes (unlike selection, which shares row objects with its source), so "values current at the moment of projection" was its semantic for data dimensions all along; derived dimensions now follow the same reading. Materialisation goes through the Rows the source yields, so a two-arity formula materialises windowed over the yielding Namo, per 0.15.0's discipline — and with selections in the same call (`prices[:date, :sma, date: 2..3]`), the yielding Namo is the filtered one, so the values window over the selection, consistent with select-then-project. Only the positive-projection branch changed: contraction and selection-only calls carry all formulae unchanged.
 
 The rule is also a control surface: materialisation is selective, and the projection list is the selector. Naming a derived dimension asks for its values — a stored snapshot, computed against the source. Omitting it leaves it as computation — formulae not named in the projection carry through live and compute from the projected columns on every access, exactly as they carry through selection. `sales[:price, :quantity, :revenue]` returns a Namo with `:revenue` as stored values; `sales[:price, :quantity]` returns one where the `:revenue` formula recomputes from the result's own rows whenever asked. All four combinations of materialised/live × inputs-present/inputs-dropped are expressible by what is named, and the only failing one — carrying a formula whose inputs the projection cut — is the user's explicit choice, the same caveat-emptor as contracting away a formula's inputs. The `:double_sma` case above is the boundary worth knowing: a carried formula that references a materialised dimension is half-frozen — itself live, computing over snapshot inputs — which follows directly from the rule. An explicit carry-live marker (a `~:revenue` wrapper mirroring `-:dim` contraction) was considered and rejected as redundant: "name the inputs, omit the formula" already spells it, and duplicate spellings cut against orthogonality.
 
-**Composition.** `*` and `**` merge formulae from both sides, so one operand's data dimension can collide with the other's derived dimension — `:margin` as an audited stored figure on the left, `:margin` as a formula over `:cost` and `:price` on the right. The result holds both, silently: `values(:margin)` gives the stored figure, `first[:margin]` the computed one.
+**Composition.** `*` and `**` merge formulae from both sides, so one operand's data dimension could collide with the other's derived dimension — `:margin` as an audited stored figure on the left, `:margin` as a formula over `:cost` and `:price` on the right. The result held both, silently: `values(:margin)` gave the stored figure, `first[:margin]` the computed one.
 
-The fix: `*` and `**` raise `ArgumentError` when `(data_dimensions & other.derived_dimensions) | (derived_dimensions & other.data_dimensions)` is non-empty, block and no-block forms alike. The operands disagree about what the name means — stored fact on one side, computation on the other — and there is no last-write order to appeal to, so this is precisely where the operators' existing character applies: refuse the ambiguous operand pair loudly rather than guess. The user resolves the collision explicitly before composing, by contraction (`audited[-:margin] * modelled`) or projection.
+The fix: `*` and `**` raise `ArgumentError`, naming the colliding dimensions, when `(data_dimensions & other.derived_dimensions) | (derived_dimensions & other.data_dimensions)` is non-empty — block and no-block forms alike, since preconditions are block-independent, per the 0.14.0 rationale. The operands disagree about what the name means — stored fact on one side, computation on the other — and there is no last-write order to appeal to, so this is precisely where the operators' existing character applies: refuse the ambiguous operand pair loudly rather than guess. The user resolves the collision explicitly before composing, by contraction (`audited[-:margin] * modelled`) or projection.
 
 The other operators need nothing. The set operators' matching-data-dimensions precondition already blocks the asymmetric case — if one side carries the name as data and the other doesn't, their data dimensions can't match. Formula-vs-formula collisions stay left-wins, as documented — that's resolution, not aliasing. The constructor stays unguarded: `Namo.new(data, formulae: ...)` can still hand-build an aliased Namo, the same trust it already extends to row shapes.
 
@@ -846,6 +842,10 @@ That last point is the one to revisit. If dependencies were knowable, projection
 
 Parameterised formulae (0.17.0) cannot be materialised without their arguments; what projection does with an arity > 2 dimension is defined in that release, extending this rule.
 
+### Summary
+
+The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped and two-arity collection-scoped, mixing freely), polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, and a constructor that takes data positionally or by keyword and carries an optional `name:`, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase (0.17.0) is parameterised formulae, then `Namo::Collection`.
+
 ## 0.17.0: Parameterised formulae
 
 Procs with arity > 2 receive `(row, namo, *extra_args)`. Row#[] forwards extra arguments:
@@ -853,7 +853,7 @@ Procs with arity > 2 receive `(row, namo, *extra_args)`. Row#[] forwards extra a
 ```ruby
 e[:sma] = proc do |row, namo, field, period|
   window = namo[symbol: row[:symbol], date: ..row[:date]].last(period)
-  window.sum{|r| r[field]} / window.length.to_f
+  window.sum{|r| r[field]} / window.count.to_f
 end
 
 row[:sma, :close, 20]  # Row inserts self and namo, forwards :close and 20
@@ -1176,7 +1176,7 @@ Bare names also work in cross-row formulae. Fixed dimension references resolve a
 ```ruby
 e[:sma] = proc do |row, namo, field, period|
   window = namo[symbol: symbol, date: ..date].last(period)
-  window.sum(&field) / window.length.to_f
+  window.sum(&field) / window.count.to_f
 end
 ```
 
@@ -1203,7 +1203,7 @@ With bare name resolution in place, formulae can be defined as plain Ruby method
 module Indicators
   def sma(row, namo, field, period)
     window = namo[symbol: symbol, date: ..date].last(period)
-    window.sum(&field) / window.length.to_f
+    window.sum(&field) / window.count.to_f
   end
 
   def change
@@ -1376,10 +1376,10 @@ namo.group_by(:symbol).summary(:close, reducer: :mean)
 # => Namo with {symbol:, close:} rows
 
 # 1.x — explicit member-wise computation
-namo.group_by(:symbol).members.map{|n| n.values(:close).sum / n.length}
+namo.group_by(:symbol).members.map{|n| n.values(:close).sum / n.count}
 
 # 2.x — bare names make member-wise computation read cleanly
-namo.group_by(:symbol).members.map{|n| n.close.sum / n.length}
+namo.group_by(:symbol).members.map{|n| n.close.sum / n.count}
 ```
 
 The return-type change (`group_by` → `Collection`) is *not* a 2.x concern — it landed at 0.19.0, gated on `Collection` at 0.18.0. 2.x only contributes the bare-name reading on the resulting members. The conceptual model was already unified in 1.x: assembly and partition both produce a `Collection`; bare names make the post-partition computation as ergonomic as the pre-partition selection.
@@ -1598,7 +1598,7 @@ Path C (next): Formulae carry SQL metadata alongside the Ruby implementation. Na
 module Indicators
   def sma(row, namo, field, period)
     window = namo[symbol: symbol, date: ..date].last(period)
-    window.sum(&field) / window.length.to_f
+    window.sum(&field) / window.count.to_f
   end
 
   SQL = {

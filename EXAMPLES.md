@@ -1,6 +1,6 @@
 # Namo Presentation Examples with Comparisons
 
-Date: 20260520
+Date: 20260612
 
 Companion document to the Namo Roadmap. Each example shows one comparison tool (the strongest competitor for that discipline), then three stages of Namo — 1.x (explicit), 2.x (bare names), 3.x (DSL) — so the audience watches the ceremony disappear.
 
@@ -63,7 +63,7 @@ end
 
 analysis[:sma] = proc do |row, namo, field, period|
   window = namo[symbol: row[:symbol], date: ..row[:date]].last(period)
-  window.sum{|r| r[field]} / window.length.to_f
+  window.sum{|r| r[field]} / window.count.to_f
 end
 analysis[:golden_cross] = proc{|row| row[:sma, :close, 20] > row[:sma, :close, 50]}
 analysis[:earnings_yield] = proc{|row| row[:eps] / row[:close]}
@@ -86,7 +86,7 @@ end
 
 analysis.sma = proc do |row, namo, field, period|
   window = namo[symbol: symbol, date: ..date].last(period)
-  window.sum(&field) / window.length.to_f
+  window.sum(&field) / window.count.to_f
 end
 analysis.golden_cross = proc{ sma(:close, 20) > sma(:close, 50) }
 analysis.earnings_yield = proc{ eps / close }
@@ -287,6 +287,80 @@ R's dplyr is the strongest competitor here — the pipe operator and `case_when`
 The selection line is where Namo wins at every version: `study[significant: true, category: 'upregulated']` reads like English. Even R's `filter(significant == TRUE, category == 'upregulated')` has more syntactic weight.
 
 In the 3.x define block, the entire differential expression analysis is three formula lines plus one selection line. A bioinformatician reads the biology, not the tooling.
+
+
+## Epidemiology / public health
+
+Daily case counts per region. Derive a rolling weekly average and a trend from it — cross-row computation, where each row's value reads the rows around it.
+
+### Polars
+
+```python
+cases = cases.sort('date')
+
+cases = cases.with_columns(
+    pl.col('new_cases').rolling_mean(window_size=7, min_samples=1)
+      .over('region').alias('weekly_average')
+)
+cases = cases.with_columns(
+    pl.when(pl.col('new_cases') > pl.col('weekly_average'))
+      .then(pl.lit('rising')).otherwise(pl.lit('falling')).alias('trend')
+)
+
+rising = cases.filter(pl.col('trend') == 'rising')
+```
+
+### Namo 1.x
+
+```ruby
+cases = Namo.new(case_data)
+
+cases[:weekly_average] = proc do |row, namo|
+  window = namo[region: row[:region], date: ..row[:date]].last(7)
+  window.values(:new_cases).sum / window.count.to_f
+end
+cases[:trend] = proc{|row| row[:new_cases] > row[:weekly_average] ? 'rising' : 'falling'}
+
+rising = cases[trend: 'rising']
+```
+
+### Namo 2.x
+
+```ruby
+cases = Namo.new(case_data)
+
+cases.weekly_average = proc do |row, namo|
+  window = namo[region: region, date: ..date].last(7)
+  window.sum(&:new_cases) / window.count.to_f
+end
+cases.trend = proc{ new_cases > weekly_average ? 'rising' : 'falling' }
+
+rising = cases[trend: 'rising']
+```
+
+### Namo 3.x
+
+```ruby
+cases = Namo.new(case_data).define do
+  weekly_average -> {
+    window = namo[region: region, date: ..date].last(7)
+    window.sum(&:new_cases) / window.count.to_f
+  }
+  trend          -> { new_cases > weekly_average ? 'rising' : 'falling' }
+end
+
+rising = cases[trend: 'rising']
+```
+
+### What to highlight
+
+The two-arity proc is the centre of this example, and it is shipped behaviour (0.15.0): a formula whose parameters are `(row, namo)` receives the Namo the row belongs to, so the window is an ordinary selection — the same `[]` interface used everywhere else, narrowed to the row's region and to dates up to the row's own. There is no separate windowing API to learn.
+
+Polars needs the data sorted first, and the window is assembled from three concepts — `rolling_mean` for the computation, `over` for the partition, `min_samples` for the leading edge. In Namo the partition is `region: row[:region]`, the bound is the range `date: ..row[:date]`, and the leading edge needs nothing: `last(7)` of a three-row window is the three rows.
+
+The window is live. Append today's counts and `weekly_average` reads the new rows on next access; filter the Namo and the filtered result's rows window over the filtered rows. In Polars the rolling column is a snapshot — new data means recomputing it.
+
+`trend` references `weekly_average` — a one-arity formula reading a two-arity one by name. The two forms mix freely.
 
 
 ## Survey / social science

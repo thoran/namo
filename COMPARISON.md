@@ -202,7 +202,7 @@ filter(:close => c -> 10.0 <= c <= 20.0, df)
 
 ### Proc-based selection
 
-**Namo** — planned (0.8.0)
+**Namo** — shipped (0.8.0)
 
 An arbitrary predicate as a selection value. Any logic expressible in Ruby.
 
@@ -247,7 +247,7 @@ filter(:pe => v -> !ismissing(v) && v < 15, df)
 
 ### Regex-based selection
 
-**Namo** — planned (0.8.0)
+**Namo** — shipped (0.8.0)
 
 ```ruby
 namo[symbol: /^BH/]
@@ -283,7 +283,7 @@ filter(:symbol => s -> occursin(r"^BH", s), df)
 
 ### Mixed selection types in one call
 
-**Namo** — planned (0.8.0)
+**Namo** — shipped (0.8.0)
 
 Regex, range, proc, and exact value in a single `[]` call. Each dimension uses the selection type that fits.
 
@@ -641,7 +641,7 @@ A single formula definition that works across different fields and parameters.
 ```ruby
 namo[:sma] = proc do |row, namo, field, period|
   window = namo[symbol: row[:symbol], date: ..row[:date]].last(period)
-  window.sum{|r| r[field]} / window.length.to_f
+  window.sum{|r| r[field]} / window.count.to_f
 end
 
 row[:sma, :close, 20]
@@ -1082,7 +1082,7 @@ end
 
 ### Enumerable methods return Namos
 
-**Namo** — planned (0.14.0)
+**Namo** — shipped (0.11.0)
 
 ```ruby
 filtered = namo.select{|row| row[:close] > 40.0}
@@ -1120,7 +1120,7 @@ filtered = ds.where(ds['close'] > 40)
 filtered = filter(:close => c -> c > 40, df)
 ```
 
-**Summary:** Every other tool already returns its own type from filtering operations. Namo 0.14.0 brings it to parity. The difference is that Namo's Enumerable integration means `select`, `reject`, `sort_by` — Ruby's standard collection methods — also return Namos, not just Namo-specific filter methods.
+**Summary:** Every other tool already returns its own type from filtering operations. Namo 0.11.0 brought it to parity. The difference is that Namo's Enumerable integration means `select`, `reject`, `sort_by` — Ruby's standard collection methods — also return Namos, not just Namo-specific filter methods.
 
 
 ## Comparisons
@@ -1283,7 +1283,7 @@ is_subset = issubset(a_set, b_set)
 
 ### Dimensions, coordinates, values
 
-**Namo** — `dimensions` and `coordinates` shipped (0.0.0), `values` planned (0.7.0)
+**Namo** — `dimensions` and `coordinates` shipped (0.0.0), `values` shipped (0.7.0)
 
 Three introspection methods forming a complete set: `dimensions` tells you what names exist, `coordinates` tells you the unique values per dimension, `values` tells you all values for a dimension.
 
@@ -1337,7 +1337,7 @@ df.symbol                   # values
 
 ### `to_h` and columnar output
 
-**Namo** — planned (0.7.0)
+**Namo** — shipped (0.7.0)
 
 `values` and `to_h` produce identical output: a hash of dimension → array, with row order preserved. Either form is available; both are public.
 
@@ -1382,20 +1382,18 @@ Dict(name => df[!, name] for name in names(df))
 
 ### Aspect classes and template-matching
 
-**Namo** — planned (0.7.0)
+**Namo** — not planned
 
-`dimensions`, `coordinates`, and `values` return subclass instances of plain Ruby types (`Namo::Dimensions < Array`, `Namo::Coordinates < Hash`, `Namo::Values < Hash`). Each subclass overrides `===` to template-match against whole Namos, enabling case-statement dispatch on schema.
+The original 0.7.0 plan had `dimensions`, `coordinates`, and `values` returning subclass instances of plain Ruby types (`Namo::Dimensions < Array`, `Namo::Coordinates < Hash`, `Namo::Values < Hash`), each overriding `===` to template-match against whole Namos. 0.7.0 shipped plain Arrays and Hashes instead: `Namo#===` (0.6.0) already covers case-statement dispatch on analytical shape — see "Schema dispatch on incoming data feeds" above — and subclassing Namo itself covers known shapes, so the aspect-class layer added nothing they don't.
 
 ```ruby
 case incoming
-when ohlcv.dimensions     then process_ohlcv(incoming)
-when fundamentals.dimensions then process_fundamentals(incoming)
+when ohlcv_shape        then process_ohlcv(incoming)   # Namo#=== — the whole Namo is the template
+when fundamentals_shape then process_fundamentals(incoming)
 end
 ```
 
-The template-match is a structural conformance check: `ohlcv.dimensions === incoming` asks "does `incoming` have at least these dimensions?" Following Ruby's `===` convention where the left side is a template and the right side is checked against it (`Integer === 5`, `(1..10) === 5`).
-
-For all other purposes, the aspects behave as plain Arrays and Hashes — `a.dimensions == b.dimensions` does array equality, `a.coordinates[:close]` is plain Hash indexing, and so on. The subclass identity matters only for the asymmetric template-match against Namos.
+The finer-grained variants (matching on data dimensions only, or derived only) are covered by comparing the plain accessors — `a.data_dimensions == b.data_dimensions`, and so on. If a case-dispatch need on the finer split materialises later, a small `Matcher` returned by a factory method on Namo can serve it without an aspect-class hierarchy.
 
 **Pandas** — no equivalent. Schema-based dispatch requires writing predicate functions and an `if/elif` chain.
 
@@ -1430,7 +1428,7 @@ if (matches_ohlcv(incoming)) {
 
 **Julia/DataFrames.jl** — Julia's multiple-dispatch and `Match.jl` package provide pattern matching capabilities, but not for DataFrame schemas specifically. You'd write predicate functions.
 
-**Summary:** Namo's aspect classes turn schema into something you can pattern-match against using Ruby's standard case-statement machinery. No other tool exposes the schema as a pattern-matching object. The closest equivalent in any tool is writing predicate functions and `if/else` chains. This works because Namo's aspects are first-class objects that respond to `===` as template-match — a construction that fits Ruby's conventions exactly but has no analogue in Python, R, or Julia's data-frame ecosystems.
+**Summary:** No tool in this comparison exposes the schema as a separate pattern-matching object, and Namo no longer plans to — the whole Namo is the template, via `Namo#===`. The closest equivalent in the other tools remains predicate functions and `if/else` chains; in Namo, schema dispatch goes through Ruby's standard case-statement machinery with a Namo as the pattern — a construction that fits Ruby's conventions exactly but has no analogue in Python, R, or Julia's data-frame ecosystems.
 
 
 ## What Namo doesn't have
@@ -1449,22 +1447,24 @@ Features present in competitors that Namo lacks or has deferred.
 
 **Julia/DataFrames.jl** — `combine(groupby(df, :symbol), :close => mean)`.
 
-**Namo** — at 1.x, no built-in aggregation returning a Namo. Ruby's `Enumerable#group_by` works but returns a raw hash of `{key => Array<Row>}`.
+**Namo** — no built-in aggregation returning a Namo-family type yet. Ruby's `Enumerable#group_by` works but returns a raw hash of `{key => Array<Row>}`.
 
 ```ruby
 namo.group_by{|row| row[:symbol]}.transform_values{|rows| rows.sum{|r| r[:close]} / rows.length}
 # => {'BHP' => 42.8, 'RIO' => 118.3}
 ```
 
-Planned for 2.x: `group_by` returns `{key => Namo}` — each group becomes a queryable Namo retaining the parent's formulae. Combined with bare names (also 2.x), aggregation pipelines become Namo-native:
+Planned for 0.19.0, gated on `Namo::Collection` at 0.18.0: `group_by(:symbol)` returns a `Collection` — one member per group value, each a Namo holding that group's rows, retaining the parent's formulae, and named by its group value. The Collection's `summary` is the aggregation surface, and `members` exposes the groups for explicit per-group computation using Namo's full vocabulary:
 
 ```ruby
-# 2.x
-namo.group_by(&:symbol).transform_values{|n| n.close.sum / n.length}
-# => {'BHP' => 42.8, 'RIO' => 118.3}
+# 0.19.0
+namo.group_by(:symbol).summary(:close, reducer: :mean)
+# => Namo with {symbol:, close:} rows — mean close per symbol
+
+namo.group_by(:symbol).members.map{|n| n.values(:close).sum / n.count}
 ```
 
-The result is still a hash (since `group_by` produces a hash by definition), but its values are Namos rather than raw arrays, so any per-group operation can use Namo's full vocabulary.
+Bare names (2.x) then shorten the member-wise form to `n.close.sum / n.count`.
 
 ### Pivoting / reshaping
 
@@ -1492,7 +1492,7 @@ The result is still a hash (since `group_by` produces a hash by definition), but
 
 **Julia/DataFrames.jl** — `sort(df, :close)`.
 
-**Namo** — `sort_by` via Enumerable. Will return a Namo as of 0.14.0.
+**Namo** — `sort_by` via Enumerable, returning a Namo as of 0.11.0.
 
 ### Missing value handling
 
