@@ -124,7 +124,7 @@ class Namo
       matched = other.data.select{|right_row| shared.all?{|dim| left_row[dim] == right_row[dim]}}
       if block
         candidates = other.class.new(matched, formulae: other.formulae.dup)
-        chosen = block.call(Row.new(left_row, @formulae), candidates)
+        chosen = block.call(Row.new(left_row, @formulae, self), candidates)
         chosen.data.each{|right_row| combined_data << left_row.merge(right_row)}
       else
         matched.each{|right_row| combined_data << left_row.merge(right_row)}
@@ -140,7 +140,7 @@ class Namo
     @data.each do |left_row|
       if block
         candidates = other.class.new(other.data, formulae: other.formulae.dup)
-        chosen = block.call(Row.new(left_row, @formulae), candidates)
+        chosen = block.call(Row.new(left_row, @formulae, self), candidates)
         chosen.data.each{|right_row| combined_data << left_row.merge(right_row)}
       else
         other.data.each{|right_row| combined_data << left_row.merge(right_row)}
@@ -229,11 +229,17 @@ class Namo
 
   private
 
+  def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
+    @data = positional_data || data
+    @formulae = formulae
+    @name = name
+  end
+
   def values_for(dim)
     if data_dimensions.include?(dim)
       @data.map{|row_data| row_data[dim]}
     else
-      @data.map{|row_data| Row.new(row_data, @formulae)[dim]}
+      @data.map{|row_data| Row.new(row_data, @formulae, self)[dim]}
     end
   end
 
@@ -259,11 +265,5 @@ class Namo
     if (data_dimensions & other.data_dimensions).any?
       raise ArgumentError, "dimensions in common, need no common dimensions: #{data_dimensions} vs #{other.data_dimensions}"
     end
-  end
-
-  def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
-    @data = positional_data || data
-    @formulae = formulae
-    @name = name
   end
 end

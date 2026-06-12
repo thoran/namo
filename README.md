@@ -644,6 +644,34 @@ sales[product: 'Widget'][:revenue, :quarter]
 
 Formulae carry through selection — a filtered Namo instance remembers its formulae.
 
+#### Cross-row formulae
+
+A formula's arity selects its calling convention. A proc with **one** parameter receives the row, as above. A proc with **two** parameters receives `(row, namo)`, where `namo` is the Namo the row belongs to — so the formula can reach beyond the current row to the rest of the collection. That's what cross-row computation needs: moving windows, ranks, running totals, anything whose value depends on the row's neighbours.
+
+A simple moving average reads the surrounding rows through `namo`:
+
+```ruby
+prices = Namo.new([
+  {symbol: 'AAA', date: 1, close: 10.0},
+  {symbol: 'AAA', date: 2, close: 20.0},
+  {symbol: 'AAA', date: 3, close: 30.0}
+])
+
+prices[:sma] = proc{|row, namo|
+  window = namo[symbol: row[:symbol], date: ->(d){d <= row[:date]}]
+  window.values(:close).sum / window.count.to_f
+}
+
+prices.values(:sma)
+# => [10.0, 15.0, 20.0]
+```
+
+`namo` is the Namo that yielded the row, live — so the window always reflects the current state of the object you ask through. A filtered Namo's rows window over the filtered rows; an operator result's rows window over the result. Appending a row changes every cross-row value on the next access, with no caching.
+
+One-arity formulae are unchanged, and the two forms mix freely — a one-arity formula can reference a two-arity one, and a two-arity formula can reference a one-arity one, by name.
+
+Resolving a two-arity formula needs a Namo to window over. A `Row` constructed directly, without one, raises an `ArgumentError` naming the formula rather than letting the missing context surface as an unrelated error.
+
 ### Polymorphic `[]=`
 
 `[]=` dispatches on the type of the value assigned. A proc registers a formula, as above. Anything else broadcasts the value to every row:

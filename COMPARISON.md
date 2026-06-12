@@ -1,6 +1,6 @@
 # Namo Feature Comparison
 
-Date: 20260608
+Date: 20260612
 
 Feature-by-feature comparison of Namo against Pandas, Polars, R/dplyr, xarray, and Julia/DataFrames.jl. Covers both where the tools are the same and where they differ.
 
@@ -587,14 +587,14 @@ df.margin = df.profit ./ df.revenue
 
 ### Two-arity formulae
 
-**Namo** — planned (0.11.0)
+**Namo** — shipped (0.15.0)
 
 A formula that references other rows in the same dataset.
 
 ```ruby
 namo[:sma_20] = proc do |row, namo|
   window = namo[symbol: row[:symbol], date: ..row[:date]].last(20)
-  window.sum{|r| r[:close]} / window.length.to_f
+  window.sum{|r| r[:close]} / window.count.to_f
 end
 ```
 
@@ -634,7 +634,7 @@ combine(groupby(df, :symbol), :close => (x -> rollmean(x, 20)) => :sma_20)
 
 ### Parameterised formulae
 
-**Namo** — planned (0.12.0)
+**Namo** — planned (0.17.0)
 
 A single formula definition that works across different fields and parameters.
 

@@ -1,6 +1,6 @@
 # Namo Roadmap
 
-Date: 20260608
+Date: 20260612
 
 ## Design philosophy
 
@@ -49,7 +49,7 @@ A Namo holds data and computation together as a single object whose computed val
 
 When the underlying data changes — new rows append, existing rows are updated, the backing store delivers different content — every computed value reflects the change without reconciliation. Pull-based reactivity through laziness: each access recomputes from current state, so there's no stale-snapshot problem to solve.
 
-This holds across the formula trajectory: single-row formulae shipped in 0.1.0, cross-row formulae planned in 0.15.0, parameterised formulae in 0.16.0. Same mechanism throughout, same currentness property regardless of formula complexity.
+This holds across the formula trajectory: single-row formulae shipped in 0.1.0, cross-row formulae in 0.15.0, parameterised formulae in 0.17.0. Same mechanism throughout, same currentness property regardless of formula complexity.
 
 Other tabular libraries produce snapshots. Pandas, Polars, dplyr, and DataFrames.jl all materialise computed values into data columns, severing them from the computation that produced them. Spreadsheets like Excel and Quantrix attach formulae to cells but operate on them through a different interface than data. Namo treats them identically across the entire algebra of operations it provides.
 
@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.14.0
+## Current state: 0.15.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -634,7 +634,7 @@ Methods that return Namos:
 
 Methods that did not change: `map`, `flat_map` (transformed values, possibly not row-shaped), `reduce`, `sum`, `min_by`, `max_by`, `count` (scalars), and `each` (already returns an Enumerator or yields Rows).
 
-`group_by` is deliberately excluded, and not merely deferred — it is *structurally blocked*. Every method above returns a `Namo` (or `[Namo, Namo]`), and `Namo` exists. `group_by` returns a keyed set of sub-Namos, and the right type for that is `Namo::Collection`, which doesn't exist until 0.17.0. It lands at 0.18.0.
+`group_by` is deliberately excluded, and not merely deferred — it is *structurally blocked*. Every method above returns a `Namo` (or `[Namo, Namo]`), and `Namo` exists. `group_by` returns a keyed set of sub-Namos, and the right type for that is `Namo::Collection`, which doesn't exist until 0.18.0. It lands at 0.19.0.
 
 #### Implementation pattern
 
@@ -715,7 +715,7 @@ Namo.new(data: [{x: 1}])        # keyword — new
 Namo.new([{x: 1}], data: [{x: 2}])   # positional wins → @data == [{x: 1}]
 ```
 
-`name:` is the load-bearing half — the driver is `Namo::Collection` (0.17.0), where members identify themselves so the collection can find them by name, replace them on re-add, and label them in summaries. `Namo` gains `attr_accessor :name`; `name=` gives post-construction mutation. Operator-derived Namos (`+`, `*`, `select`, …) construct without `name:`, so their `@name` is `nil` — a derived object is not the original, and giving it the parent's name would mislead.
+`name:` is the load-bearing half — the driver is `Namo::Collection` (0.18.0), where members identify themselves so the collection can find them by name, replace them on re-add, and label them in summaries. `Namo` gains `attr_accessor :name`; `name=` gives post-construction mutation. Operator-derived Namos (`+`, `*`, `select`, …) construct without `name:`, so their `@name` is `nil` — a derived object is not the original, and giving it the parent's name would mislead.
 
 That nil-on-derivation behaviour is what makes the subclass guard convention work: subclasses guard `initialize` side effects with `return unless name`, so operator-derived instances skip them and only explicitly-named constructions fire them. `super` with no parentheses forwards every argument unchanged.
 
@@ -794,50 +794,59 @@ A block form is warranted exactly when the operation gives consideration to a di
 
 This ties to orthogonality: where a conditional operation can be expressed by composing existing orthogonal operations, it should be, rather than by adding a block to an operator. The anti-join a set-operator block would have served is one such case — `today[symbol: ->(s){!excluded.include?(s)}]` (with `excluded` a Set for an O(today + exclusions) lookup) expresses it using only shipped features, and is at least as efficient as a block form would be. A block earns its place only where no such composition exists — precisely the composition operators, where the dimension-in-isolation matching is underdetermined and cannot be assembled from existing parts. The comparison operators are excluded on the same ground: a keyed comparison is already `today[:symbol] == yesterday[:symbol]`, a comparison of projections, so no block is needed; and `eql?` would not take one regardless, its job being the strictest equality.
 
+### 0.15.0 (2026-06-12): Two-arity formulae
+
+Row carries a reference to the Namo that yielded it, and `Row#[]` dispatches on a formula's arity. A proc with arity 1 (and arity 0, and any negative arity) is called `proc.call(row)` exactly as before — row-scoped. A proc with arity **exactly 2** is called `proc.call(row, namo)`, where `namo` is the Namo the row belongs to — collection-scoped, so the formula can reach the rest of the dataset and compute across rows: moving windows, ranks, running totals.
+
+```ruby
+prices[:sma] = proc do |row, namo|
+  window = namo[symbol: row[:symbol], date: ->(d){d <= row[:date]}]
+  window.values(:close).sum / window.count.to_f
+end
+```
+
+`namo` is the yielding Namo, live — every consequence follows from "whichever Namo constructed this Row is the parent". A filtered Namo's rows window over the filtered rows; an operator result's rows window over the result; appending a row changes every two-arity value on the next access, with no caching, per the live-computation discipline. A two-arity formula that references its own name recurses unguarded, exactly as a self-referential one-arity formula already does.
+
+The dispatch pins exactly arity 2. Negative arities — `->(row, namo = nil){}` and `proc{|row, *rest|}` are both arity -2 — take the one-arity path in this release; whether a trailing splat or optional should be collection-scoped is settled in 0.17.0's arity > 2 generalisation, not pre-empted here. The `case` on arity is the seam that release extends.
+
+Row's constructor gains an optional third parameter, `namo`, defaulting to `nil`, so every existing `Row.new(row, formulae)` call site keeps working. Enumeration and predicate evaluation (`each`, `select` and its aliases, `reject`, `sort_by`, `first`, `last`, `take_while`, `drop_while`, `uniq`'s block form, `partition`) pass `self` as the parent, as do `values_for`'s derived branch and the `*`/`**` block paths — so `values`, `coordinates`, `to_h`, selection, and composition blocks all resolve two-arity dimensions. A Row constructed without a Namo raises a clear `ArgumentError` naming the formula when a two-arity formula is asked of it, rather than letting `nil` leak into the formula body.
+
+A two-arity formula's body typically scans the parent, so materialising a full column is O(n²)-shaped. This is the accepted pure-live cost; benchmarking (1.1) measures it and freeze-gated caching (2.x) relieves it. No memoisation in this release.
+
 ### Summary
 
-The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae, polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, and a constructor that takes data positionally or by keyword and carries an optional `name:`, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values and analytical chains that stay closed through filtering and ordering. The next phase (0.15.0) adds two-arity formulae for cross-row computation, then proceeds through richer formulae and `Namo::Collection`.
+The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped and two-arity collection-scoped, mixing freely), polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, and a constructor that takes data positionally or by keyword and carries an optional `name:`, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase (0.16.0) extends the data/formula exclusivity invariant through projection and composition, then proceeds through parameterised formulae (0.17.0) and `Namo::Collection`.
 
-## 0.15.0: Two-arity formulae
+## 0.16.0: Data/formula exclusivity
 
-Row gains a reference to its parent Namo. Procs with arity 2 receive `(row, namo)`, enabling cross-row computation:
+A name is data or derived, never both. `[]=` already enforces this at assignment — a proc deletes the data column of the same name, a scalar deletes the formula. Two library paths currently violate it, and the violation surfaces as a precedence disagreement between the access paths: `values_for` resolves a name data-first, `Row#[]` formula-first, so an aliased Namo answers differently depending on how it's asked.
 
-```ruby
-e[:sma_20] = proc do |row, namo|
-  window = namo[symbol: row[:symbol], date: ..row[:date]].last(20)
-  window.sum{|r| r[:close]} / window.length.to_f
-end
-```
+**Projection.** `prices[:date, :sma]` materialises the formula's values into the projected rows and carries the formula forward. The result answers `values(:sma)` from the stored data but recomputes `first[:sma]` through the formula — over the projected Namo, whose input columns (`:symbol`, `:close`) were just dropped. Row access and selection on the projected dimension raise.
 
-The `each` method passes `self` (the Namo) to Row:
+The fix: projection drops the formulae it materialised.
 
 ```ruby
-def each(&block)
-  return enum_for(:each) unless block_given?
-  @data.each{|row_data| block.call(Row.new(row_data, @formulae, self))}
-end
+carried = @formulae.reject{|name, _| positive.include?(name)}
+self.class.new(projected, formulae: carried)
 ```
 
-Row's constructor gains an optional Namo reference:
+All access paths then agree, `dimensions` lists the name once, and a dependent formula *not* named in the projection carries through and resolves off the materialised column — project `[:date, :sma]` with a `:double_sma` formula referencing `:sma`, and `:double_sma` keeps working against the stored values. No liveness is lost: projection already snapshots data into fresh hashes (unlike selection, which shares row objects with its source), so "values current at the moment of projection" was its semantic for data dimensions all along; derived dimensions now follow the same reading.
 
-```ruby
-class Row
-  def initialize(row, formulae, namo = nil)
-    @row = row
-    @formulae = formulae
-    @namo = namo
-  end
-end
-```
+The rule is also a control surface: materialisation is selective, and the projection list is the selector. Naming a derived dimension asks for its values — a stored snapshot, computed against the source. Omitting it leaves it as computation — formulae not named in the projection carry through live and compute from the projected columns on every access, exactly as they carry through selection. `sales[:price, :quantity, :revenue]` returns a Namo with `:revenue` as stored values; `sales[:price, :quantity]` returns one where the `:revenue` formula recomputes from the result's own rows whenever asked. All four combinations of materialised/live × inputs-present/inputs-dropped are expressible by what is named, and the only failing one — carrying a formula whose inputs the projection cut — is the user's explicit choice, the same caveat-emptor as contracting away a formula's inputs. The `:double_sma` case above is the boundary worth knowing: a carried formula that references a materialised dimension is half-frozen — itself live, computing over snapshot inputs — which follows directly from the rule. An explicit carry-live marker (a `~:revenue` wrapper mirroring `-:dim` contraction) was considered and rejected as redundant: "name the inputs, omit the formula" already spells it, and duplicate spellings cut against orthogonality.
 
-The `namo` parameter defaults to `nil` for backward compatibility — existing code that calls `Row.new(row, formulae)` keeps working. Row-scoped formulae never touch `@namo`. Two-arity formulae use it when present. If a Row is constructed without a Namo and a two-arity formula is called, the `nil` produces a clear error rather than a missing argument error.
+**Composition.** `*` and `**` merge formulae from both sides, so one operand's data dimension can collide with the other's derived dimension — `:margin` as an audited stored figure on the left, `:margin` as a formula over `:cost` and `:price` on the right. The result holds both, silently: `values(:margin)` gives the stored figure, `first[:margin]` the computed one.
 
-Row#[] dispatch for arity 1 and 2:
+The fix: `*` and `**` raise `ArgumentError` when `(data_dimensions & other.derived_dimensions) | (derived_dimensions & other.data_dimensions)` is non-empty, block and no-block forms alike. The operands disagree about what the name means — stored fact on one side, computation on the other — and there is no last-write order to appeal to, so this is precisely where the operators' existing character applies: refuse the ambiguous operand pair loudly rather than guess. The user resolves the collision explicitly before composing, by contraction (`audited[-:margin] * modelled`) or projection.
 
-- 1: `proc.call(row)` — row-scoped
-- 2: `proc.call(row, namo)` — collection-scoped
+The other operators need nothing. The set operators' matching-data-dimensions precondition already blocks the asymmetric case — if one side carries the name as data and the other doesn't, their data dimensions can't match. Formula-vs-formula collisions stay left-wins, as documented — that's resolution, not aliasing. The constructor stays unguarded: `Namo.new(data, formulae: ...)` can still hand-build an aliased Namo, the same trust it already extends to row shapes.
 
-## 0.16.0: Parameterised formulae
+**Rejected alternatives.** Data-first precedence in `Row#[]` (matching `values_for`) fixes the symptom everywhere in one line, but legitimises the aliased state instead of eliminating it: formulae on hand-built Namos go silently dead behind same-named data, and `dimensions` keeps listing the name twice. Keeping projection live — carrying the formula, not materialising — fails structurally: the formula's inputs are exactly what projection dropped, and with opaque procs there is no inferring whether they survived (the same wall as proc comparison in `===`).
+
+That last point is the one to revisit. If dependencies were knowable, projection could keep a formula live when its inputs survive the cut and materialise only when they don't. The 2.x bare-names DSL makes dependencies observable by construction rather than inferred, so dependency-aware live projection has a natural home there.
+
+Parameterised formulae (0.17.0) cannot be materialised without their arguments; what projection does with an arity > 2 dimension is defined in that release, extending this rule.
+
+## 0.17.0: Parameterised formulae
 
 Procs with arity > 2 receive `(row, namo, *extra_args)`. Row#[] forwards extra arguments:
 
@@ -856,7 +865,7 @@ Row#[] dispatch extended:
 - 2: `proc.call(row, namo)` — collection-scoped
 - \>2: `proc.call(row, namo, *extra_args)` — parameterised
 
-## 0.17.0: Namo::Collection
+## 0.18.0: Namo::Collection
 
 A hierarchical aggregate pattern for composing named Namos. `Namo::Collection < Namo` holds `members` — an Array of named Namos — and provides view methods that summarise or detail across them.
 
@@ -924,7 +933,7 @@ This single conditional (`row.key?(by) ? row : row.merge(by => m.name)`) is the 
 
 ### Round-trip properties
 
-A Collection can be arrived at two ways: by *splitting* a Namo (partition, via `group_by` at 0.18.0) or by *assembling* disparate Namos (`<<`). The two paths have different round-trip behaviour, and the difference is exactly whether the grouping axis is already a dimension.
+A Collection can be arrived at two ways: by *splitting* a Namo (partition, via `group_by` at 0.19.0) or by *assembling* disparate Namos (`<<`). The two paths have different round-trip behaviour, and the difference is exactly whether the grouping axis is already a dimension.
 
 **Split round-trip — exactly idempotent.** When a Collection comes from `group_by(:symbol)`, every member retains `:symbol` (it's a pre-existing dimension, the axis grouping happened *along*, not consumed by the split). So `detail(by: :symbol)` is a pure union — `:symbol` is already present, nothing injected — and reconstructs the original rows exactly:
 
@@ -953,7 +962,7 @@ Enforcement is therefore at the *point of use*, not at insertion. `<<` accepts a
 - `find(name)` matches on `member.name`; an unnamed member matches nothing and is never found. That is the truthful result of having no name, not an error.
 - Replace-by-name engages only when the incoming member *has* a name that collides with an existing member's. Unnamed members always append (no name to collide on).
 
-This is deliberately *not* an eager guard. An earlier draft raised `ArgumentError` on unnamed `<<`, but that guard fires on a condition that isn't always a mistake — `group_by` (0.18.0) constructs members named by their group value, and a nil-valued group key produces a legitimately nil-named member. Forbidding nil names eagerly would either break `group_by`'s nil-group case or force a sentinel. Moving enforcement to use-site avoids all of that: a nil-named group member is unfindable-by-name but its rows still materialise and round-trip correctly via the intrinsic grouping dimension, and a genuinely-forgotten assembly name surfaces as "not found" when you try to `find` it. This matches Namo's broader lazy, compute-on-access discipline — don't validate what you haven't been asked about.
+This is deliberately *not* an eager guard. An earlier draft raised `ArgumentError` on unnamed `<<`, but that guard fires on a condition that isn't always a mistake — `group_by` (0.19.0) constructs members named by their group value, and a nil-valued group key produces a legitimately nil-named member. Forbidding nil names eagerly would either break `group_by`'s nil-group case or force a sentinel. Moving enforcement to use-site avoids all of that: a nil-named group member is unfindable-by-name but its rows still materialise and round-trip correctly via the intrinsic grouping dimension, and a genuinely-forgotten assembly name surfaces as "not found" when you try to `find` it. This matches Namo's broader lazy, compute-on-access discipline — don't validate what you haven't been asked about.
 
 ### Memoisation — deferred to 2.x
 
@@ -974,9 +983,9 @@ If a member with the same `name` is already present, `<<` removes the existing o
 - **Constructor widening (0.12.0)** — keyword `data:` for `Namo.new(data: [...])` in `summary` and `detail` (positional `Namo.new([...])` works equally for these two methods, so this is ergonomic rather than strict), and the `name:` attribute so members identify themselves and `find`/replace-by-name work on `name`. (Unnamed members are accepted but unfindable-by-name; see "Names, and unnamed members" above.)
 - **`<<` with replace-by-name** — Collection-specific, defined here.
 
-Two-arity formulae (0.15.0) and parameterised formulae (0.16.0) are not required by `Collection` but compose well with it: a Collection's view can include a derived dimension that aggregates across the underlying members.
+Two-arity formulae (0.15.0) and parameterised formulae (0.17.0) are not required by `Collection` but compose well with it: a Collection's view can include a derived dimension that aggregates across the underlying members.
 
-This dependency stack is why `Collection` lands at 0.17.0 rather than earlier. The handover explored pulling it forward, but it needs the constructor widening — keyword `data:` and `name:` (0.12.0) — and the `if name` subclass guard (0.12.0) to be in place first. Building it once against a complete substrate beats shipping it early and amending it across every release that fills in a dependency — including the memoisation that 2.x will add, which is cleaner to attach to a settled, pure-live 1.x Collection than to retrofit.
+This dependency stack is why `Collection` lands at 0.18.0 rather than earlier. The handover explored pulling it forward, but it needs the constructor widening — keyword `data:` and `name:` (0.12.0) — and the `if name` subclass guard (0.12.0) to be in place first. Building it once against a complete substrate beats shipping it early and amending it across every release that fills in a dependency — including the memoisation that 2.x will add, which is cleaner to attach to a settled, pure-live 1.x Collection than to retrofit.
 
 ### Tests
 
@@ -1011,17 +1020,17 @@ This dependency stack is why `Collection` lands at 0.17.0 rather than earlier. T
 - Note on the `<<` replace-by-name semantics and the use-site (not insertion-time) treatment of unnamed members.
 - Forward-note that freeze-gated memoisation is a 2.x optimisation, opt-in and transparent.
 
-## 0.18.0: group_by returns a Collection
+## 0.19.0: group_by returns a Collection
 
 `Namo#group_by(dimension)` splits a Namo into a `Namo::Collection`, partitioning the rows by the values of the given dimension. This completes the Enumerable coherence pass begun at 0.11.0 — it is the one Enumerable method that produces row-shaped output and was not included there.
 
 ### Why this is a separate release, and why it's here at all
 
-`group_by` was originally scheduled for 2.x. It comes forward to 0.18.0 *because* 0.17.0 built `Namo::Collection` — its return type. The dependency is the whole story:
+`group_by` was originally scheduled for 2.x. It comes forward to 0.19.0 *because* 0.18.0 built `Namo::Collection` — its return type. The dependency is the whole story:
 
 The 0.11.0 Enumerable pass shipped every method that returns a `Namo`. `group_by` was excluded not as a deferral but because it was structurally blocked: it returns a *partition* — a keyed set of sub-Namos — and the right type for that didn't exist. `{key => Array<Row>}` (Ruby's default) isn't in the Namo family, and `{key => Namo}` (a plain Hash of Namos) is a half-measure that doesn't carry the aggregation surface a partition wants. The honest type for "a Namo split into named pieces" is `Namo::Collection`, which is also the type for "named pieces assembled into a whole." Assembly and partition are the same structure reached from opposite directions; `Collection` is the structure, and `group_by` is its partition-side constructor.
 
-So `group_by` could not land until `Collection` existed. 0.17.0 built `Collection`; 0.18.0 is the first release in which `group_by` is expressible. The two-release split (0.17.0 then 0.18.0) records the causality: `Collection`'s existence is what unblocks and brings forward `group_by`.
+So `group_by` could not land until `Collection` existed. 0.18.0 built `Collection`; 0.19.0 is the first release in which `group_by` is expressible. The two-release split (0.18.0 then 0.19.0) records the causality: `Collection`'s existence is what unblocks and brings forward `group_by`.
 
 ### Behaviour
 
@@ -1035,7 +1044,7 @@ namo.group_by(:symbol).as_detail(:symbol) == namo        # true — exact round-
 
 Each group member is named by its group value (`find('BHP')` returns the BHP member), so the Collection's `find` and the whole assembly API apply uniformly to a partitioned Collection. The group value *is* the member name — and because it was already a dimension in the rows, there is no extrinsic-key conflation: the name and the dimension value coincide by construction.
 
-The nil-key case falls out cleanly from the use-site naming decision (0.17.0). If some rows have `dimension` missing or nil-valued, they form a group keyed by `nil`, and that member is named `nil`. There is no insertion guard to trip — `<<` accepts it — and the member is simply unfindable by `find` (you can't `find(nil)` meaningfully), but its rows still materialise into the detail view and round-trip correctly, because the grouping dimension (nil-valued for those rows, but present) is intrinsic. No rows are dropped, no sentinel is invented; the nil group is a first-class member that happens to have a nil name. This is exactly why 0.17.0 moved name-enforcement to use-site rather than guarding `<<`.
+The nil-key case falls out cleanly from the use-site naming decision (0.18.0). If some rows have `dimension` missing or nil-valued, they form a group keyed by `nil`, and that member is named `nil`. There is no insertion guard to trip — `<<` accepts it — and the member is simply unfindable by `find` (you can't `find(nil)` meaningfully), but its rows still materialise into the detail view and round-trip correctly, because the grouping dimension (nil-valued for those rows, but present) is intrinsic. No rows are dropped, no sentinel is invented; the nil group is a first-class member that happens to have a nil name. This is exactly why 0.18.0 moved name-enforcement to use-site rather than guarding `<<`.
 
 ### Relationship to the Enumerable pass
 
@@ -1075,11 +1084,11 @@ A block form (`group_by{|row| ...}` computing the group key from a block rather 
 
 - README section on `group_by` returning a Collection, with the round-trip example.
 - Note that this completes the Enumerable coherence pass started at 0.11.0.
-- Cross-reference to `Collection` (0.17.0) for the assembly side of the same structure.
+- Cross-reference to `Collection` (0.18.0) for the assembly side of the same structure.
 
 ## 1.0.0: Stable release
 
-The 1.0 release includes everything through 0.18.0:
+The 1.0 release includes everything through 0.19.0:
 
 - Selection (exact, array, range, proc, regex), projection, contraction.
 - Single-row formulae, two-arity formulae, parameterised formulae.
@@ -1353,13 +1362,13 @@ This makes memoisation genuinely optional without a flag, a mode, or a config th
 Scope of the 2.x caching work:
 
 - **Namo inspection aspects** — memoise `values`/`coordinates`/`to_h` on frozen Namos (the "wholesale aspect caching" the 0.7.0 note defers to here).
-- **Collection views** — memoise `find`/`summary`/`detail`/`@data` materialisation on frozen Collections. This is the memo-and-invalidation apparatus that was deliberately *removed* from the 0.17.0 implementation; it returns here, where it is measured against the 1.1 benchmark suite and justified — and where freeze makes invalidation-on-mutation unnecessary (a frozen Collection never mutates, so there is nothing to invalidate).
+- **Collection views** — memoise `find`/`summary`/`detail`/`@data` materialisation on frozen Collections. This is the memo-and-invalidation apparatus that was deliberately *removed* from the 0.18.0 implementation; it returns here, where it is measured against the 1.1 benchmark suite and justified — and where freeze makes invalidation-on-mutation unnecessary (a frozen Collection never mutates, so there is nothing to invalidate).
 
 Contingency: this work is gated on the **freeze semantics**, currently in the Open Questions section rather than a scheduled release. Caching attaches to freeze, so resolving the freeze semantics is a prerequisite for the caching workstream. If freeze lands before 2.x's performance phase, caching can attach to it directly; if the freeze semantics are still open when this work begins, settling them comes first.
 
 ### Bare-name ergonomics on Collections
 
-`group_by(:symbol)` returns a `Namo::Collection` from 0.18.0; the return type is settled in 1.x. What 2.x adds is the bare-name resolution that makes aggregation over a Collection's members read cleanly:
+`group_by(:symbol)` returns a `Namo::Collection` from 0.19.0; the return type is settled in 1.x. What 2.x adds is the bare-name resolution that makes aggregation over a Collection's members read cleanly:
 
 ```ruby
 # 1.x — works, but explicit
@@ -1373,7 +1382,7 @@ namo.group_by(:symbol).members.map{|n| n.values(:close).sum / n.length}
 namo.group_by(:symbol).members.map{|n| n.close.sum / n.length}
 ```
 
-The return-type change (`group_by` → `Collection`) is *not* a 2.x concern — it landed at 0.18.0, gated on `Collection` at 0.17.0. 2.x only contributes the bare-name reading on the resulting members. The conceptual model was already unified in 1.x: assembly and partition both produce a `Collection`; bare names make the post-partition computation as ergonomic as the pre-partition selection.
+The return-type change (`group_by` → `Collection`) is *not* a 2.x concern — it landed at 0.19.0, gated on `Collection` at 0.18.0. 2.x only contributes the bare-name reading on the resulting members. The conceptual model was already unified in 1.x: assembly and partition both produce a `Collection`; bare names make the post-partition computation as ergonomic as the pre-partition selection.
 
 ### Finite module
 

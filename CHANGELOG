@@ -1,6 +1,41 @@
 CHANGELOG
 _________
 
+20260612
+0.15.0: + two-arity formulae — procs with arity 2 receive (row, namo) for cross-row computation.
+
+1. ~ lib/Namo/Row.rb: Row's constructor gains an optional third parameter, namo (default nil),
+   stored in @namo — the Namo that yielded the Row; the two-argument form keeps working.
+   Row#[] dispatches on formula arity: exactly 2 calls formula.call(self, @namo), raising
+   ArgumentError via the new private raise_unless_namo_context when @namo is nil; every
+   other arity (0, 1, negative) keeps the existing formula.call(self) unchanged.
+2. ~ lib/Namo/Enumerable.rb: every Row construction (each, select and its aliases, reject,
+   sort_by, first, last, take_while, drop_while, uniq's block form, partition) passes self
+   as the Row's namo, so two-arity formulae resolve during enumeration and predicate
+   evaluation, with the yielding Namo as the window.
+3. ~ lib/namo.rb: values_for's derived branch and the * and ** block paths pass self as the
+   Row's namo — values/coordinates/to_h resolve two-arity dimensions, and composition-block
+   rows can resolve self's two-arity formulae (extension of the 0.14.0 block contract; the
+   (Row, Namo) -> Namo contract and result-formulae rule are unchanged).
+4. ~ test/Namo/Row_test.rb: + constructor third-argument and backward-compatibility tests,
+   arity-dispatch tests (1, 2, 0, negative), the nil-namo ArgumentError, and match? on a
+   two-arity derived dimension.
+5. ~ test/namo_test.rb: + "#[]= two-arity formulae" describe — SMA cross-row resolution via
+   values/coordinates/to_h, selection and subset-predicate resolution, first/last Rows,
+   yielding-Namo (filtered-window) semantics, liveness, operator carry-through, composition-
+   block resolution, mixed-arity chains, and the empty-Namo case.
+6. ~ README.md: + Cross-row formulae subsection under Formulae, with the SMA example, the
+   yielding-Namo semantic, and the no-context error.
+7. ~ ROADMAP.md: Promote 0.15.0 to shipped; Current state -> 0.15.0; Summary folds in
+   two-arity formulae; the example's window.length corrected to window.count (Namo has
+   no length); "Live computation objects" phrasing updated. + upcoming 0.16.0 section,
+   Data/formula exclusivity — projection drops the formulae it materialises, * and **
+   raise on a data/formula name collision — with parameterised formulae renumbered to
+   0.17.0, Namo::Collection to 0.18.0, and group_by to 0.19.0; next phase -> 0.16.0.
+8. ~ COMPARISON.md: Two-arity formulae -> shipped (0.15.0) with the same window.count
+   correction; Parameterised formulae repointed to planned (0.17.0). Date bumped.
+9. ~ Namo::VERSION: /0.14.0/0.15.0/
+
 20260608
 0.14.0: + blocks on the composition operators (*, **) for custom match refinement.
 

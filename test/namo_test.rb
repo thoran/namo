@@ -647,6 +647,126 @@ describe Namo do
     end
   end
 
+  describe "#[]= two-arity formulae" do
+    let(:price_data) do
+      [
+        {symbol: 'AAA', date: 1, close: 10.0},
+        {symbol: 'AAA', date: 2, close: 20.0},
+        {symbol: 'AAA', date: 3, close: 30.0},
+      ]
+    end
+
+    let(:prices) do
+      Namo.new(price_data)
+    end
+
+    # A simple moving average: the mean close over the rows of the same symbol
+    # up to and including the current row's date, computed against the Namo the
+    # row belongs to.
+    let(:sma) do
+      ->(row, namo){
+        window = namo[symbol: row[:symbol], date: ->(d){d <= row[:date]}]
+        window.values(:close).sum / window.count.to_f
+      }
+    end
+
+    it "resolves a cross-row SMA via values" do
+      prices[:sma] = sma
+      _(prices.values(:sma)).must_equal [10.0, 15.0, 20.0]
+    end
+
+    it "resolves through coordinates" do
+      prices[:sma] = sma
+      _(prices.coordinates(:sma)).must_equal [10.0, 15.0, 20.0]
+    end
+
+    it "resolves through the no-arg to_h" do
+      prices[:sma] = sma
+      _(prices.to_h[:sma]).must_equal [10.0, 15.0, 20.0]
+    end
+
+    it "selects on the two-arity dimension" do
+      prices[:sma] = sma
+      _(prices[sma: ->(v){v > 12.0}].values(:date)).must_equal [2, 3]
+    end
+
+    it "resolves a two-arity dimension in a subset-method predicate" do
+      prices[:sma] = sma
+      result = prices.select{|row| row[:sma] > 12.0}
+      _(result).must_be_kind_of Namo
+      _(result.values(:date)).must_equal [2, 3]
+    end
+
+    it "resolves the two-arity formula on the no-arg first Row" do
+      prices[:sma] = sma
+      _(prices.first[:sma]).must_equal 10.0
+    end
+
+    it "resolves the two-arity formula on the no-arg last Row" do
+      prices[:sma] = sma
+      _(prices.last[:sma]).must_equal 20.0
+    end
+
+    it "windows over the yielding Namo — a filtered Namo computes over the filtered rows only" do
+      prices[:sma] = sma
+      filtered = prices.select{|row| row[:date] >= 2}
+      # On the full Namo the date-2 SMA averages dates 1 and 2 (15.0); on the
+      # filtered Namo it sees only date 2, so the value differs.
+      _(prices.values(:sma)).must_equal [10.0, 15.0, 20.0]
+      _(filtered.values(:sma)).must_equal [20.0, 25.0]
+    end
+
+    it "is live: appending a row changes the two-arity result on next access" do
+      prices[:sma] = sma
+      _(prices.last[:sma]).must_equal 20.0
+      prices.data << {symbol: 'AAA', date: 4, close: 40.0}
+      _(prices.last[:sma]).must_equal 25.0
+    end
+
+    it "carries a two-arity formula through a set-operator result, windowing over the combined rows" do
+      a = Namo.new([{symbol: 'AAA', date: 1}, {symbol: 'AAA', date: 2}])
+      b = Namo.new([{symbol: 'AAA', date: 3}])
+      a[:peers] = ->(row, namo){namo.count}
+      _((a + b).values(:peers)).must_equal [3, 3, 3]
+    end
+
+    it "carries a merged two-arity formula through a composition result, windowing over the joined rows" do
+      left = Namo.new([{symbol: 'AAA', date: 1}, {symbol: 'AAA', date: 2}])
+      right = Namo.new([{symbol: 'AAA', sector: 'tech'}])
+      left[:peers] = ->(row, namo){namo.count}
+      result = left * right
+      _(result.values(:peers)).must_equal [2, 2]
+    end
+
+    it "resolves a two-arity formula of self inside a composition block" do
+      left = Namo.new([{symbol: 'AAA', date: 1}, {symbol: 'AAA', date: 2}])
+      right = Namo.new([{symbol: 'AAA', sector: 'tech'}])
+      left[:peers] = ->(row, namo){namo.count}
+      seen = nil
+      left.*(right){|row, candidates| seen = row[:peers]; candidates}
+      _(seen).must_equal 2
+    end
+
+    it "lets a one-arity formula reference a two-arity formula by name" do
+      prices[:sma] = sma
+      prices[:double_sma] = ->(row){row[:sma] * 2}
+      _(prices.values(:double_sma)).must_equal [20.0, 30.0, 40.0]
+    end
+
+    it "lets a two-arity formula reference a one-arity formula by name" do
+      prices[:tenth] = ->(row){row[:close] / 10.0}
+      prices[:tenth_plus_count] = ->(row, namo){row[:tenth] + namo.count}
+      _(prices.values(:tenth_plus_count)).must_equal [4.0, 5.0, 6.0]
+    end
+
+    it "returns [] for a two-arity dimension on an empty Namo without invoking the formula" do
+      invoked = false
+      empty = Namo.new([], formulae: {sma: ->(row, namo){invoked = true; 0}})
+      _(empty.values(:sma)).must_equal []
+      _(invoked).must_equal false
+    end
+  end
+
   describe "#each" do
     it "yields Row objects" do
       rows = []

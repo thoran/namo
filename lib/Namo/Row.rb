@@ -5,7 +5,13 @@ class Namo
   class Row
     def [](name)
       if @formulae.key?(name)
-        @formulae[name].call(self)
+        case @formulae[name].arity
+        when 2
+          raise_unless_namo_context(name)
+          @formulae[name].call(self, @namo)
+        else
+          @formulae[name].call(self)
+        end
       else
         @row[name]
       end
@@ -44,9 +50,16 @@ class Namo
 
     private
 
-    def initialize(row, formulae)
+    def initialize(row, formulae, namo = nil)
       @row = row
       @formulae = formulae
+      @namo = namo
+    end
+
+    def raise_unless_namo_context(name)
+      unless @namo
+        raise ArgumentError, "two-arity formula #{name.inspect} requires a Namo context, but this Row has none"
+      end
     end
   end
 end

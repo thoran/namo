@@ -40,6 +40,60 @@ describe Namo::Row do
     end
   end
 
+  describe "constructor" do
+    it "constructs from the two-argument form (namo defaults nil)" do
+      _(Namo::Row.new(row_data, formulae)).must_be_kind_of Namo::Row
+    end
+
+    it "accepts a third namo argument" do
+      namo = Namo.new([row_data])
+      _(Namo::Row.new(row_data, formulae, namo)).must_be_kind_of Namo::Row
+    end
+  end
+
+  describe "#[] arity dispatch" do
+    it "calls an arity-1 formula with the Row only" do
+      seen = nil
+      formulae[:dim] = ->(r){seen = r; 1}
+      row[:dim]
+      _(seen).must_be_same_as row
+    end
+
+    it "calls an arity-2 formula with the Row and the yielding Namo" do
+      namo = Namo.new([row_data])
+      row = Namo::Row.new(row_data, formulae, namo)
+      seen_row = nil
+      seen_namo = nil
+      formulae[:dim] = ->(r, n){seen_row = r; seen_namo = n; 1}
+      row[:dim]
+      _(seen_row).must_be_same_as row
+      _(seen_namo.equal?(namo)).must_equal true
+    end
+
+    it "takes the one-arity path for an arity-0 proc" do
+      formulae[:dim] = proc{42}
+      _(row[:dim]).must_equal 42
+    end
+
+    it "takes the one-arity path for a negative-arity proc" do
+      seen_rest = nil
+      formulae[:dim] = proc{|r, *rest| seen_rest = rest; 1}
+      row[:dim]
+      _(seen_rest).must_equal []
+    end
+
+    it "raises ArgumentError naming the formula when an arity-2 formula has no Namo context" do
+      formulae[:sma] = ->(r, n){n.count}
+      error = _(proc{row[:sma]}).must_raise ArgumentError
+      _(error.message).must_match(/sma/)
+    end
+
+    it "resolves an arity-1 formula on a Row with no Namo context" do
+      formulae[:revenue] = ->(r){r[:price] * r[:quantity]}
+      _(row[:revenue]).must_equal 1000.0
+    end
+  end
+
   describe "#match?" do
     it "matches a single value" do
       _(row.match?(product: 'Widget')).must_equal true
@@ -59,6 +113,14 @@ describe Namo::Row do
     it "matches multiple dimensions" do
       _(row.match?(product: 'Widget', quarter: 'Q1')).must_equal true
       _(row.match?(product: 'Widget', quarter: 'Q2')).must_equal false
+    end
+
+    it "resolves a two-arity derived dimension when the Row carries a Namo" do
+      namo = Namo.new([row_data])
+      formulae[:row_count] = ->(r, n){n.count}
+      row = Namo::Row.new(row_data, formulae, namo)
+      _(row.match?(row_count: 1)).must_equal true
+      _(row.match?(row_count: 2)).must_equal false
     end
 
     describe "Proc predicates" do
