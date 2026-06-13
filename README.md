@@ -925,6 +925,121 @@ end
 
 `super` with no parentheses forwards every argument — positional and keyword — to `Namo#initialize` unchanged. The `return unless name` guard means a subclass need not override every operator to stop the result of `*` or `select` from re-running its construction side effects: it guards on `name` instead.
 
+### Collections
+
+`Namo::Collection` is a hierarchical aggregate — a Namo that holds an Array of named Namos (its `members`) and exposes summary and detail views across them. It is the first member of the Namo family beyond `Namo` itself.
+
+The motivating case is a hierarchical budget. Each sub-assembly of a car (`powertrain`, `chassis`, `body`, ...) is a Namo with shared columns; the whole car is a `Collection` of those sub-assemblies, queryable both at summary level ("weight by assembly") and detail level ("every line item across all assemblies"):
+
+```ruby
+class Car < Namo::Collection
+  def summary(dimension, by: :assembly, reducer: :sum)
+    super
+  end
+
+  def detail(by: :assembly)
+    super
+  end
+end
+
+class SubAssembly < Namo; end
+
+powertrain = SubAssembly.new(name: :powertrain, data: [
+  {component: 'engine', weight: 200, cost: 50000},
+  {component: 'gearbox', weight: 80, cost: 20000}
+])
+chassis = SubAssembly.new(name: :chassis, data: [{component: 'frame', weight: 150, cost: 30000}])
+body    = SubAssembly.new(name: :body, data: [{component: 'panels', weight: 60, cost: 15000}])
+
+gt = Car.new
+gt << [powertrain, chassis, body]
+
+gt.summary(:weight).to_a
+# => [
+#   {assembly: :powertrain, weight: 280},
+#   {assembly: :chassis, weight: 150},
+#   {assembly: :body, weight: 60}
+# ]
+
+gt.summary(:weight).values(:weight).sum    # total weight by summing the assembly summaries
+# => 490
+
+gt.detail.values(:weight).sum              # total weight by summing every line item
+# => 490
+```
+
+`Car` overrides `summary`/`detail` only to set `by: :assembly` as the per-class default and then calls `super`. A bare `Namo::Collection.new` works equally well, defaulting `by:` to `:member` and taking it at the call site.
+
+#### Lazy detail, behaving as its line items
+
+A Collection's substance is its `members`; the inherited `@data` is a *derived view* of them. Any inherited row-operation — selection, projection, `each`, `values`, the set and composition operators — reads that view, so a Collection transparently behaves as its **detail** (the lossless union of its members' rows). Nothing has to be called first:
+
+```ruby
+gt.values(:weight)
+# => [200, 80, 150, 60]
+
+gt[component: 'engine'].values(:cost)
+# => [50000]
+```
+
+Detail is the lazy view because a Collection's rows simply *are* its members' rows; a summary is a reduction you pose against them, so it is never reached by accident — only through `summary` or `as_summary`.
+
+#### Four view methods
+
+The views come in a non-mutating pair and a mutating pair:
+
+- `summary(dimension, by:, reducer:)` and `detail(by:)` are **non-mutating** — each returns a fresh `Namo` derived from the members, leaving the Collection untouched. Use these when you want a view to keep: assign the result to a variable and operate on it independently.
+- `as_summary(dimension, by:, reducer:)` and `as_detail(by)` are **mutating** — each sets the Collection's data to the chosen view and returns `self`, for a fluent step. (`as_detail` carries no `dimension`, so its label argument is positional: `as_detail(:assembly)`.)
+
+```ruby
+gt.summary(:cost, reducer: :mean)          # a fresh Namo; gt is unchanged
+gt.as_summary(:weight)                     # gt's data becomes the summary; returns gt
+gt.as_detail(:assembly)                    # gt's data becomes the detail; returns gt
+```
+
+`reducer:` is any method the member's column responds to — `:sum` (the default) and `:mean` are typical (`:mean` via a statistics gem that adds `Array#mean`).
+
+#### Inject-iff-absent
+
+`detail(by:)` unions the members' rows and labels each with its origin, but only when that label isn't already present:
+
+- If `by` is **already a dimension** in a member's rows, the row passes through untouched — the dimension is intrinsic.
+- If `by` is **not** present, `detail` injects it (`row.merge(by => member.name)`), promoting the member's name into a dimension.
+
+This single conditional is where assembly (`<<`, members named extrinsically) and partition (`group_by`, members named by an intrinsic value — 0.19.0) meet. For an assembled Collection, `as_detail(:assembly)` is the dimension-creating step: it promotes the member name into real data and **retains** it. From then on the structure is intrinsic and round-trips are exact; the promoted dimension is removed only by explicit contraction (`gt[-:assembly]`), never automatically.
+
+#### `<<` and unnamed members
+
+`<<` accepts a single member or an array of them. A member whose `name` collides with an existing member's **replaces** it (last-write-wins), making the name → member mapping a dictionary rather than a multimap:
+
+```ruby
+gt << SubAssembly.new(name: :powertrain, data: [...])   # replaces the existing :powertrain
+gt << [front_suspension, rear_suspension]               # adds each
+```
+
+There is no insertion-time guard against unnamed members. An unnamed member is simply appended (no name to collide on) and is unfindable by `find` — the honest consequence of having no name, not an error. `find(name)` returns the member with that name, or `nil`:
+
+```ruby
+gt.find(:chassis)    # => the chassis SubAssembly
+gt.find(:missing)    # => nil
+```
+
+(`find(name)` is member lookup; it shadows `Enumerable#find` on Collections. Predicate search over rows remains available as `detect`.)
+
+#### View lifetime and liveness
+
+Materialisation is pure-live: the Collection rebuilds its data view from the current members on every `<<`, with no memoisation. So a mutation is reflected immediately — add a member, then summarise or detail, and the new member is included.
+
+A mutating `as_summary`/`as_detail` view **persists until the next `<<`**, which re-materialises detail. So `as_summary` is for "be the summary for this immediate chain":
+
+```ruby
+gt.as_summary(:weight).values(:weight)    # => [280, 150, 60]   (the summary)
+gt << front_suspension                     # re-materialises detail
+gt.values(:weight)                         # => [200, 80, 150, 60, ...]   (line items again)
+```
+
+Freeze-gated memoisation is a 2.x optimisation — opt-in via `freeze`, transparent, and never changing this observable behaviour. `group_by` (0.19.0) is the partition-side constructor for the same type: it splits a Namo into a `Collection`, the mirror of assembling one with `<<`.
+
 ## Why?
 
 Every other multi-dimensional array library requires you to pre-shape your data before you can work with it. Namo takes it in the form it likely already comes in.

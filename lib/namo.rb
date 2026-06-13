@@ -3,6 +3,7 @@
 
 require_relative './Namo/NegatedDimension'
 require_relative './Namo/Row'
+require_relative './Namo/Collection'
 require_relative './Namo/Enumerable'
 require_relative './Namo/VERSION'
 require_relative './Symbol'

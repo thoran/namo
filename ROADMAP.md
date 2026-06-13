@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.17.0
+## Current state: 0.18.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -883,17 +883,9 @@ To materialise particular values, bind the arguments in a row-scoped wrapper and
 
 A row-scoped formula can call a parameterised one with arguments — the wrapper above is the canonical case — and a parameterised formula can reference any other formula through `row`. Self-reference recurses unguarded, as everywhere in the formula mechanism.
 
-### Summary
+### 0.18.0 (2026-06-13): Namo::Collection
 
-The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped, two-arity collection-scoped, and parameterised receiving arguments at access time, mixing freely), polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, and a constructor that takes data positionally or by keyword and carries an optional `name:`, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase is `Namo::Collection` (0.18.0).
-
-## 0.18.0: Namo::Collection
-
-A hierarchical aggregate pattern for composing named Namos. `Namo::Collection < Namo` holds `members` — an Array of named Namos — and provides view methods that summarise or detail across them.
-
-### Use case: hierarchical budgets
-
-The GT hypercar budget motivated this pattern. Sub-assemblies (`powertrain`, `chassis`, `body`, ...) are each Namos with shared columns (`:weight`, `:cost`, ...). The whole car is a `Collection` of these sub-assemblies, queryable both at summary level ("weight by assembly") and detail level ("all line items across all assemblies").
+`Namo::Collection < Namo` is the first member of the family beyond `Namo` itself: a hierarchical aggregate that holds an Array of named member Namos (`members`) and exposes summary and detail views across them. It lives at `lib/Namo/Collection.rb` per file convention, and it is the return type that unblocks `group_by` at 0.19.0.
 
 ```ruby
 class Car < Namo::Collection
@@ -908,139 +900,36 @@ end
 
 class SubAssembly < Namo; end
 
-powertrain = SubAssembly.new(name: :powertrain, data: [...])
-chassis    = SubAssembly.new(name: :chassis, data: [...])
-body       = SubAssembly.new(name: :body, data: [...])
-
 gt = Car.new
-gt << [powertrain, chassis, body]
-gt.summary(:weight).values(:weight).sum    # total weight by summing assembly summaries
-gt.detail.values(:weight).sum              # total weight by summing every line item
+gt << [powertrain, chassis, body]            # each a named SubAssembly
+gt.summary(:weight).values(:weight).sum      # total by summing assembly summaries
+gt.detail.values(:weight).sum                # total by summing every line item
 ```
 
-The `Car` class overrides set `by: :assembly` as the per-class default. A bare `Namo::Collection.new` works equally well with `by:` passed at call sites.
+#### Members are the substance; the data view is lazy detail
 
-### Implementation
+A Collection's substance is `members`; the inherited `@data` is a derived view of them, not independently-stored state. The lazy view is **detail** — the lossless union of the members' rows — because a Collection's rows simply *are* its members' rows, while a summary is a reduction posed against them and so is never reached by accident (only through `summary`/`as_summary`). Any inherited row-operation (selection, projection, `each`, `values`, the operators) reads the view, so `collection[component: 'engine']` just works, behaving as the detail.
 
+`<<` accepts a single member or an array (via `flatten`). A member whose `name` collides with an existing one replaces it — last-write-wins, making the name → member mapping a dictionary, not a multimap. `find(name)` returns the member with that name or `nil`.
 
-Lives at `lib/Namo/Collection.rb` per file convention.
+#### The four views, and the inject-iff-absent rule
 
-### State model: members are the substance, `@data` is a lazily-materialised view
+`summary(dimension, by:, reducer:)` and `detail(by:)` are non-mutating, returning a fresh `Namo` derived from the members; `as_summary(dimension, by:, reducer:)` and `as_detail(by)` are mutating, setting the Collection's data to the chosen view and returning `self` for a fluent step. `summary` reduces each member to a `{by => member.name, dimension => reduced}` row; `reducer:` is any method the column responds to (`:sum` default, `:mean` via a statistics gem). `detail` unions the members' rows under the single conditional `row.key?(by) ? row : row.merge(by => member.name)` — intrinsic dimensions pass through, an absent label is injected from the member name. This is the one place the assembly path (`<<`, extrinsic names) and the partition path (`group_by`, intrinsic names — 0.19.0) meet, and it makes `as_detail(:assembly)` the dimension-creating step that promotes a member name into retained data; removal is only ever an explicit contraction (`[-:assembly]`).
 
-A `Collection`'s substance is `@members`. The inherited `@data` is a *derived view* of those members, not independently-stored state. Any inherited row-operation (selection, projection, `each`, the set/composition/comparison operators, `values`) reads `@data`, so the Collection lazily materialises `@data` from `@members` — via the detail view — on demand. The user never has to call anything first: `collection[symbol: 'BHP']` just works, materialising detail under the hood.
+#### Names enforced at use, not insertion
 
-The lazy view is **detail**, and the choice is principled rather than arbitrary. `detail` is the lossless view — the union of the members' rows. `summary` is a *reduction*, something you explicitly ask for. A Collection's rows simply *are* its members' rows; the summary is a computed question you pose against them. So falling into the detail view on a bare row-operation is "treat the Collection as its line items," while the summary is never reached by accident — only via `summary(...)` or `as_summary`.
+`<<` has no insertion guard against unnamed members. An unnamed member is appended (no name to collide on) and is simply unfindable by `find` — the honest consequence of having no name, not an error. This is deliberate: `group_by` (0.19.0) will construct members named by their group value, and a nil-valued group key produces a legitimately nil-named member whose rows still materialise and round-trip via the intrinsic grouping dimension. Forbidding nil names eagerly would break that case; moving enforcement to use-site avoids it, matching Namo's compute-on-access discipline.
 
-Materialisation is **pure-live in 1.x**: every row-operation recomputes `@data` from `@members` via `detail`, with no memoisation. This matches 0.7.0's discipline for `values`/`coordinates` — derived views recompute from current state, no caching. There is therefore no staleness problem: `<<` a member, then select, and the selection sees the new member because `@data` was just rebuilt. The cost of recomputing on every access is real but, per the 0.7.0 reasoning, invisible at typical sizes. Freeze-gated caching is a 2.x optimisation (see 2.x) and never changes this observable behaviour.
+#### Resolved at implementation
 
-Because the lazy view is detail with the default `by: :member` (inject-iff-absent, below), the inherited operators behave correctly without ceremony — a `group_by`-derived Collection materialises with its intrinsic grouping dimension present (no injection), and an assembled Collection materialises with `:member` injected, exactly as an explicit `as_detail` would have produced.
+Two points the design left mechanically under-determined against the shipped source were settled here:
 
-### View methods: summary, detail, as_summary, as_detail
+- **Materialisation model — rebuild-on-`<<`, not recompute-per-access.** The inherited row-operations read the `@data` ivar directly, so there is no transparent per-access seam without rerouting every shipped operator through the `data` accessor. Rather than touch the 0.2.0–0.17.0 internals for a refactor whose only gain was literal wording, `<<` (the sole `members` mutator) rebuilds `@data = detail.data`. Because it is the only mutator, this is observationally identical to per-access recomputation across the documented surface — and it lets a mutating `as_*` view mean what it reads like. The consequence, diverging from the originally-drafted "pure-live per-access / transient `as_*`" wording: an `as_summary`/`as_detail` view **persists until the next `<<`** (which re-materialises detail), rather than being discarded by the next row-operation. `as_summary(:weight).values(:weight)` therefore reads the summary, as intended. Freeze-gated memoisation remains a 2.x optimisation, now attached to a settled rebuild-on-mutation view.
+- **`find` shadows `Enumerable#find` on Collections.** `find(name)` is member lookup; a Collection's natural elements are its members, and the call reads well (`gt.find(:powertrain)`). It shadows the inherited `Enumerable#find` (alias `detect`) on Collections only — `detect` survives for predicate search, and `find` with a block fails loudly on arity rather than misbehaving. `as_detail`'s label argument is positional (`as_detail(:assembly)`), as it carries no `dimension`; `summary`/`detail`/`as_summary` keep `by:` as a keyword alongside their other arguments.
 
-The four view methods come in two pairs:
+### Summary
 
-- `summary(dimension, by:, reducer:)` and `detail(by:)` are **non-mutating** — they return a fresh Namo derived from `@members`, leaving `@data` untouched. Use these when you want a view to *keep* — assign the returned Namo to a variable and operate on it independently of the Collection.
-- `as_summary(dimension, by:, reducer:)` and `as_detail(by:)` are **mutating** — they set the Collection's `@data` to the chosen view and return `self`, for an immediate fluent step. Because 1.x is pure-live, an explicit `as_*` set is *transient*: the next inherited row-operation re-materialises detail and overwrites it. So `as_summary` is for "be the summary for this immediate chain," not for a persistent mode. To hold a summary, use the non-mutating `summary(...)` and keep its result.
-
-The non-mutating pair is the primary interface. The mutating pair is the explicit, transient counterpart to the lazy detail materialisation — useful when you want a *non-default* tag (`as_detail(by: :assembly)`) or the summary view for an immediate operation.
-
-### `detail` and the inject-iff-absent rule
-
-`detail(by:)` unions the members' rows. Whether it injects the `by` dimension depends on whether that dimension already exists in the rows:
-
-- If `by` is **already a dimension** in a member's rows, `detail` leaves the row untouched — the dimension is intrinsic, already present, no injection.
-- If `by` is **not** a dimension, `detail` injects it (`row.merge(by => m.name)`) — promoting the member's name into a dimension.
-
-This single conditional (`row.key?(by) ? row : row.merge(by => m.name)`) is the only place the two arrival paths — partition vs assembly — touch, and it's what makes the round-trip properties below hold.
-
-### Round-trip properties
-
-A Collection can be arrived at two ways: by *splitting* a Namo (partition, via `group_by` at 0.19.0) or by *assembling* disparate Namos (`<<`). The two paths have different round-trip behaviour, and the difference is exactly whether the grouping axis is already a dimension.
-
-**Split round-trip — exactly idempotent.** When a Collection comes from `group_by(:symbol)`, every member retains `:symbol` (it's a pre-existing dimension, the axis grouping happened *along*, not consumed by the split). So `detail(by: :symbol)` is a pure union — `:symbol` is already present, nothing injected — and reconstructs the original rows exactly:
-
-```ruby
-namo.group_by(:symbol).as_detail(:symbol) == namo    # true (multiset equality, 0.6.0)
-```
-
-**Assembly round-trip — idempotent only after the first flatten.** When a Collection is assembled from independently-built members, those members do *not* carry a dimension identifying which is which — the identity lives in `member.name`. The first `detail(by: :assembly)` is the **dimension-creating** step: it injects `:assembly`, promoting the extrinsic member name into an intrinsic dimension. From that point the structure is in the intrinsic regime and every subsequent round-trip is exact:
-
-```ruby
-collection.as_detail(:assembly)    # injects :assembly — now a real dimension, dimension count +1
-  .group_by(:assembly)             # reconstructs members
-  .as_detail(:assembly)            # union only — :assembly already present, exact
-```
-
-The promoted `:assembly` dimension is **retained, not projected away** — it's real data now (provenance of each row), and discarding it on a subsequent round-trip would lose information. Removal, if wanted, is an explicit contraction (`[-:assembly]`, 0.3.0), never an automatic side effect.
-
-The invariant across both paths: **round-tripping never removes a dimension; the assembly path adds one (on the first flatten) and keeps it.** `as_detail(dim)` where `dim` is already present is a pure, reversible union; where `dim` is absent it is a one-way promotion that increases the dimension count by one.
-
-### Names, and unnamed members
-
-A member's `name` is used for two things: `find(name)` lookup, and replace-by-name on `<<`. Neither is load-bearing for materialisation — `detail` unions rows and (for assembled Collections) injects the member name as a dimension, but the lazy detail and the round-trips work regardless of how names are populated.
-
-Enforcement is therefore at the *point of use*, not at insertion. `<<` accepts any member, named or not — there is no insertion guard. The consequences of an unnamed member are simply the honest ones:
-
-- `find(name)` matches on `member.name`; an unnamed member matches nothing and is never found. That is the truthful result of having no name, not an error.
-- Replace-by-name engages only when the incoming member *has* a name that collides with an existing member's. Unnamed members always append (no name to collide on).
-
-This is deliberately *not* an eager guard. An earlier draft raised `ArgumentError` on unnamed `<<`, but that guard fires on a condition that isn't always a mistake — `group_by` (0.19.0) constructs members named by their group value, and a nil-valued group key produces a legitimately nil-named member. Forbidding nil names eagerly would either break `group_by`'s nil-group case or force a sentinel. Moving enforcement to use-site avoids all of that: a nil-named group member is unfindable-by-name but its rows still materialise and round-trip correctly via the intrinsic grouping dimension, and a genuinely-forgotten assembly name surfaces as "not found" when you try to `find` it. This matches Namo's broader lazy, compute-on-access discipline — don't validate what you haven't been asked about.
-
-### Memoisation — deferred to 2.x
-
-`find`, `summary`, `detail`, and the lazy `@data` materialisation are **not memoised in 1.x**. Every call recomputes from `@members`. This is the same pure-live discipline 0.7.0 applies to `values`/`coordinates`, held uniformly: 1.x is correctness and coherence, pure-live throughout.
-
-Memoisation is a 2.x performance feature, opt-in via `freeze` and transparent (see 2.x's caching subsection). A user who never freezes a Collection gets pure-live recomputation forever; caching engages only on frozen instances, where immutability guarantees cached views stay correct. It never changes observable behaviour or liveness — it only changes cost, and only when the user has opted in by freezing.
-
-### Replace-by-name on `<<`
-
-If a member with the same `name` is already present, `<<` removes the existing one before appending the new. Last-write-wins. This makes the Collection's name → member mapping a regular dictionary rather than a multimap, which is what users expect of a "hierarchy of named pieces."
-
-`<<` accepts a single member or an array of members (via `flatten`), so `gt << powertrain` and `gt << [powertrain, chassis]` both work.
-
-### Dependencies
-
-`Namo::Collection` depends on:
-
-- **Constructor widening (0.12.0)** — keyword `data:` for `Namo.new(data: [...])` in `summary` and `detail` (positional `Namo.new([...])` works equally for these two methods, so this is ergonomic rather than strict), and the `name:` attribute so members identify themselves and `find`/replace-by-name work on `name`. (Unnamed members are accepted but unfindable-by-name; see "Names, and unnamed members" above.)
-- **`<<` with replace-by-name** — Collection-specific, defined here.
-
-Two-arity formulae (0.15.0) and parameterised formulae (0.17.0) are not required by `Collection` but compose well with it: a Collection's view can include a derived dimension that aggregates across the underlying members.
-
-This dependency stack is why `Collection` lands at 0.18.0 rather than earlier. The handover explored pulling it forward, but it needs the constructor widening — keyword `data:` and `name:` (0.12.0) — and the `if name` subclass guard (0.12.0) to be in place first. Building it once against a complete substrate beats shipping it early and amending it across every release that fills in a dependency — including the memoisation that 2.x will add, which is cleaner to attach to a settled, pure-live 1.x Collection than to retrofit.
-
-### Tests
-
-- `Collection.new.members == []`.
-- A bare row-operation on a Collection lazily materialises detail — `collection[symbol: 'BHP']` works without a prior `as_detail`.
-- Lazy materialisation is pure-live: `<<` a member, then select, and the selection reflects the new member.
-- `<<` adds a member.
-- `<<` with an existing-name member replaces.
-- `<<` with an array adds each member.
-- `<<` accepts an unnamed member (no error); the member is appended and is unfindable by name.
-- `find(:name)` returns the member with that name, or nil.
-- `find` on an unnamed member's would-be key returns nil (never matches).
-- `summary(:weight)` returns a Namo with `{member: <name>, weight: <sum>}` rows.
-- `summary(:weight, by: :assembly)` uses `:assembly` as the labelling dimension.
-- `summary(:weight, reducer: :mean)` uses mean instead of sum (requires `:mean` method on Array — relies on user's Statistics gem or similar).
-- `detail` injects the `by` dimension when absent from member rows.
-- `detail` does **not** inject when `by` is already a dimension in member rows (intrinsic case) — rows pass through untouched.
-- `find`, `summary`, `detail`, and lazy `@data` recompute live — no memoisation in 1.x (a mutation via `<<` is reflected on the next call).
-- `as_summary` sets `@data` to the summary view and returns `self`.
-- `as_detail` sets `@data` to the detail view and returns `self`.
-- `as_*` is transient: after `as_summary`, a subsequent bare row-operation re-materialises detail (explicit views do not persist across operations in 1.x).
-- After `as_summary` (immediately, before another operation), the Collection's `dimensions` reflect the summary's columns.
-- Assembly round-trip: `collection.as_detail(:assembly)` injects `:assembly` and the dimension is retained through a subsequent `group_by(:assembly).as_detail(:assembly)`.
-- Subclass with default `by:` (like `Car` above) uses the override.
-
-### Documentation
-
-- README section on `Namo::Collection`, with the GT-budget-style example.
-- Note on the lazy detail materialisation (a Collection behaves as its detail view on any row-operation) and the pure-live, no-memo discipline.
-- Note on the four view methods, the non-mutating/mutating split, and the transience of `as_*` in 1.x.
-- Note on the inject-iff-absent rule and the two round-trip behaviours.
-- Note on the `<<` replace-by-name semantics and the use-site (not insertion-time) treatment of unnamed members.
-- Forward-note that freeze-gated memoisation is a 2.x optimisation, opt-in and transparent.
+The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped, two-arity collection-scoped, and parameterised receiving arguments at access time, mixing freely), polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, a constructor that takes data positionally or by keyword and carries an optional `name:`, and `Namo::Collection` — a hierarchical aggregate of named member Namos, assembled with `<<` and queried through `summary`/`detail` views with lazy detail materialisation — give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, combining or decomposing datasets with different dimensions, and composing named datasets into a queryable whole, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase is `group_by` returning a `Collection` (0.19.0).
 
 ## 0.19.0: group_by returns a Collection
 

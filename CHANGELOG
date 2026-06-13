@@ -2,6 +2,46 @@ CHANGELOG
 _________
 
 20260613
+0.18.0: + Namo::Collection — hierarchical aggregate of named Namos with summary/detail views.
+
+1. + lib/Namo/Collection.rb: Namo::Collection < Namo, the first family member beyond Namo
+   itself. Holds @members (an Array of named Namos, attr_reader :members) whose substance is
+   the collection; the inherited @data is a derived view rebuilt from the members. << accepts a
+   member or an array (via flatten), replaces by name (last-write-wins, unless member.name.nil?
+   so nil-named members always append), rebuilds @data = detail.data, and returns self. find(name)
+   returns the named member or nil (find(nil) is nil, and an unnamed member never matches),
+   shadowing Enumerable#find on Collections. summary(dimension, by: :member, reducer: :sum)
+   reduces each member to a {by => member.name, dimension => reduced} row; detail(by: :member)
+   unions the members' rows under the inject-iff-absent conditional
+   (row.key?(by) ? row : row.merge(by => member.name)); both return a fresh Namo (non-mutating).
+   as_summary(...) and as_detail(by = :member) set @data to the chosen view and return self
+   (mutating); the view persists until the next << re-materialises detail. Private initialize
+   sets @members = [] before super.
+2. ~ lib/namo.rb: + require_relative './Namo/Collection'.
+3. + test/Namo/Collection_test.rb: empty members; lazy detail materialisation and selection;
+   pure-live reflection of <<; <<' add/replace-by-name/array/unnamed/returns-self; find by name,
+   absent, nil, and unnamed; summary's labelled rows, custom by:, :mean reducer (local Array#mean),
+   and non-mutation; detail's plain-Namo return, inject-iff-absent both ways, and non-mutation;
+   live recomputation after <<; as_summary/as_detail mutate and return self and surface the
+   summary's columns in dimensions; as_* view persistence until the next <<; assembly round-trip
+   (as_detail(:assembly) injects and is retained, removed only by contraction); subclass default
+   by: via a Car < Namo::Collection overriding summary/detail.
+4. ~ README.md: + Collections section after Named Namos — the GT-budget example (Car/SubAssembly,
+   <<, summary, detail), lazy detail materialisation, the four view methods and the
+   non-mutating/mutating split, the inject-iff-absent rule, << replace-by-name with use-site
+   handling of unnamed members, the rebuild-on-<< view lifetime, and forward-notes to group_by
+   (0.19.0) and freeze-gated memoisation (2.x).
+5. ~ ROADMAP.md: Promote 0.18.0 to shipped, recording the resolved materialisation model
+   (rebuild-on-<<, as_* persists until the next <<, diverging from the drafted pure-live-per-access
+   / transient wording) and the find/Enumerable#find shadowing; Current state -> 0.18.0; Summary
+   folds in Namo::Collection; next phase -> group_by (0.19.0). The upcoming 0.18.0 design block
+   folded into the shipped entry.
+6. ~ COMPARISON.md: Aggregation entry repointed — Namo::Collection shipped (0.18.0), group_by
+   constructor still planned (0.19.0); persistent-named-collection retained as Namo's novelty
+   versus the other tools' transient group-by intermediates.
+7. ~ Namo::VERSION: /0.17.0/0.18.0/
+
+20260613
 0.17.0: + parameterised formulae — formulae with required parameters beyond (row, namo) receive arguments at access time through Row#[].
 
 1. ~ lib/Namo/Row.rb: Row#[] gains a trailing splat and forwards call-site arguments. Dispatch

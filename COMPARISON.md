@@ -1447,22 +1447,35 @@ Features present in competitors that Namo lacks or has deferred.
 
 **Julia/DataFrames.jl** — `combine(groupby(df, :symbol), :close => mean)`.
 
-**Namo** — no built-in aggregation returning a Namo-family type yet. Ruby's `Enumerable#group_by` works but returns a raw hash of `{key => Array<Row>}`.
+**Namo** — `Namo::Collection`, the aggregate type, is **shipped (0.18.0)**: a Namo holding an Array of named member Namos, with `summary`/`detail` views across them. What is not yet shipped is the `group_by` *constructor* that splits a Namo into a Collection — that is **planned (0.19.0)**. Until then, a Collection is built by assembly (`<<`), and Ruby's `Enumerable#group_by` works as a stopgap but returns a raw hash of `{key => Array<Row>}`:
 
 ```ruby
 namo.group_by{|row| row[:symbol]}.transform_values{|rows| rows.sum{|r| r[:close]} / rows.length}
 # => {'BHP' => 42.8, 'RIO' => 118.3}
 ```
 
-Planned for 0.19.0, gated on `Namo::Collection` at 0.18.0: `group_by(:symbol)` returns a `Collection` — one member per group value, each a Namo holding that group's rows, retaining the parent's formulae, and named by its group value. The Collection's `summary` is the aggregation surface, and `members` exposes the groups for explicit per-group computation using Namo's full vocabulary:
+The aggregation surface itself already exists on a Collection. `summary` reduces each member to a labelled row, and `members` exposes the groups for explicit per-group computation using Namo's full vocabulary:
+
+```ruby
+# 0.18.0 — by assembly
+collection = Namo::Collection.new
+collection << bhp_namo    # name: 'BHP'
+collection << rio_namo    # name: 'RIO'
+collection.summary(:close, reducer: :mean)
+# => Namo with {member:, close:} rows — mean close per member
+
+collection.members.map{|n| n.values(:close).sum / n.count}
+```
+
+`group_by(:symbol)` (0.19.0) is the partition-side constructor for this same type — one member per group value, each a Namo holding that group's rows, retaining the parent's formulae, and named by its group value:
 
 ```ruby
 # 0.19.0
 namo.group_by(:symbol).summary(:close, reducer: :mean)
 # => Namo with {symbol:, close:} rows — mean close per symbol
-
-namo.group_by(:symbol).members.map{|n| n.values(:close).sum / n.count}
 ```
+
+The distinction from every other tool is that the group-by intermediate is a **persistent, named object** — assembled or partitioned, held and re-queried — not the transient grouping context the other libraries dissolve at the end of the chain.
 
 Bare names (2.x) then shorten the member-wise form to `n.close.sum / n.count`.
 
