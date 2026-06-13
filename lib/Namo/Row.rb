@@ -3,14 +3,15 @@
 
 class Namo
   class Row
-    def [](name)
+    def [](name, *arguments)
+      raise_unless_expected_arguments(name, arguments)
       if @formulae.key?(name)
-        case @formulae[name].arity
-        when 2
+        formula = @formulae[name]
+        if collection_scoped?(formula)
           raise_unless_namo_context(name)
-          @formulae[name].call(self, @namo)
+          formula.call(self, @namo, *arguments)
         else
-          @formulae[name].call(self)
+          formula.call(self)
         end
       else
         @row[name]
@@ -56,9 +57,32 @@ class Namo
       @namo = namo
     end
 
+    def collection_scoped?(formula)
+      required_parameter_count(formula) >= 2
+    end
+
+    def required_parameter_count(formula)
+      formula.arity >= 0 ? formula.arity : -formula.arity - 1
+    end
+
+    def expected_argument_counts(name)
+      formula = @formulae[name]
+      return [0, 0] unless formula && collection_scoped?(formula)
+      minimum = required_parameter_count(formula) - 2
+      maximum = formula.arity >= 0 ? minimum : nil
+      [minimum, maximum]
+    end
+
+    def raise_unless_expected_arguments(name, arguments)
+      minimum, maximum = expected_argument_counts(name)
+      return if arguments.length >= minimum && (maximum.nil? || arguments.length <= maximum)
+      expected = maximum.nil? ? "#{minimum}+" : minimum.to_s
+      raise ArgumentError, "wrong number of arguments for #{name.inspect} (given #{arguments.length}, expected #{expected})"
+    end
+
     def raise_unless_namo_context(name)
       unless @namo
-        raise ArgumentError, "two-arity formula #{name.inspect} requires a Namo context, but this Row has none"
+        raise ArgumentError, "collection-scoped formula #{name.inspect} requires a Namo context, but this Row has none"
       end
     end
   end

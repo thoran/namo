@@ -1,6 +1,6 @@
 # Namo Presentation Examples with Comparisons
 
-Date: 20260612
+Date: 20260613
 
 Companion document to the Namo Roadmap. Each example shows one comparison tool (the strongest competitor for that discipline), then three stages of Namo — 1.x (explicit), 2.x (bare names), 3.x (DSL) — so the audience watches the ceremony disappear.
 
@@ -58,7 +58,7 @@ ohlcv = Namo.new(ohlcv_data)
 fundamentals = Namo.new(fundamentals_data)
 
 analysis = ohlcv.*(fundamentals) do |row, candidates|
-  candidates.select{|f| f[:quarter_end] <= row[:date]}.max_by{|f| f[:quarter_end]}
+  candidates.select{|f| f[:quarter_end] <= row[:date]}.sort_by{|f| f[:quarter_end]}.last(1)
 end
 
 analysis[:sma] = proc do |row, namo, field, period|
@@ -81,7 +81,7 @@ ohlcv = Namo.new(ohlcv_data)
 fundamentals = Namo.new(fundamentals_data)
 
 analysis = ohlcv.*(fundamentals) do |row, candidates|
-  candidates.select{|f| f[:quarter_end] <= row[:date]}.max_by{|f| f[:quarter_end]}
+  candidates.select{|f| f[:quarter_end] <= row[:date]}.sort_by{|f| f[:quarter_end]}.last(1)
 end
 
 analysis.sma = proc do |row, namo, field, period|
@@ -104,7 +104,7 @@ ohlcv = Namo.new(ohlcv_data)
 fundamentals = Namo.new(fundamentals_data)
 
 analysis = ohlcv.*(fundamentals) do |row, candidates|
-  candidates.select{|f| f[:quarter_end] <= row[:date]}.max_by{|f| f[:quarter_end]}
+  candidates.select{|f| f[:quarter_end] <= row[:date]}.sort_by{|f| f[:quarter_end]}.last(1)
 end
 
 analysis = analysis.define do
@@ -123,7 +123,7 @@ buys = analysis[action: 'BUY'].sort_by{|row| -row.total_score}
 
 The progression: Pandas 30+ lines, Namo 1.x ~15 lines, 2.x ~13 lines, 3.x ~12 lines. But the real story isn't line count — it's noise reduction. Each Namo version removes a layer of syntactic ceremony while expressing exactly the same computation.
 
-1.x already wins on composition (`*` with a block) and the parameterised `sma` formula. But `row[:close]` is still noisy.
+1.x already wins on composition (`*` with a block) and the parameterised `sma` formula — both shipped behaviour (0.14.0 and 0.17.0). But `row[:close]` is still noisy.
 
 2.x replaces `row[:close]` with `close`. The formulae start reading like mathematical definitions.
 

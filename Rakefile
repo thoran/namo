@@ -21,7 +21,7 @@ namespace :docs do
   task :md2pdf => :md4print do
     Dir.glob('docs/*.print.md').each do |f|
       pdf = f.sub(/\.md$/, '.pdf')
-      sh "pandoc #{f} --pdf-engine=xelatex -V geometry:margin=1in -V mainfont=Charter -V monofont=Menlo -o #{pdf}"
+      sh "pandoc #{f} --pdf-engine=xelatex --include-in-header script/print.preamble.tex -V geometry:margin=1in -V mainfont=Charter -V monofont=Menlo -o #{pdf}"
     end
   end
 

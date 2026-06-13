@@ -94,6 +94,111 @@ describe Namo::Row do
     end
   end
 
+  describe "#[] parameterised formulae" do
+    let(:namo) do
+      Namo.new([row_data])
+    end
+
+    let(:contextual_row) do
+      Namo::Row.new(row_data, formulae, namo)
+    end
+
+    it "calls an arity-3 formula with the Row, the yielding Namo, and one argument" do
+      seen = nil
+      formulae[:scaled] = ->(r, n, factor){seen = [r, n, factor]; r[:price] * factor}
+      _(contextual_row[:scaled, 3]).must_equal 30.0
+      _(seen[0]).must_be_same_as contextual_row
+      _(seen[1].equal?(namo)).must_equal true
+      _(seen[2]).must_equal 3
+    end
+
+    it "calls an arity-4 formula with two arguments" do
+      formulae[:metric] = ->(r, n, field, factor){r[field] * factor}
+      _(contextual_row[:metric, :quantity, 2]).must_equal 200
+    end
+
+    it "forwards a trailing splat's arguments past a required one (arity -4)" do
+      formulae[:dim] = proc{|r, n, field, *rest| [field, rest]}
+      _(contextual_row[:dim, :price]).must_equal [:price, []]
+      _(contextual_row[:dim, :price, 1, 2]).must_equal [:price, [1, 2]]
+    end
+
+    it "treats a splat directly after namo as collection-scoped taking any number of arguments (arity -3)" do
+      formulae[:dim] = proc{|r, n, *rest| rest}
+      _(contextual_row[:dim]).must_equal []
+      _(contextual_row[:dim, 1, 2, 3]).must_equal [1, 2, 3]
+    end
+
+    it "keeps a one-required-parameter proc row-scoped regardless of trailing optionals" do
+      seen = :unset
+      formulae[:dim] = ->(r, n = :fallback){seen = n; 1}
+      contextual_row[:dim]
+      _(seen).must_equal :fallback
+    end
+
+    it "lets a row-scoped formula call a parameterised formula with arguments" do
+      formulae[:metric] = ->(r, n, field, factor){r[field] * factor}
+      formulae[:double_quantity] = ->(r){r[:metric, :quantity, 2]}
+      _(contextual_row[:double_quantity]).must_equal 200
+    end
+
+    it "raises ArgumentError naming the formula when a parameterised formula has no Namo context" do
+      formulae[:metric] = ->(r, n, field){r[field]}
+      error = _(proc{row[:metric, :price]}).must_raise ArgumentError
+      _(error.message).must_match(/metric/)
+    end
+  end
+
+  describe "#[] argument-count enforcement" do
+    let(:namo) do
+      Namo.new([row_data])
+    end
+
+    let(:contextual_row) do
+      Namo::Row.new(row_data, formulae, namo)
+    end
+
+    it "raises when a parameterised formula is given too few arguments" do
+      formulae[:metric] = ->(r, n, field, period){r[field] * period}
+      error = _(proc{contextual_row[:metric, :price]}).must_raise ArgumentError
+      _(error.message).must_equal "wrong number of arguments for :metric (given 1, expected 2)"
+    end
+
+    it "raises when a fixed-arity parameterised formula is given too many arguments" do
+      formulae[:metric] = ->(r, n, field){r[field]}
+      error = _(proc{contextual_row[:metric, :price, 20]}).must_raise ArgumentError
+      _(error.message).must_equal "wrong number of arguments for :metric (given 2, expected 1)"
+    end
+
+    it "raises when a splatted parameterised formula is given fewer than its required arguments" do
+      formulae[:metric] = proc{|r, n, field, *rest| r[field]}
+      error = _(proc{contextual_row[:metric]}).must_raise ArgumentError
+      _(error.message).must_equal "wrong number of arguments for :metric (given 0, expected 1+)"
+    end
+
+    it "raises when arguments are given for a data dimension" do
+      error = _(proc{row[:price, 20]}).must_raise ArgumentError
+      _(error.message).must_equal "wrong number of arguments for :price (given 1, expected 0)"
+    end
+
+    it "raises when arguments are given for a row-scoped formula" do
+      formulae[:revenue] = proc{|r| r[:price] * r[:quantity]}
+      error = _(proc{row[:revenue, 20]}).must_raise ArgumentError
+      _(error.message).must_equal "wrong number of arguments for :revenue (given 1, expected 0)"
+    end
+
+    it "raises when arguments are given for a two-arity formula" do
+      formulae[:row_count] = ->(r, n){n.count}
+      error = _(proc{contextual_row[:row_count, 1]}).must_raise ArgumentError
+      _(error.message).must_equal "wrong number of arguments for :row_count (given 1, expected 0)"
+    end
+
+    it "raises when arguments are given for a missing dimension" do
+      error = _(proc{row[:missing, 1]}).must_raise ArgumentError
+      _(error.message).must_equal "wrong number of arguments for :missing (given 1, expected 0)"
+    end
+  end
+
   describe "#match?" do
     it "matches a single value" do
       _(row.match?(product: 'Widget')).must_equal true

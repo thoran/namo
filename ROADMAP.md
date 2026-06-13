@@ -1,6 +1,6 @@
 # Namo Roadmap
 
-Date: 20260612
+Date: 20260613
 
 ## Design philosophy
 
@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.16.0
+## Current state: 0.17.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -842,28 +842,50 @@ That last point is the one to revisit. If dependencies were knowable, projection
 
 Parameterised formulae (0.17.0) cannot be materialised without their arguments; what projection does with an arity > 2 dimension is defined in that release, extending this rule.
 
-### Summary
+### 0.17.0 (2026-06-13): Parameterised formulae
 
-The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped and two-arity collection-scoped, mixing freely), polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, and a constructor that takes data positionally or by keyword and carries an optional `name:`, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase (0.17.0) is parameterised formulae, then `Namo::Collection`.
-
-## 0.17.0: Parameterised formulae
-
-Procs with arity > 2 receive `(row, namo, *extra_args)`. Row#[] forwards extra arguments:
+A formula can declare parameters beyond `(row, namo)`, and the arguments arrive at access time: `Row#[]` grows a trailing splat and forwards what it's given. One definition serves every column and every setting, completing the formula trajectory — single-row (0.1.0), cross-row (0.15.0), parameterised here — through the same mechanism, with the same currentness.
 
 ```ruby
-e[:sma] = proc do |row, namo, field, period|
-  window = namo[symbol: row[:symbol], date: ..row[:date]].last(period)
+prices[:sma] = proc do |row, namo, field, period|
+  window = namo[symbol: row[:symbol], date: ->(d){d <= row[:date]}].last(period)
   window.sum{|r| r[field]} / window.count.to_f
 end
 
-row[:sma, :close, 20]  # Row inserts self and namo, forwards :close and 20
+prices.last[:sma, :close, 20]    # Row inserts self and namo, forwards :close and 20
+prices.last[:sma, :volume, 50]   # the same formula, different field and period
 ```
 
-Row#[] dispatch extended:
+#### The dispatch rule: required parameters decide scope
 
-- 1: `proc.call(row)` — row-scoped
-- 2: `proc.call(row, namo)` — collection-scoped
-- \>2: `proc.call(row, namo, *extra_args)` — parameterised
+0.15.0 pinned dispatch on exactly arity 2 and deferred the negative arities to this release. The generalisation that settles them: **the number of required parameters decides a formula's scope**. One (or none) means row-scoped, called `formula.call(row)`. Two or more means collection-scoped, called `formula.call(row, namo, *arguments)` — everything past the second parameter receives the call-site arguments. For a proc of arity `n >= 0` the required count is `n`; for negative arity it is `-n - 1`, Ruby's encoding of "required parameters before the splat or optionals".
+
+The principle: what a formula *requires* is the only signal the proc object carries about what it means to receive. Optionals and splats express openness, not demand, so they can't claim a calling convention — `->(row, namo = nil){}` and `proc{|row, *rest|}` (both arity -2, one required parameter) stay row-scoped, exactly as 0.15.0 left them, while `proc{|row, namo, *fields|}` (arity -3, two required) is collection-scoped with optional arguments. The 0.15.0 `case` on exact arity becomes a predicate on required count; no shipped behaviour changes, the pinned-open cases close.
+
+#### Argument-count enforcement at Row#[]
+
+Every dimension now has an argument signature, and `Row#[]` enforces it: data dimensions and row-scoped formulae take none; a fixed-arity collection-scoped formula takes exactly `arity - 2`; a splatted one takes at least its required count minus two. The wrong number raises an `ArgumentError` in Ruby's own phrasing — `wrong number of arguments for :sma (given 0, expected 2)`, `(given 1, expected 0)` for arguments handed to a data dimension, `(given 0, expected 1+)` for an underfilled splat.
+
+Enforcement is needed because Ruby wouldn't provide it: non-lambda procs silently fill missing parameters with `nil` and discard extras, so an underfilled parameterised formula would compute against `nil`s — the same silently-two-answers class of bug whose data/formula form 0.16.0 eliminated. The check lives at `Row#[]` because that is where names are resolved, the same reasoning that put exclusivity at `[]=`. One guard covers every access path — direct row access, selection predicates, materialisation — because they all pass through it.
+
+The Namo-context guard from 0.15.0 generalises alongside: any collection-scoped formula (two-arity or parameterised) asked of a Row constructed without a Namo raises the renamed message, `collection-scoped formula :sma requires a Namo context, but this Row has none`. Argument count is checked before context — a call of the wrong shape is wrong regardless of where the Row came from.
+
+#### Materialisation: the 0.16.0 rule extended
+
+0.16.0 left one question open: a formula that requires arguments cannot be materialised without them, so what do projection and the bulk views do with one? The rule splits on whether the ask is explicit:
+
+- **Asking by name raises.** `values(:sma)`, `coordinates(:sma)`, naming `:sma` in a projection, and selecting on `sma:` all raise the argument-count `ArgumentError` — there is no argument channel in any of those calls, and inventing one was rejected (below). The raise comes from `Row#[]` naturally; no second enforcement site.
+- **The bulk views omit.** No-argument `values`, `coordinates`, and `to_h` return every dimension that can be materialised and skip those that can't — the honest subset, not an error, because registering one parameterised formula shouldn't poison whole-Namo views that are correct for every other dimension. `dimensions` and `derived_dimensions` still list the name: those describe the queryable namespace, and the dimension is queryable — with arguments.
+
+The boundary is *requires*, not *accepts*: a splat directly after `namo` (`proc{|row, namo, *rest|}`) requires nothing extra, so it materialises with no arguments and appears in the bulk views, while `proc{|row, namo, field, *rest|}` requires one and is omitted. Internally the bulk views select via a private `materialisable_dimensions`; promoting it to the public inspection vocabulary waits for a use case, per the 0.7.0 precedent of not shipping accessors ahead of need. The empty-Namo case stays lazily honest, returning `[]` without invoking the formula, as 0.15.0 established for two-arity.
+
+To materialise particular values, bind the arguments in a row-scoped wrapper and name that — `prices[:sma_close_20] = proc{|row| row[:sma, :close, 20]}` re-enters the materialisable world, and 0.16.0's projection control surface applies to the wrapper unchanged. This composition is why no argument channel was added to `values` or projection (a `values(:sma, arguments: [...])` form was considered): the wrapper spells the binding with shipped parts, names the bound result so it can be projected, selected, and carried like any other formula, and keeps one calling convention for `values` rather than two.
+
+A row-scoped formula can call a parameterised one with arguments — the wrapper above is the canonical case — and a parameterised formula can reference any other formula through `row`. Self-reference recurses unguarded, as everywhere in the formula mechanism.
+
+### Summary
+
+The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped, two-arity collection-scoped, and parameterised receiving arguments at access time, mixing freely), polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, and a constructor that takes data positionally or by keyword and carries an optional `name:`, give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, and combining or decomposing datasets with different dimensions, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase is `Namo::Collection` (0.18.0).
 
 ## 0.18.0: Namo::Collection
 

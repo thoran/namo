@@ -1,6 +1,6 @@
 # Namo Feature Comparison
 
-Date: 20260612
+Date: 20260613
 
 Feature-by-feature comparison of Namo against Pandas, Polars, R/dplyr, xarray, and Julia/DataFrames.jl. Covers both where the tools are the same and where they differ.
 
@@ -634,9 +634,9 @@ combine(groupby(df, :symbol), :close => (x -> rollmean(x, 20)) => :sma_20)
 
 ### Parameterised formulae
 
-**Namo** — planned (0.17.0)
+**Namo** — shipped (0.17.0)
 
-A single formula definition that works across different fields and parameters.
+A single formula definition that works across different fields and parameters. The arguments arrive at access time through `Row#[]`; the number of required parameters decides the calling convention, and argument counts are enforced with an `ArgumentError` rather than letting `nil` flow into the formula body.
 
 ```ruby
 namo[:sma] = proc do |row, namo, field, period|

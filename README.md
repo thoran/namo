@@ -686,6 +686,36 @@ One-arity formulae are unchanged, and the two forms mix freely — a one-arity f
 
 Resolving a two-arity formula needs a Namo to window over. A `Row` constructed directly, without one, raises an `ArgumentError` naming the formula rather than letting the missing context surface as an unrelated error.
 
+#### Parameterised formulae
+
+A formula can declare parameters beyond `(row, namo)`. The arguments arrive at access time, through `Row#[]`, so one definition serves every column and every setting:
+
+```ruby
+prices[:sma] = proc do |row, namo, field, period|
+  window = namo[symbol: row[:symbol], date: ->(d){d <= row[:date]}].last(period)
+  window.sum{|r| r[field]} / window.count.to_f
+end
+
+prices.last[:sma, :close, 20]    # 20-period moving average of close
+prices.last[:sma, :volume, 50]   # 50-period moving average of volume
+```
+
+The number of *required* parameters decides a formula's calling convention. One means row-scoped, two or more means collection-scoped, and everything past the second receives the arguments given at the call site. A trailing splat or optional after `(row, namo)` makes the arguments optional — `proc{|row, namo, *fields|}` accepts any number, including none. A proc whose second parameter is optional (`->(row, namo = nil){...}`) requires only one, so it stays row-scoped.
+
+Argument counts are enforced. Asking with the wrong number — too few for the formula's parameters, too many for a fixed-arity proc, or any at all for a data dimension or an unparameterised formula — raises an `ArgumentError` stating the counts, rather than letting `nil` flow into the formula body:
+
+```ruby
+prices.last[:sma]            # ArgumentError: wrong number of arguments for :sma (given 0, expected 2)
+prices.last[:close, 20]      # ArgumentError: wrong number of arguments for :close (given 1, expected 0)
+```
+
+A formula that requires arguments can't be materialised without them. `values(:sma)`, `coordinates(:sma)`, naming `:sma` in a projection, and selecting on it all raise the same `ArgumentError`; the no-argument `values`, `coordinates`, and `to_h` omit the dimension, returning everything that can be materialised. `dimensions` and `derived_dimensions` still list it — it is queryable, with arguments. To materialise particular values, bind the arguments in a one-arity wrapper and ask for that:
+
+```ruby
+prices[:sma_close_20] = proc{|row| row[:sma, :close, 20]}
+prices[:date, :sma_close_20]   # materialises per the usual projection rule
+```
+
 ### Polymorphic `[]=`
 
 `[]=` dispatches on the type of the value assigned. A proc registers a formula, as above. Anything else broadcasts the value to every row:

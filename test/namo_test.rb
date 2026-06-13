@@ -797,6 +797,129 @@ describe Namo do
     end
   end
 
+  describe "#[]= parameterised formulae" do
+    let(:price_data) do
+      [
+        {symbol: 'AAA', date: 1, close: 10.0, volume: 100},
+        {symbol: 'AAA', date: 2, close: 20.0, volume: 200},
+        {symbol: 'AAA', date: 3, close: 30.0, volume: 300},
+      ]
+    end
+
+    let(:prices) do
+      Namo.new(price_data)
+    end
+
+    # A parameterised moving average: the field and the window length arrive at
+    # access time, so one definition serves every column and every period.
+    let(:sma) do
+      proc do |row, namo, field, period|
+        window = namo[symbol: row[:symbol], date: ->(d){d <= row[:date]}].last(period)
+        window.sum{|r| r[field]} / window.count.to_f
+      end
+    end
+
+    it "resolves with arguments through a yielded Row" do
+      prices[:sma] = sma
+      _(prices.first[:sma, :close, 2]).must_equal 10.0
+      _(prices.last[:sma, :close, 2]).must_equal 25.0
+    end
+
+    it "serves different fields and periods from one definition" do
+      prices[:sma] = sma
+      _(prices.last[:sma, :close, 3]).must_equal 20.0
+      _(prices.last[:sma, :volume, 2]).must_equal 250.0
+    end
+
+    it "resolves inside an Enumerable predicate" do
+      prices[:sma] = sma
+      result = prices.select{|row| row[:sma, :close, 2] > 12.0}
+      _(result).must_be_kind_of Namo
+      _(result.values(:date)).must_equal [2, 3]
+    end
+
+    it "lets a one-arity formula reference a parameterised formula with arguments" do
+      prices[:sma] = sma
+      prices[:rising] = proc{|row| row[:sma, :close, 1] > row[:sma, :close, 3]}
+      _(prices.values(:rising)).must_equal [false, true, true]
+    end
+
+    it "lists a parameterised dimension in dimensions and derived_dimensions" do
+      prices[:sma] = sma
+      _(prices.dimensions).must_equal [:symbol, :date, :close, :volume, :sma]
+      _(prices.derived_dimensions).must_equal [:sma]
+    end
+
+    it "omits a parameterised dimension from the no-arg values, coordinates, and to_h" do
+      prices[:sma] = sma
+      _(prices.values.keys).must_equal [:symbol, :date, :close, :volume]
+      _(prices.coordinates.keys).must_equal [:symbol, :date, :close, :volume]
+      _(prices.to_h.keys).must_equal [:symbol, :date, :close, :volume]
+    end
+
+    it "raises when values is asked for a parameterised dimension by name" do
+      prices[:sma] = sma
+      error = _(proc{prices.values(:sma)}).must_raise ArgumentError
+      _(error.message).must_equal "wrong number of arguments for :sma (given 0, expected 2)"
+    end
+
+    it "raises when coordinates is asked for a parameterised dimension by name" do
+      prices[:sma] = sma
+      _(proc{prices.coordinates(:sma)}).must_raise ArgumentError
+    end
+
+    it "raises when a projection names a parameterised dimension" do
+      prices[:sma] = sma
+      _(proc{prices[:date, :sma]}).must_raise ArgumentError
+    end
+
+    it "raises when a selection selects on a parameterised dimension" do
+      prices[:sma] = sma
+      _(proc{prices[sma: ->(v){v > 12.0}]}).must_raise ArgumentError
+    end
+
+    it "carries a parameterised formula through contraction" do
+      prices[:sma] = sma
+      contracted = prices[-:volume]
+      _(contracted.derived_dimensions).must_equal [:sma]
+      _(contracted.first[:sma, :close, 2]).must_equal 10.0
+    end
+
+    it "carries a parameterised formula through selection, windowing over the filtered rows" do
+      prices[:sma] = sma
+      filtered = prices[date: 2..3]
+      _(filtered.first[:sma, :close, 2]).must_equal 20.0
+    end
+
+    it "materialises through a one-arity wrapper that binds the arguments" do
+      prices[:sma] = sma
+      prices[:sma_close_2] = proc{|row| row[:sma, :close, 2]}
+      _(prices.values(:sma_close_2)).must_equal [10.0, 15.0, 25.0]
+      _(prices[:date, :sma_close_2].values(:sma_close_2)).must_equal [10.0, 15.0, 25.0]
+    end
+
+    it "includes a namo-plus-splat formula in the bulk views, called with no extra arguments" do
+      prices[:flexible] = proc{|row, namo, *rest| rest.empty? ? namo.count : rest.sum}
+      _(prices.values.keys).must_include :flexible
+      _(prices.values(:flexible)).must_equal [3, 3, 3]
+      _(prices.first[:flexible, 1, 2, 4]).must_equal 7
+    end
+
+    it "carries a parameterised formula through a set-operator result" do
+      a = Namo.new(price_data.take(2))
+      b = Namo.new([price_data.last])
+      a[:sma] = sma
+      _((a + b).last[:sma, :close, 2]).must_equal 25.0
+    end
+
+    it "returns [] for a parameterised dimension on an empty Namo without invoking the formula" do
+      invoked = false
+      empty = Namo.new([], formulae: {sma: ->(row, namo, field, period){invoked = true; 0}})
+      _(empty.values(:sma)).must_equal []
+      _(invoked).must_equal false
+    end
+  end
+
   describe "data/formula exclusivity" do
     context "projection" do
       let(:price_data) do

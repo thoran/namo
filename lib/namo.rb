@@ -28,7 +28,7 @@ class Namo
 
   def values(*dims)
     if dims.empty?
-      dimensions.each_with_object({}){|dim, hash| hash[dim] = values_for(dim)}
+      materialisable_dimensions.each_with_object({}){|dim, hash| hash[dim] = values_for(dim)}
     elsif dims.length == 1
       values_for(dims.first)
     else
@@ -244,6 +244,19 @@ class Namo
     else
       @data.map{|row_data| Row.new(row_data, @formulae, self)[dim]}
     end
+  end
+
+  def materialisable_dimensions
+    dimensions.reject{|dim| requires_arguments?(dim)}
+  end
+
+  def requires_arguments?(name)
+    formula = @formulae[name]
+    !!formula && required_parameter_count(formula) > 2
+  end
+
+  def required_parameter_count(formula)
+    formula.arity >= 0 ? formula.arity : -formula.arity - 1
   end
 
   def raise_unless_namo(other)

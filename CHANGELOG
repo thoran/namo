@@ -1,6 +1,55 @@
 CHANGELOG
 _________
 
+20260613
+0.17.0: + parameterised formulae — formulae with required parameters beyond (row, namo) receive arguments at access time through Row#[].
+
+1. ~ lib/Namo/Row.rb: Row#[] gains a trailing splat and forwards call-site arguments. Dispatch
+   generalises from exact arity 2 to required-parameter count via the new private
+   collection_scoped? and required_parameter_count — one required parameter or none stays
+   row-scoped, two or more call formula.call(self, @namo, *arguments). Settles the 0.15.0
+   negative-arity deferral: |row, *rest| and ->(row, namo = nil){} stay row-scoped;
+   |row, namo, *fields| is collection-scoped with optional arguments.
+2. ~ lib/Namo/Row.rb: + argument-count enforcement — the new private expected_argument_counts
+   and raise_unless_expected_arguments raise ArgumentError ("wrong number of arguments for
+   :sma (given 0, expected 2)") on the wrong count for any dimension: too few or too many for
+   a fixed-arity formula, fewer than required for a splatted one, any at all for a data
+   dimension, a row-scoped formula, or a two-arity formula. Checked before the Namo-context
+   guard, whose message generalises from "two-arity formula" to "collection-scoped formula".
+3. ~ lib/namo.rb: the no-arg values (and so coordinates and to_h) materialise via the new
+   private materialisable_dimensions, omitting formulae that require arguments (private
+   requires_arguments? and required_parameter_count); explicit asks — values(:dim),
+   coordinates(:dim), naming the dimension in a projection, selecting on it — raise through
+   Row#[]. dimensions and derived_dimensions still list the name; the empty-Namo case returns
+   [] without invoking the formula.
+4. ~ test/Namo/Row_test.rb: + "#[] parameterised formulae" describe — arity 3 and 4 receive
+   (row, namo, args...), trailing-splat forwarding (arity -3 and -4), one-required-parameter
+   procs stay row-scoped, a row-scoped formula calling a parameterised one with arguments,
+   missing-Namo-context raise; + "#[] argument-count enforcement" describe — the message
+   matrix for too few, too many, splat minimum, and arguments handed to data dimensions,
+   row-scoped, two-arity, and missing dimensions.
+5. ~ test/namo_test.rb: + "#[]= parameterised formulae" describe — resolution with arguments
+   through yielded Rows, one definition serving different fields and periods, Enumerable
+   predicates, a one-arity formula referencing a parameterised one, dimension listing, bulk
+   views omitting, explicit values/coordinates/projection/selection raises, carry through
+   contraction, selection (windowing over the filtered rows), and set operators, the
+   one-arity wrapper materialisation idiom, namo-plus-splat formulae materialising in the
+   bulk views, and the empty-Namo case.
+6. ~ README.md: + Parameterised formulae subsection under Formulae — access-time arguments,
+   the required-parameter scope rule, argument-count enforcement, materialisation behaviour,
+   and the wrapper idiom.
+7. ~ ROADMAP.md: Promote 0.17.0 to shipped with the dispatch-rule, enforcement, and
+   materialisation rationale; Current state -> 0.17.0; Summary folds in parameterised
+   formulae; next phase -> Namo::Collection (0.18.0). Date bumped.
+8. ~ COMPARISON.md: Parameterised formulae -> shipped (0.17.0), the entry noting access-time
+   arguments and argument-count enforcement. Date bumped.
+9. ~ EXAMPLES.md: The finance section's composition blocks (all three Namo stages) corrected
+   from max_by, which returns a Row, to sort_by + last(1), which returns the Namo the 0.14.0
+   block contract requires — the 1.x stage, parameterised sma included, now runs end to end
+   against this release. The finance highlight notes the parameterised formula as shipped
+   (0.17.0). Date bumped.
+10. ~ Namo::VERSION: /0.16.0/0.17.0/
+
 20260612
 0.16.0: ~ data/formula exclusivity — projection drops the formulae it materialises; * and ** raise on a data/formula name collision.
 

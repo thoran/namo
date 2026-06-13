@@ -1,0 +1,7 @@
+% print.preamble.tex
+% Render characters missing from Charter with math-mode equivalents.
+% Code blocks are unaffected: verbatim environments reset catcodes, so Menlo
+% supplies its own glyphs there.
+
+\catcode`→=\active
+\def→{$\rightarrow$}
