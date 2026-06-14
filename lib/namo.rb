@@ -164,7 +164,7 @@ class Namo
 
   def ==(other)
     return false unless other.is_a?(Namo)
-    canonical_data == other.canonical_data
+    row_multiset == other.row_multiset
   end
 
   def ===(other)
@@ -175,12 +175,12 @@ class Namo
 
   def eql?(other)
     self.class == other.class &&
-      canonical_data == other.canonical_data &&
+      row_multiset == other.row_multiset &&
       @formulae.keys.sort == other.formulae.keys.sort
   end
 
   def hash
-    [self.class, canonical_data, @formulae.keys.sort].hash
+    [self.class, row_multiset, @formulae.keys.sort].hash
   end
 
   def <(other)
@@ -217,13 +217,13 @@ class Namo
 
   protected
 
-  def canonical_data
-    @data.sort_by{|row| row.values_at(*data_dimensions.sort)}
+  def row_multiset
+    @data.tally
   end
 
   def subset_of_rows?(other)
-    self_counts = canonical_data.tally
-    other_counts = other.canonical_data.tally
+    self_counts = row_multiset
+    other_counts = other.row_multiset
     self_counts.all?{|row, count| (other_counts[row] || 0) >= count}
   end
 

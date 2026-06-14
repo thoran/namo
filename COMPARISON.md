@@ -1,6 +1,6 @@
 # Namo Feature Comparison
 
-Date: 20260613
+Date: 20260614
 
 Feature-by-feature comparison of Namo against Pandas, Polars, R/dplyr, xarray, and Julia/DataFrames.jl. Covers both where the tools are the same and where they differ.
 
@@ -1447,7 +1447,7 @@ Features present in competitors that Namo lacks or has deferred.
 
 **Julia/DataFrames.jl** — `combine(groupby(df, :symbol), :close => mean)`.
 
-**Namo** — `Namo::Collection`, the aggregate type, is **shipped (0.18.0)**: a Namo holding an Array of named member Namos, with `summary`/`detail` views across them. What is not yet shipped is the `group_by` *constructor* that splits a Namo into a Collection — that is **planned (0.19.0)**. Until then, a Collection is built by assembly (`<<`), and Ruby's `Enumerable#group_by` works as a stopgap but returns a raw hash of `{key => Array<Row>}`:
+**Namo** — `Namo::Collection`, the aggregate type, is **shipped (0.18.0)**: a Namo holding an Array of named member Namos, with `summary`/`detail` views across them. What is not yet shipped is the `group_by` *constructor* that splits a Namo into a Collection — that is **planned (0.20.0)**. Until then, a Collection is built by assembly (`<<`), and Ruby's `Enumerable#group_by` works as a stopgap but returns a raw hash of `{key => Array<Row>}`:
 
 ```ruby
 namo.group_by{|row| row[:symbol]}.transform_values{|rows| rows.sum{|r| r[:close]} / rows.length}
@@ -1467,10 +1467,10 @@ collection.summary(:close, reducer: :mean)
 collection.members.map{|n| n.values(:close).sum / n.count}
 ```
 
-`group_by(:symbol)` (0.19.0) is the partition-side constructor for this same type — one member per group value, each a Namo holding that group's rows, retaining the parent's formulae, and named by its group value:
+`group_by(:symbol)` (0.20.0) is the partition-side constructor for this same type — one member per group value, each a Namo holding that group's rows, retaining the parent's formulae, and named by its group value:
 
 ```ruby
-# 0.19.0
+# 0.20.0
 namo.group_by(:symbol).summary(:close, reducer: :mean)
 # => Namo with {symbol:, close:} rows — mean close per symbol
 ```

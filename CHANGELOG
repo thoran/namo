@@ -1,6 +1,23 @@
 CHANGELOG
 _________
 
+20260614
+0.19.0: ~ row-multiset equality — replace the sorted canonical form with a row multiset, so ==, eql?, hash, and the subset operators compare without sorting: nil/NaN-safe, row- and dimension-order blind, and consistently type-strict.
+
+1. ~ lib/namo.rb: replace canonical_data (which sorted @data by row.values_at(*data_dimensions.sort))
+   with row_multiset (@data.tally). ==, eql?, hash, and subset_of_rows? now compare row
+   multisets keyed by Hash#hash/#eql?. The sort was only ever a mechanism for reaching the
+   already-decided multiset semantics (0.6.0); a multiset reaches them directly and needs no
+   ordering, so the latent ArgumentError when a dimension mixed nil (or NaN) with present
+   values — neither has a <=> against the other — is gone. The relation is now uniformly
+   eql?-based, so == agrees with the subset operators, which already tallied: {a: 1} and
+   {a: 1.0} are consistently distinct (== previously called them equal via Hash#==, while <=
+   called them distinct).
+2. ~ test/namo_test.rb: + four "#==" cases — equality across row order and across dimension
+   (key) order when a dimension mixes nil and non-nil values; inequality when such rows
+   differ; and type-strictness on values, consistent with <=.
+3. ~ Namo::VERSION: /0.18.0/0.19.0/
+
 20260613
 0.18.0: + Namo::Collection — hierarchical aggregate of named Namos with summary/detail views.
 

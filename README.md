@@ -1006,7 +1006,7 @@ gt.as_detail(:assembly)                    # gt's data becomes the detail; retur
 - If `by` is **already a dimension** in a member's rows, the row passes through untouched — the dimension is intrinsic.
 - If `by` is **not** present, `detail` injects it (`row.merge(by => member.name)`), promoting the member's name into a dimension.
 
-This single conditional is where assembly (`<<`, members named extrinsically) and partition (`group_by`, members named by an intrinsic value — 0.19.0) meet. For an assembled Collection, `as_detail(:assembly)` is the dimension-creating step: it promotes the member name into real data and **retains** it. From then on the structure is intrinsic and round-trips are exact; the promoted dimension is removed only by explicit contraction (`gt[-:assembly]`), never automatically.
+This single conditional is where assembly (`<<`, members named extrinsically) and partition (`group_by`, members named by an intrinsic value — 0.20.0) meet. For an assembled Collection, `as_detail(:assembly)` is the dimension-creating step: it promotes the member name into real data and **retains** it. From then on the structure is intrinsic and round-trips are exact; the promoted dimension is removed only by explicit contraction (`gt[-:assembly]`), never automatically.
 
 #### `<<` and unnamed members
 
@@ -1038,7 +1038,7 @@ gt << front_suspension                     # re-materialises detail
 gt.values(:weight)                         # => [200, 80, 150, 60, ...]   (line items again)
 ```
 
-Freeze-gated memoisation is a 2.x optimisation — opt-in via `freeze`, transparent, and never changing this observable behaviour. `group_by` (0.19.0) is the partition-side constructor for the same type: it splits a Namo into a `Collection`, the mirror of assembling one with `<<`.
+Freeze-gated memoisation is a 2.x optimisation — opt-in via `freeze`, transparent, and never changing this observable behaviour. `group_by` (0.20.0) is the partition-side constructor for the same type: it splits a Namo into a `Collection`, the mirror of assembling one with `<<`.
 
 ## Why?
 

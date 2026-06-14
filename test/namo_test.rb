@@ -2312,6 +2312,31 @@ describe Namo do
       _(a == 'string').must_equal false
       _(a == nil).must_equal false
     end
+
+    it "compares rows whose dimension mixes nil and non-nil values" do
+      a = Namo.new([{symbol: 'BHP', sector: 'Mining'}, {symbol: 'CBA', sector: nil}])
+      b = Namo.new([{symbol: 'CBA', sector: nil}, {symbol: 'BHP', sector: 'Mining'}])
+      _(a == b).must_equal true
+    end
+
+    it "is false for differing rows when a dimension contains nil" do
+      a = Namo.new([{symbol: 'BHP', sector: 'Mining'}, {symbol: 'CBA', sector: nil}])
+      b = Namo.new([{symbol: 'BHP', sector: 'Mining'}, {symbol: 'CBA', sector: 'Banking'}])
+      _(a == b).must_equal false
+    end
+
+    it "ignores dimension (key) order within a row" do
+      a = Namo.new([{a: 1, b: 2, c: 3}])
+      b = Namo.new([{c: 3, b: 2, a: 1}])
+      _(a == b).must_equal true
+    end
+
+    it "is type-strict on values, consistent with the subset operators" do
+      a = Namo.new([{x: 1}])
+      b = Namo.new([{x: 1.0}])
+      _(a == b).must_equal false
+      _(a <= b).must_equal false
+    end
   end
 
   describe "#===" do
