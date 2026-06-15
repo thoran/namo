@@ -1,12 +1,12 @@
 # Namo Presentation Examples with Comparisons
 
-Date: 20260613
+Date: 20260615
 
 Companion document to the Namo Roadmap. Each example shows one comparison tool (the strongest competitor for that discipline), then three stages of Namo — 1.x (explicit), 2.x (bare names), 3.x (DSL) — so the audience watches the ceremony disappear.
 
 The narrative: "This is what you're writing now. This is 1.0. This is 2.0. This is 3.0." Four stages per discipline. Each step removes noise. By 3.x, the specification reads like English.
 
-Comparison tools: Pandas, Polars, xarray, R/dplyr, Julia/DataFrames.jl — each appearing once or twice, chosen as the most credible competitor for that audience.
+Comparison tools: Pandas, Polars, xarray, R/dplyr, Julia/DataFrames.jl — each chosen as the most credible competitor for that audience.
 
 Import/require lines are omitted throughout. The audience is looking at the logic, not the boilerplate.
 
@@ -48,6 +48,7 @@ analysis['action'] = analysis['total_score'].apply(
     lambda s: 'BUY' if s >= 5 else 'WATCH' if s >= 2 else 'HOLD' if s >= 0 else 'AVOID'
 )
 
+by_action = analysis.groupby('action')['total_score'].mean()
 buys = analysis[analysis['action'] == 'BUY'].sort_values('total_score', ascending=False)
 ```
 
@@ -71,6 +72,7 @@ analysis[:value_score] = proc{|row| (2 if row[:pe] < 10) || (1 if row[:pe] < 15)
 analysis[:total_score] = proc{|row| row[:value_score] + row[:book_score] + row[:yield_score] + row[:momentum_score] + row[:trend_score]}
 analysis[:action] = proc{|row| row[:total_score] >= 5 ? 'BUY' : row[:total_score] >= 2 ? 'WATCH' : row[:total_score] >= 0 ? 'HOLD' : 'AVOID'}
 
+by_action = analysis.group_by(:action).summary(:total_score, reducer: :mean)
 buys = analysis[action: 'BUY'].sort_by{|row| -row[:total_score]}
 ```
 
@@ -94,6 +96,7 @@ analysis.value_score = proc{ (2 if pe < 10) || (1 if pe < 15) || (0 if pe < 25) 
 analysis.total_score = proc{ value_score + book_score + yield_score + momentum_score + trend_score }
 analysis.action = proc{ total_score >= 5 ? 'BUY' : total_score >= 2 ? 'WATCH' : total_score >= 0 ? 'HOLD' : 'AVOID' }
 
+by_action = analysis.group_by(:action).summary(:total_score, reducer: :mean)
 buys = analysis[action: 'BUY'].sort_by{|row| -row.total_score}
 ```
 
@@ -116,6 +119,7 @@ analysis = analysis.define do
   action           -> { total_score >= 5 ? 'BUY' : total_score >= 2 ? 'WATCH' : total_score >= 0 ? 'HOLD' : 'AVOID' }
 end
 
+by_action = analysis.group_by(:action).summary(:total_score, reducer: :mean)
 buys = analysis[action: 'BUY'].sort_by{|row| -row.total_score}
 ```
 
@@ -130,6 +134,8 @@ The progression: Pandas 30+ lines, Namo 1.x ~15 lines, 2.x ~13 lines, 3.x ~12 li
 3.x removes `analysis.name = proc{ }` and replaces it with `name -> { }`. The define block is a pure specification — just names and computations.
 
 The temporal join in Namo is a block on `*`. In Pandas it's `merge_asof` — a function most users don't know exists.
+
+`group_by(:action)` partitions on a *computed* category — `action` is a formula, yet the call is the same one you'd write for a stored column. Pandas can group by `action` only because it was first materialised as a column; Namo groups by the formula directly, and `summary` returns a `Namo::Collection` you can hold and re-query, not a transient `GroupBy`.
 
 
 ## Climate / environmental science
@@ -307,6 +313,7 @@ cases = cases.with_columns(
       .then(pl.lit('rising')).otherwise(pl.lit('falling')).alias('trend')
 )
 
+by_region = cases.group_by('region').agg(pl.col('new_cases').sum())
 rising = cases.filter(pl.col('trend') == 'rising')
 ```
 
@@ -321,6 +328,7 @@ cases[:weekly_average] = proc do |row, namo|
 end
 cases[:trend] = proc{|row| row[:new_cases] > row[:weekly_average] ? 'rising' : 'falling'}
 
+by_region = cases.group_by(:region).summary(:new_cases, reducer: :sum)
 rising = cases[trend: 'rising']
 ```
 
@@ -335,6 +343,7 @@ cases.weekly_average = proc do |row, namo|
 end
 cases.trend = proc{ new_cases > weekly_average ? 'rising' : 'falling' }
 
+by_region = cases.group_by(:region).summary(:new_cases, reducer: :sum)
 rising = cases[trend: 'rising']
 ```
 
@@ -349,6 +358,7 @@ cases = Namo.new(case_data).define do
   trend          -> { new_cases > weekly_average ? 'rising' : 'falling' }
 end
 
+by_region = cases.group_by(:region).summary(:new_cases, reducer: :sum)
 rising = cases[trend: 'rising']
 ```
 
@@ -361,6 +371,8 @@ Polars needs the data sorted first, and the window is assembled from three conce
 The window is live. Append today's counts and `weekly_average` reads the new rows on next access; filter the Namo and the filtered result's rows window over the filtered rows. In Polars the rolling column is a snapshot — new data means recomputing it.
 
 `trend` references `weekly_average` — a one-arity formula reading a two-arity one by name. The two forms mix freely.
+
+`group_by(:region)` partitions on a stored dimension — the same call as the computed-category groupings elsewhere, here over plain data. Because `region` is a data dimension, the split is lossless and exactly reversible: `cases.group_by(:region).as_detail(:region) == cases`. The partition reorganises the rows; it doesn't lose them.
 
 
 ## Survey / social science
@@ -382,6 +394,7 @@ study = study.with_columns([
      pl.lit(': ') + pl.col('satisfaction')).alias('label'),
 ])
 
+by_satisfaction = study.group_by('satisfaction').agg(pl.len())
 dissatisfied_young = study.filter(
     (pl.col('satisfaction') == 'dissatisfied') &
     (pl.col('age_group') == 'under_30')
@@ -398,6 +411,7 @@ study = responses * demographics
 study[:satisfaction] = proc{|row| row[:response] >= 4 ? 'satisfied' : row[:response] <= 2 ? 'dissatisfied' : 'neutral'}
 study[:label] = proc{|row| "#{row[:age_group]}, #{row[:region]}: #{row[:satisfaction]}"}
 
+by_satisfaction = study.group_by(:satisfaction).summary(:respondent, reducer: :count)
 dissatisfied_young = study[satisfaction: 'dissatisfied', age_group: 'under_30']
 ```
 
@@ -411,6 +425,7 @@ study = responses * demographics
 study.satisfaction = proc{ response >= 4 ? 'satisfied' : response <= 2 ? 'dissatisfied' : 'neutral' }
 study.label = proc{ "#{age_group}, #{region}: #{satisfaction}" }
 
+by_satisfaction = study.group_by(:satisfaction).summary(:respondent, reducer: :count)
 dissatisfied_young = study[satisfaction: 'dissatisfied', age_group: 'under_30']
 ```
 
@@ -425,6 +440,7 @@ study = (responses * demographics).define do
   label         -> { "#{age_group}, #{region}: #{satisfaction}" }
 end
 
+by_satisfaction = study.group_by(:satisfaction).summary(:respondent, reducer: :count)
 dissatisfied_young = study[satisfaction: 'dissatisfied', age_group: 'under_30']
 ```
 
@@ -437,6 +453,8 @@ String concatenation in Polars requires `pl.col() + pl.lit()` chaining — build
 The `label` formula in Namo references `satisfaction` — another computed formula — inside the interpolation. In Polars, `satisfaction` must exist as a column from a previous `with_columns` call before it can be referenced. Order matters. In Namo, lazy resolution means it doesn't.
 
 Type agnosticism is the key point for social scientists. Every formula here produces text, not numbers. The tool doesn't force numeric thinking.
+
+`group_by(:satisfaction)` is the response-pattern breakdown the discipline is named for. `satisfaction` is computed text, yet it partitions exactly like a stored column — the count per level falls straight out of `summary`. Polars groups too, but the result is a transient frame; Namo's is a `Namo::Collection`, kept and re-queried alongside the row-level `study`.
 
 
 ## Sports analytics

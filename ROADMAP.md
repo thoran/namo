@@ -1,6 +1,6 @@
 # Namo Roadmap
 
-Date: 20260614
+Date: 20260615
 
 ## Design philosophy
 
@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.19.0
+## Current state: 0.20.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -939,9 +939,9 @@ It takes its own release because it stands on its own — any two `nil`-containi
 
 ### Summary
 
-The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped, two-arity collection-scoped, and parameterised receiving arguments at access time, mixing freely), polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, a constructor that takes data positionally or by keyword and carries an optional `name:`, and `Namo::Collection` — a hierarchical aggregate of named member Namos, assembled with `<<` and queried through `summary`/`detail` views with lazy detail materialisation — give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, combining or decomposing datasets with different dimensions, and composing named datasets into a queryable whole, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase is `group_by` returning a `Collection` (0.20.0).
+The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped, two-arity collection-scoped, and parameterised receiving arguments at access time, mixing freely), polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, a constructor that takes data positionally or by keyword and carries an optional `name:`, `Namo::Collection` — a hierarchical aggregate of named member Namos, assembled with `<<` and queried through `summary`/`detail` views with lazy detail materialisation — and `group_by`, the partition-side constructor that splits a Namo into a `Collection` (the mirror of assembling one), give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, combining or decomposing datasets with different dimensions, composing named datasets into a queryable whole, and partitioning one back into named pieces, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase is the 1.0.0 stable release.
 
-## 0.20.0: group_by returns a Collection
+## 0.20.0 (2026-06-15): group_by returns a Collection
 
 `Namo#group_by(dimension)` splits a Namo into a `Namo::Collection`, partitioning the rows by the values of the given dimension. This completes the Enumerable coherence pass begun at 0.11.0 — it is the one Enumerable method that produces row-shaped output and was not included there.
 
@@ -965,6 +965,12 @@ namo.group_by(:symbol).as_detail(:symbol) == namo        # true — exact round-
 
 Each group member is named by its group value (`find('BHP')` returns the BHP member), so the Collection's `find` and the whole assembly API apply uniformly to a partitioned Collection. The group value *is* the member name — and because it was already a dimension in the rows, there is no extrinsic-key conflation: the name and the dimension value coincide by construction.
 
+**Grouping by a derived dimension.** Because every operation in Namo treats data and derived dimensions equivalently, `group_by` does too: grouping by a formula is not a special case to be refused but a first-class use — `group_by(:value_score)` must work exactly as `group_by(:symbol)` does, or the unified-treatment principle would be false at precisely the operation where partitioning on a computed category (a score, an action, a class label) is most expected. When the named dimension is a formula, `group_by` materialises it first — through the same projection path that materialises any derived dimension (`self[*data_dimensions, dimension]`, 0.16.0) — so the grouped-by formula becomes a stored column and is dropped, while every other formula carries through live. The user neither knows nor needs to know which kind the dimension was; that indifference is the feature.
+
+Materialise-and-drop is the only invertible choice. If a materialised dimension kept its formula alongside its stored values, the name would be both data and derived at once — the aliased state 0.16.0 exists to eliminate — and inversion would require a provenance ledger to recover which dimensions had been formulae. Dropping the formula keeps the namespace self-describing: a name's status is always recoverable from the object alone. The cost is that the grouped-by formula is no longer live in the members; a user wanting both the frozen grouping value and a live recomputation binds a second name before grouping, spending a column visibly at their own call site.
+
+This collapses the round-trip into one uniform law over the whole dimension namespace: `namo.group_by(d).as_detail(d) == namo[*namo.data_dimensions, d]` for any `d`, data or derived. For a data dimension, `namo[*data_dimensions, d]` is just `namo` (projecting all columns is identity), so the exact-original round-trip is the degenerate instance of the general law against the materialised form. Parameterised formulae are the honest exception: they cannot be materialised without arguments, so `group_by(:sma)` raises the 0.17.0 `ArgumentError` at the materialisation site, the same way `values(:sma)` does — uniform across every materialisation point, not `group_by` treating them as second-class.
+
 The nil-key case falls out cleanly from the use-site naming decision (0.18.0). If some rows have `dimension` missing or nil-valued, they form a group keyed by `nil`, and that member is named `nil`. There is no insertion guard to trip — `<<` accepts it — and the member is simply unfindable by `find` (you can't `find(nil)` meaningfully), but its rows still materialise into the detail view and round-trip correctly, because the grouping dimension (nil-valued for those rows, but present) is intrinsic. No rows are dropped, no sentinel is invented; the nil group is a first-class member that happens to have a nil name. This is exactly why 0.18.0 moved name-enforcement to use-site rather than guarding `<<`.
 
 ### Relationship to the Enumerable pass
@@ -975,15 +981,16 @@ With `group_by` landing here, the coherence statement from 0.11.0 completes: eve
 
 ```ruby
 def group_by(dimension)
-  collection = Namo::Collection.new
-  @data.group_by{|row| row[dimension]}.each do |value, rows|
-    collection << self.class.new(rows, formulae: @formulae.dup, name: value)
+  collection = Collection.new
+  source = derived_dimensions.include?(dimension) ? self[*data_dimensions, dimension] : self
+  source.data.group_by{|row_data| row_data[dimension]}.each do |value, rows|
+    collection << self.class.new(rows, formulae: source.formulae.dup, name: value)
   end
   collection
 end
 ```
 
-Each group is constructed as an instance of the receiver's class (subclass type preserved), carrying the parent's formulae, named by the group value so the Collection can key on it.
+Each group is constructed as an instance of the receiver's class (subclass type preserved), carrying the surviving formulae, named by the group value so the Collection can key on it. The ternary is the materialise decision: for a derived dimension `source` becomes the projection `self[*data_dimensions, dimension]` (the grouped-by formula now a stored column and dropped, every other formula carried live); for a data dimension it is `self` untouched, allocating no projection. The members therefore carry `source.formulae`, not `@formulae` — after materialisation that is the *surviving* set, and carrying `@formulae` would re-introduce the dropped formula and break exclusivity. A parameterised formula raises inside the projection, at the 0.17.0 materialisation site, so `group_by` needs no enforcement of its own.
 
 A block form (`group_by{|row| ...}` computing the group key from a block rather than naming a dimension) is a natural extension. Deferred consideration: the block form's groups are keyed by a computed value with no corresponding dimension in the rows, so the split round-trip would be the *assembly* case (the computed key must be injected as a dimension on `as_detail`), not the exact-idempotent case. Worth supporting, but the dimension-named form is the primary one and the one that round-trips cleanly.
 
@@ -996,8 +1003,10 @@ A block form (`group_by{|row| ...}` computing the group key from a block rather 
 - Each member is named by its group value (`find(value)` works).
 - Each member carries the parent's formulae.
 - Each member preserves the receiver's class (subclass type).
-- Split round-trip: `namo.group_by(:symbol).as_detail(:symbol) == namo`.
+- `group_by` does not mutate the receiver.
+- The uniform inversion law: exact on a data dimension (`group_by(:symbol).as_detail(:symbol) == namo`); against the materialised form on a formula dimension (`group_by(:value_score).as_detail(:value_score) == namo[*data_dimensions, :value_score]`).
 - `group_by` on an empty Namo returns an empty Collection.
+- Grouping by a formula: partitions by the formula's value; materialises the grouped-by formula into a data column and drops it from the members' derived dimensions; alters *only* the grouped-by formula, carrying a live dependent formula through unchanged; a parameterised formula raises `ArgumentError` at the materialisation site.
 - `group_by(:sector)` where some rows have nil `:sector` produces a nil-named member holding those rows; no rows are dropped; the split round-trip still holds.
 - `summary`/`detail` work on a `group_by`-derived Collection identically to an assembled one.
 

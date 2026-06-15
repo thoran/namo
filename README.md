@@ -1040,9 +1040,34 @@ gt.values(:weight)                         # => [200, 80, 150, 60, ...]   (line 
 
 Freeze-gated memoisation is a 2.x optimisation — opt-in via `freeze`, transparent, and never changing this observable behaviour. `group_by` (0.20.0) is the partition-side constructor for the same type: it splits a Namo into a `Collection`, the mirror of assembling one with `<<`.
 
-## Why?
+#### Partitioning with `group_by`
 
-Every other multi-dimensional array library requires you to pre-shape your data before you can work with it. Namo takes it in the form it likely already comes in.
+`group_by(dimension)` is the partition-side constructor for a `Collection` — the mirror of assembling one with `<<`. It splits a Namo into one member per distinct value of the dimension, each a Namo holding that group's rows, named by its group value:
+
+```ruby
+prices.group_by(:symbol)
+# => #<Namo::Collection members: [:BHP, :RIO, :CBA]>
+
+prices.group_by(:symbol).summary(:close, reducer: :mean)
+# => Namo with {member:, close:} rows — mean close per symbol
+```
+
+The grouping dimension is retained in every member — the split runs *along* the axis, it doesn't consume it — so the partition inverts exactly through `as_detail` on the same dimension:
+
+```ruby
+prices.group_by(:symbol).as_detail(:symbol) == prices
+# => true
+```
+
+Because data and derived dimensions are treated alike, you can group by a formula as readily as by a stored column. Grouping by a derived dimension materialises it first — the grouped-by formula becomes a stored value in each member and is dropped, while every other formula carries through live:
+
+```ruby
+prices[:value_score] = proc{|r| r[:pe] < 10 ? 2 : r[:pe] < 15 ? 1 : 0}
+prices.group_by(:value_score)
+# => one member per score; :value_score is now a data column in each
+```
+
+This gives a single inversion law over the whole namespace — `namo.group_by(d).as_detail(d) == namo[*namo.data_dimensions, d]` for any `d`, with the exact-original round-trip being the data-dimension instance of it. A nil-valued group produces a nil-named member, holding its rows and round-tripping like any other.
 
 ## Name
 

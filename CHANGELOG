@@ -1,6 +1,41 @@
 CHANGELOG
 _________
 
+20260615
+0.20.0: + group_by(dimension) — splits a Namo into a Namo::Collection, one member per distinct value, completing the Enumerable coherence pass begun at 0.11.0.
+
+1. ~ lib/Namo/Enumerable.rb: + Namo#group_by(dimension). Returns a Namo::Collection
+   whose members are the groups — one member per distinct value, each a Namo of the
+   matching rows, named by its group value, carrying the surviving formulae, preserving
+   subclass type via self.class.new. The grouping dimension is retained (the split is
+   along the axis, not consuming it), so namo.group_by(d).as_detail(d) inverts it. A
+   nil-valued group produces a nil-named member that holds its rows and round-trips, the
+   use-site naming decision (0.18.0) paying off. A ternary makes the materialise
+   decision: when dimension is derived, the group source is the projection
+   (self[*data_dimensions, dimension], 0.16.0) so the grouped-by formula becomes a stored
+   column and is dropped while every other formula carries through live; when data, the
+   source is self untouched. A parameterised formula raises the 0.17.0 ArgumentError at
+   the materialisation site, group_by needing no enforcement of its own.
+2. ~ test/namo_test.rb: + "#group_by" describe — return type, one-member-per-value,
+   row partitioning, grouping-dimension retention, find-by-name, formula carry-through,
+   subclass preservation, non-mutation, empty-Namo; the uniform inversion law
+   (data: exact; formula: against the materialised form); grouping by a formula
+   (partition by value, materialise-and-drop, only-grouped-formula-altered with a live
+   dependent, parameterised raise); the nil-valued grouping dimension (nil-named member,
+   no rows dropped, round-trip); and consistency with assembly (summary/detail on a
+   partitioned Collection).
+3. ~ README.md: + group_by subsection under Collections — the partition constructor as
+   the mirror of <<, the round-trip example, the materialise-on-formula behaviour, and
+   the cross-reference to the assembly side.
+4. ~ ROADMAP.md: Promote 0.20.0 to shipped; Current state -> 0.20.0; + the materialisation
+   rationale (unified-treatment requires it; materialise-and-drop is the only invertible
+   choice; the uniform inversion law); Summary folds in group_by; next phase -> 1.0.0.
+5. ~ COMPARISON.md: Aggregation entry — group_by repointed from planned (0.20.0) to
+   shipped, the partition constructor now realised; + the grouping-by-formula comparison
+   (computed-key grouping is parity, but only Namo partitions on a named, attached formula
+   through the data-dimension interface). Date bumped.
+6. ~ Namo::VERSION: /0.19.0/0.20.0/
+
 20260614
 0.19.0: ~ row-multiset equality — replace the sorted canonical form with a row multiset, so ==, eql?, hash, and the subset operators compare without sorting: nil/NaN-safe, row- and dimension-order blind, and consistently type-strict.
 

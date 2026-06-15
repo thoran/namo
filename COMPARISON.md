@@ -1,6 +1,6 @@
 # Namo Feature Comparison
 
-Date: 20260614
+Date: 20260615
 
 Feature-by-feature comparison of Namo against Pandas, Polars, R/dplyr, xarray, and Julia/DataFrames.jl. Covers both where the tools are the same and where they differ.
 
@@ -850,6 +850,56 @@ combined %>% select(-exclusive_to_ohlcv_cols) %>% distinct()
 Where Namo's decomposition operator differs structurally from `*` and `**` is in its precondition stance. `*` and `**` are strict — they raise on dimension-incompatible operands, because combining unrelated Namos has no natural answer and silently producing arbitrary output would turn a logic error into nonsense rows. `/` is loose — it's a no-op when the operands share no dimensions, because projecting away nothing returns the original. This asymmetry isn't arbitrary; it reflects a structural distinction between combining and projecting. The asymmetry earns `/` properties a strict version would lose: identity test (`c / b == c` iff dimensionally independent), idempotence (`(c / b) / b == c / b`), and pipeline composition (a `/ separator` step runs over any Namo without special-casing applicability). The pattern mirrors `Array#-` — `[1, 2, 3] - [9] == [1, 2, 3]`, not an error — where the no-op-on-non-applicable rule lets the operator compose into pipelines that don't know in advance whether the operation applies.
 
 
+## Aggregation / group-by-aggregate
+
+**Pandas** — `df.groupby('symbol')['close'].mean()`. Full aggregation framework.
+
+**Polars** — `df.group_by('symbol').agg(pl.col('close').mean())`.
+
+**R/dplyr** — `df %>% group_by(symbol) %>% summarise(mean_close = mean(close))`.
+
+**xarray** — `ds.groupby('symbol').mean()`.
+
+**Julia/DataFrames.jl** — `combine(groupby(df, :symbol), :close => mean)`.
+
+**Namo** — `Namo::Collection`, the aggregate type, is **shipped (0.18.0)**: a Namo holding an Array of named member Namos, with `summary`/`detail` views across them. The `group_by` *constructor* that splits a Namo into a Collection is now **shipped (0.20.0)** — the partition-side counterpart to building one by assembly (`<<`). Ruby's bare `Enumerable#group_by` returns a raw hash of `{key => Array<Row>}`; Namo's returns a `Collection`, a persistent named object carrying the full aggregation surface:
+
+```ruby
+# bare Ruby Enumerable — .entries drops to the Array of Row objects, since Namo#group_by now shadows the block form
+namo.entries.group_by{|row| row[:symbol]}.transform_values{|rows| rows.sum{|r| r[:close]} / rows.length}
+# => {'BHP' => 42.8, 'RIO' => 118.3}
+```
+
+The aggregation surface itself already exists on a Collection. `summary` reduces each member to a labelled row, and `members` exposes the groups for explicit per-group computation using Namo's full vocabulary:
+
+```ruby
+# 0.18.0 — by assembly
+collection = Namo::Collection.new
+collection << bhp_namo    # name: 'BHP'
+collection << rio_namo    # name: 'RIO'
+collection.summary(:close, reducer: :mean)
+# => Namo with {member:, close:} rows — mean close per member
+
+collection.members.map{|n| n.values(:close).sum / n.count}
+```
+
+`group_by(:symbol)` (0.20.0) is the partition-side constructor for this same type — one member per group value, each a Namo holding that group's rows, retaining the surviving formulae, and named by its group value. Because data and derived dimensions are treated alike, grouping by a formula works identically: the grouped-by formula is materialised into a stored column and dropped, every other formula carried through live, and the partition inverts through `as_detail` on the same dimension:
+
+```ruby
+# 0.20.0
+namo.group_by(:symbol).summary(:close, reducer: :mean)
+# => Namo with {member:, close:} rows — mean close per symbol
+namo.group_by(:symbol).as_detail(:symbol) == namo
+# => true — the partition round-trips exactly
+```
+
+Grouping by a computed key is itself not unique — every general-purpose tool can do it, inline. Polars comes closest to reading like Namo: `df.group_by((pl.col('pe') < 10).alias('value_score'))` takes the expression directly. Pandas groups by a derived Series (`df.groupby(df['pe'].apply(score))`) or materialises a column first and groups by its name. R/dplyr groups by an inline expression (`group_by(df, value_score = pe < 10)`); Julia must `transform` the column first, then `groupby` its name. In every case the key is reconstructed at the call site, and the computation is a free-floating expression or function, not a property of the frame. What Namo does that none of them do is group by a *named, attached* derived dimension through the *same interface* as a data dimension — `group_by(:value_score)` and `group_by(:symbol)` are the identical call, because a formula is a dimension and the unified-treatment principle makes the two indistinguishable to the operation. The formula was defined once, via `[]=`, and is reused across selection, projection, and grouping; the others have a name-path for stored columns and a separate expression-path for computed keys, and the computed key lives only inside the `group_by` call. This isn't a `group_by` feature so much as a consequence of formulae being first-class dimensions: the same architecture that lets `namo[revenue: 1000..2000]` select on a formula lets `namo.group_by(:revenue)` partition on one, with no new mechanism.
+
+The distinction from every other tool is that the group-by intermediate is a **persistent, named object** — assembled or partitioned, held and re-queried — not the transient grouping context the other libraries dissolve at the end of the chain. Bare names (2.x) then shorten the member-wise form to `n.close.sum / n.count`, and grouping by a formula to the same `group_by(:value_score)` it already is — the name was the point.
+
+**Summary:** Every tool aggregates, but the others dissolve the grouping context at the end of the chain; Namo's `group_by` returns a `Namo::Collection` — a persistent, named object reachable by partition or assembly and carrying the full `summary`/`detail` surface. Grouping by a computed key is parity (Polars takes an inline expression cleanly), but only Namo groups by a *named, attached* formula through the same interface as a data dimension, because a formula is a dimension — defined once and reused across selection, projection, and grouping, with no separate expression-path.
+
+
 ## Set operators
 
 ### Row-level set algebra
@@ -1122,8 +1172,22 @@ filtered = filter(:close => c -> c > 40, df)
 
 **Summary:** Every other tool already returns its own type from filtering operations. Namo 0.11.0 brought it to parity. The difference is that Namo's Enumerable integration means `select`, `reject`, `sort_by` — Ruby's standard collection methods — also return Namos, not just Namo-specific filter methods.
 
+### Sorting
 
-## Comparisons
+**Pandas** — `df.sort_values('close')`.
+
+**Polars** — `df.sort('close')`.
+
+**R/dplyr** — `arrange(df, close)`.
+
+**xarray** — `ds.sortby('close')`.
+
+**Julia/DataFrames.jl** — `sort(df, :close)`.
+
+**Namo** — shipped (0.11.0). `sort_by` via Enumerable, returning a Namo.
+
+
+## Comparison
 
 ### Equality hierarchy
 
@@ -1435,50 +1499,6 @@ if (matches_ohlcv(incoming)) {
 
 Features present in competitors that Namo lacks or has deferred.
 
-### Aggregation / group-by-aggregate
-
-**Pandas** — `df.groupby('symbol')['close'].mean()`. Full aggregation framework.
-
-**Polars** — `df.group_by('symbol').agg(pl.col('close').mean())`.
-
-**R/dplyr** — `df %>% group_by(symbol) %>% summarise(mean_close = mean(close))`.
-
-**xarray** — `ds.groupby('symbol').mean()`.
-
-**Julia/DataFrames.jl** — `combine(groupby(df, :symbol), :close => mean)`.
-
-**Namo** — `Namo::Collection`, the aggregate type, is **shipped (0.18.0)**: a Namo holding an Array of named member Namos, with `summary`/`detail` views across them. What is not yet shipped is the `group_by` *constructor* that splits a Namo into a Collection — that is **planned (0.20.0)**. Until then, a Collection is built by assembly (`<<`), and Ruby's `Enumerable#group_by` works as a stopgap but returns a raw hash of `{key => Array<Row>}`:
-
-```ruby
-namo.group_by{|row| row[:symbol]}.transform_values{|rows| rows.sum{|r| r[:close]} / rows.length}
-# => {'BHP' => 42.8, 'RIO' => 118.3}
-```
-
-The aggregation surface itself already exists on a Collection. `summary` reduces each member to a labelled row, and `members` exposes the groups for explicit per-group computation using Namo's full vocabulary:
-
-```ruby
-# 0.18.0 — by assembly
-collection = Namo::Collection.new
-collection << bhp_namo    # name: 'BHP'
-collection << rio_namo    # name: 'RIO'
-collection.summary(:close, reducer: :mean)
-# => Namo with {member:, close:} rows — mean close per member
-
-collection.members.map{|n| n.values(:close).sum / n.count}
-```
-
-`group_by(:symbol)` (0.20.0) is the partition-side constructor for this same type — one member per group value, each a Namo holding that group's rows, retaining the parent's formulae, and named by its group value:
-
-```ruby
-# 0.20.0
-namo.group_by(:symbol).summary(:close, reducer: :mean)
-# => Namo with {symbol:, close:} rows — mean close per symbol
-```
-
-The distinction from every other tool is that the group-by intermediate is a **persistent, named object** — assembled or partitioned, held and re-queried — not the transient grouping context the other libraries dissolve at the end of the chain.
-
-Bare names (2.x) then shorten the member-wise form to `n.close.sum / n.count`.
-
 ### Pivoting / reshaping
 
 **Pandas** — `pivot_table`, `melt`, `stack`, `unstack`.
@@ -1492,20 +1512,6 @@ Bare names (2.x) then shorten the member-wise form to `n.close.sum / n.count`.
 **Julia/DataFrames.jl** — `stack`, `unstack`.
 
 **Namo** — not currently planned. May be revisited when a concrete use case emerges. Namo's selection, projection, and composition operators cover many of the scenarios that motivate pivoting in other tools.
-
-### Sorting
-
-**Pandas** — `df.sort_values('close')`.
-
-**Polars** — `df.sort('close')`.
-
-**R/dplyr** — `arrange(df, close)`.
-
-**xarray** — `ds.sortby('close')`.
-
-**Julia/DataFrames.jl** — `sort(df, :close)`.
-
-**Namo** — `sort_by` via Enumerable, returning a Namo as of 0.11.0.
 
 ### Missing value handling
 

@@ -2573,4 +2573,135 @@ describe Namo do
       _(sales.to_a).must_equal sample_data
     end
   end
+
+  describe "#group_by" do
+    let(:price_data) do
+      [
+        {symbol: 'BHP', date: 1, close: 42.5, pe: 12.0},
+        {symbol: 'BHP', date: 2, close: 43.0, pe: 12.0},
+        {symbol: 'RIO', date: 1, close: 118.3, pe: 9.0},
+        {symbol: 'CBA', date: 1, close: 100.0, pe: 22.0}
+      ]
+    end
+    let(:prices) { Namo.new(price_data) }
+
+    it "returns a Namo::Collection" do
+      _(prices.group_by(:symbol)).must_be_kind_of Namo::Collection
+    end
+
+    it "has one member per distinct value of the dimension" do
+      collection = prices.group_by(:symbol)
+      _(collection.members.length).must_equal 3
+      _(collection.members.map(&:name)).must_equal ['BHP', 'RIO', 'CBA']
+    end
+
+    it "gives each member exactly the rows matching its group value" do
+      collection = prices.group_by(:symbol)
+      _(collection.find('BHP').values(:date)).must_equal [1, 2]
+      _(collection.find('RIO').values(:date)).must_equal [1]
+    end
+
+    it "retains the grouping dimension in each member (it is not consumed)" do
+      _(prices.group_by(:symbol).find('BHP').data_dimensions).must_include :symbol
+    end
+
+    it "names each member by its group value, found via find" do
+      _(prices.group_by(:symbol).find('CBA').values(:close)).must_equal [100.0]
+    end
+
+    it "carries the parent's formulae into each member" do
+      prices[:cheap] = proc{|r| r[:pe] < 15}
+      _(prices.group_by(:symbol).find('BHP').values(:cheap)).must_equal [true, true]
+    end
+
+    it "preserves the receiver's class in each member" do
+      subclass = Class.new(Namo)
+      collection = subclass.new(price_data).group_by(:symbol)
+      _(collection.members.first).must_be_instance_of subclass
+    end
+
+    it "does not mutate the receiver" do
+      prices.group_by(:symbol)
+      _(prices.data).must_equal price_data
+    end
+
+    it "returns an empty Collection for an empty Namo" do
+      collection = Namo.new.group_by(:symbol)
+      _(collection).must_be_kind_of Namo::Collection
+      _(collection.members).must_equal []
+    end
+
+    context "the uniform inversion law" do
+      it "round-trips exactly on a data dimension" do
+        _(prices.group_by(:symbol).as_detail(:symbol)).must_equal prices
+      end
+
+      it "round-trips against the materialised form on a formula dimension" do
+        prices[:value_score] = proc{|r| r[:pe] < 10 ? 2 : r[:pe] < 15 ? 1 : 0}
+        recovered = prices.group_by(:value_score).as_detail(:value_score)
+        _(recovered).must_equal prices[*prices.data_dimensions, :value_score]
+      end
+    end
+
+    context "grouping by a formula" do
+      before do
+        prices[:value_score] = proc{|r| r[:pe] < 10 ? 2 : r[:pe] < 15 ? 1 : 0}
+      end
+
+      it "partitions by the formula's value" do
+        collection = prices.group_by(:value_score)
+        _(collection.members.map(&:name).sort).must_equal [0, 1, 2]
+        _(collection.find(1).values(:symbol)).must_equal ['BHP', 'BHP']
+      end
+
+      it "materialises the grouped-by formula into a data column in each member" do
+        member = prices.group_by(:value_score).find(1)
+        _(member.data_dimensions).must_include :value_score
+        _(member.derived_dimensions).wont_include :value_score
+      end
+
+      it "alters only the grouped-by formula, carrying the rest through live" do
+        prices[:tier] = proc{|r| r[:value_score] >= 1 ? 'good' : 'poor'}
+        member = prices.group_by(:value_score).find(1)
+        _(member.derived_dimensions).must_include :tier
+        _(member.derived_dimensions).wont_include :value_score
+        _(member.values(:tier)).must_equal ['good', 'good']
+      end
+
+      it "raises for a parameterised formula it cannot materialise" do
+        prices[:sma] = proc{|row, namo, field, period| 0}
+        _(proc{prices.group_by(:sma)}).must_raise ArgumentError
+      end
+    end
+
+    context "a nil-valued grouping dimension" do
+      let(:sector_data) do
+        [
+          {symbol: 'BHP', sector: 'Mining'},
+          {symbol: 'RIO', sector: 'Mining'},
+          {symbol: 'XYZ', sector: nil}
+        ]
+      end
+      let(:stocks) { Namo.new(sector_data) }
+
+      it "produces a nil-named member holding the nil-valued rows" do
+        collection = stocks.group_by(:sector)
+        nil_member = collection.members.find{|m| m.name.nil?}
+        _(nil_member).wont_be_nil
+        _(nil_member.values(:symbol)).must_equal ['XYZ']
+      end
+
+      it "drops no rows and still round-trips" do
+        _(stocks.group_by(:sector).as_detail(:sector)).must_equal stocks
+      end
+    end
+
+    context "consistency with assembly" do
+      it "produces a Collection on which summary and detail behave as on an assembled one" do
+        collection = prices.group_by(:symbol)
+        _(collection.summary(:close, reducer: :sum).values(:member)).must_equal ['BHP', 'RIO', 'CBA']
+        _(collection.detail.values(:close)).must_equal [42.5, 43.0, 118.3, 100.0]
+      end
+    end
+  end
 end
