@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.20.0
+## Current state: 0.21.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1016,9 +1016,41 @@ A block form (`group_by{|row| ...}` computing the group key from a block rather 
 - Note that this completes the Enumerable coherence pass started at 0.11.0.
 - Cross-reference to `Collection` (0.18.0) for the assembly side of the same structure.
 
+## 0.21.0 (2026-06-25): Formulae extraction
+
+The formula collection — the `{name => callable}` map every Namo carries — is promoted from a bare `Hash` to a `Namo::Formulae` object. This is behaviour-preserving: no new capability, and nothing a user observes changes beyond the type of the `formulae` accessor itself. It exists to give the formula collection an object to accrete behaviour onto, exactly as `Row` was extracted empty-handed at 0.1.0 and later grew value semantics (0.10.0) and arity dispatch (0.15.0).
+
+### Why an empty extraction is its own release
+
+`Formulae` answers exactly the subset of `Hash` that `lib/namo.rb` and `Row` already send the formula collection — `[]`, `[]=`, `keys`, `key?`, `empty?`, `each`, `delete`, `merge`, `reject`, `dup` — so every operator, projection, and comparison behaves as before: each message it sent still works and returns an equivalent result. The proof is the prior test suite passing unchanged. Naming the collection now, before it carries behaviour, lets a later release add capability (module absorption, `[]`-resolution) onto a type that already exists, rather than threading a second extraction through the operators at the same time as the feature. Relocate first under a green suite; add capability second — the discipline of the Row (0.1.0) and Enumerable (0.11.1) extractions.
+
+### The normalisation seam
+
+The one behavioural change is in the constructor: incoming formulae are normalised to a `Formulae`. A `Hash` — what every internal construction passes, being the result of `Hash#merge`/`Hash#dup` in the operators — is wrapped; a `Formulae` — what the operators now pass, since `Formulae#merge`/`dup` return `Formulae` — passes through unchanged. No other call site changed; they all send messages `Formulae` answers. The public `formulae` accessor therefore returns a `Formulae` now, not a `Hash`, and the two tests that compared it to a literal `{}` assert emptiness instead — the formula set being empty is the behaviour they pin, the wrapper type is not.
+
+### Three deliberate choices
+
+- `to_h` returns a copy (`@store.dup`), not the live store. The bare-Hash version could not leak its internals because there was no wrapper; the wrapper must not introduce the leak.
+- `==`/`eql?`/`hash` are names-only (`keys.sort`), matching Namo's own formula equality, where two sets with the same names but different proc *objects* are equivalent (`@formulae.keys.sort` in `===`/`eql?`/`hash`). A full-store equality would be stricter than Namo means, and a landmine if `Namo#===` is later migrated onto `Formulae#==`.
+- `merge`/`reject`/`dup` return a `Formulae`, and `include Enumerable` — with `each` yielding `[name, callable]` pairs — gives `map`/`select`/`any?` for free, matching Hash's Enumerable behaviour.
+
+### Out of scope
+
+Module absorption (`Formulae#<<` / `[]`-resolution); migrating the operators to pass `Formulae` throughout and dropping the constructor's Hash-acceptance branch; moving the left-wins merge rule into `Formulae#merge`; and migrating `Namo#===`/`eql?` onto `Formulae#==`. Each is a capability or a tidy-up that the named type now makes possible; none belongs in the extraction itself.
+
+### Tests
+
+- A `Formulae` unit test pinning the three deliberate choices and the Hash-compatible surface (`[]`, `[]=`, `keys`, `key?`, `delete`, `merge`, `reject`, `dup`, `each`, plus Enumerable `map`/`select`).
+- Construction tests for the normalisation seam: a Hash given by keyword is wrapped in a `Formulae`; a `Formulae` given by keyword passes through unchanged (same object).
+- The prior suite passes unchanged but for the two `formulae`-accessor assertions, now asserting emptiness rather than a literal `{}`.
+
+### Documentation
+
+- No README change — the extraction is invisible at the API surface.
+
 ## 1.0.0: Stable release
 
-The 1.0 release includes everything through 0.20.0:
+The 1.0 release includes everything through 0.21.0:
 
 - Selection (exact, array, range, proc, regex), projection, contraction.
 - Single-row formulae, two-arity formulae, parameterised formulae.
@@ -1031,6 +1063,7 @@ The 1.0 release includes everything through 0.20.0:
 - Constructor widening (keyword `data:` and `name:`) and polymorphic `[]=`.
 - `Namo::Collection` for hierarchical aggregates, reachable by assembly (`<<`) or partition (`group_by`).
 - `group_by` returning a `Collection`, completing the Enumerable coherence pass.
+- `Namo::Formulae` as the formula collection's own type, extracted from a bare `Hash`.
 
 This is the correct, tested, conservative foundation. No metaprogramming magic, no `method_missing`, no `instance_eval`. Formulae work via `e[:name] = proc{|row| row[:close] / row[:book_value]}` — clear, explicit, proven.
 

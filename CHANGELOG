@@ -1,6 +1,31 @@
 CHANGELOG
 _________
 
+20260625
+0.21.0: + Namo::Formulae; @formulae: /Hash/Namo::Formulae/. Behaviour-preserving: no new capability, just an object for the formula collection to accrete behaviour onto later, mirroring the 0.1.0 extraction of Row.
+
+1. + lib/Namo/Formulae.rb: + Namo::Formulae, a thin class wrapping a Hash @store.
+   Responds to exactly the subset of Hash that lib/namo.rb and Row send the formula
+   collection: [], []=, keys, key?, empty?, each, delete, merge, reject, dup; includes
+   Enumerable (each yields [name, callable] pairs, giving map/select/etc. for free).
+   Three deliberate choices: to_h returns a copy (@store.dup) so callers cannot mutate
+   internals; ==/eql?/hash are names-only (keys.sort), matching Namo's own formula
+   equality where two sets with the same names but different proc objects are equivalent;
+   merge/reject/dup return a Formulae, not a Hash.
+2. ~ lib/namo.rb: + the require; initialize now normalises the incoming formulae to a
+   Formulae (Formulae.new(formulae) unless already one). This is the single behavioural
+   seam — every existing internal construction passes a Hash and is wrapped, while
+   operator results that now pass a Formulae (merge/dup return Formulae) pass through.
+   No other call site changed: each sends a message Formulae answers.
+3. ~ test/namo_test.rb: the two assertions comparing the public #formulae accessor to a
+   literal {} now assert emptiness (must_be_empty). The accessor returns a Formulae, not a
+   Hash; the formula set being empty is the unchanged behaviour these tests pin. + two
+   construction tests pinning the normalisation seam: a Hash given by keyword is wrapped in
+   a Formulae, and a Formulae given by keyword passes through unchanged (same object).
+4. + test/Namo/Formulae_test.rb: + unit test pinning the three deliberate choices (to_h
+   copy, names-only ==/eql?/hash, the Hash-compatible surface plus Enumerable map/select).
+5. ~ Namo::VERSION: /0.20.0/0.21.0/
+
 20260615
 0.20.0: + group_by(dimension) — splits a Namo into a Namo::Collection, one member per distinct value, completing the Enumerable coherence pass begun at 0.11.0.
 

@@ -2,6 +2,7 @@
 # Namo
 
 require_relative './Namo/NegatedDimension'
+require_relative './Namo/Formulae'
 require_relative './Namo/Row'
 require_relative './Namo/Collection'
 require_relative './Namo/Enumerable'
@@ -235,7 +236,7 @@ class Namo
 
   def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
     @data = positional_data || data
-    @formulae = formulae
+    @formulae = formulae.is_a?(Formulae) ? formulae : Formulae.new(formulae)
     @name = name
   end
 

@@ -47,13 +47,24 @@ describe Namo do
     it "produces an empty Namo with no arguments" do
       namo = Namo.new
       _(namo.data).must_equal []
-      _(namo.formulae).must_equal({})
+      _(namo.formulae).must_be_empty
     end
 
     it "accepts keyword formulae with no data" do
       namo = Namo.new(formulae: {y: proc{|r| r[:x] * 2}})
       _(namo.data).must_equal []
       _(namo.derived_dimensions).must_equal [:y]
+    end
+
+    it "wraps keyword formulae given as a Hash in a Formulae" do
+      namo = Namo.new(formulae: {y: proc{|r| r[:x] * 2}})
+      _(namo.formulae).must_be_kind_of Namo::Formulae
+      _(namo.formulae.keys).must_equal [:y]
+    end
+
+    it "passes keyword formulae already given as a Formulae through unchanged" do
+      formulae = Namo::Formulae.new({y: proc{|r| r[:x] * 2}})
+      _(Namo.new(formulae: formulae).formulae).must_be_same_as formulae
     end
 
     it "honours an explicit empty positional array over the nil sentinel" do
@@ -1010,7 +1021,7 @@ describe Namo do
         prices[:sma] = sma
         projected = prices[:sma]
         _(projected.to_a).must_equal [{sma: 10.0}, {sma: 15.0}, {sma: 20.0}]
-        _(projected.formulae).must_equal({})
+        _(projected.formulae).must_be_empty
       end
 
       it "returns an instance of self's class" do
