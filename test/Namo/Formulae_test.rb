@@ -26,6 +26,54 @@ describe Namo::Formulae do
     end
   end
 
+  describe "#derive" do
+    let(:row) do
+      {price: 10.0, quantity: 100}
+    end
+
+    it "resolves a row-only formula to its value" do
+      _(formulae.derive(:revenue, row, nil)).must_equal 1000.0
+    end
+
+    it "resolves a collection-scoped formula with the namo context" do
+      namo = Object.new
+      formulae[:context] = ->(r, n){n}
+      _(formulae.derive(:context, row, namo)).must_be_same_as namo
+    end
+
+    it "raises ArgumentError naming the formula when a collection-scoped formula has no namo context" do
+      formulae[:context] = ->(r, n){n}
+      error = _(proc{formulae.derive(:context, row, nil)}).must_raise ArgumentError
+      _(error.message).must_match(/context/)
+    end
+
+    it "resolves a parameterised formula with arguments" do
+      formulae[:scaled] = ->(r, n, factor){r[:price] * factor}
+      _(formulae.derive(:scaled, row, Object.new, 3)).must_equal 30.0
+    end
+  end
+
+  describe "#required_parameter_count" do
+    it "counts a row-only formula" do
+      _(formulae.required_parameter_count(:revenue)).must_equal 1
+    end
+
+    it "counts a collection-scoped formula" do
+      formulae[:context] = ->(r, n){n}
+      _(formulae.required_parameter_count(:context)).must_equal 2
+    end
+
+    it "counts a parameterised formula" do
+      formulae[:scaled] = ->(r, n, factor){r[:price] * factor}
+      _(formulae.required_parameter_count(:scaled)).must_equal 3
+    end
+
+    it "excludes the splat when counting a variadic formula" do
+      formulae[:variadic] = ->(r, n, *rest){rest}
+      _(formulae.required_parameter_count(:variadic)).must_equal 2
+    end
+  end
+
   describe "#[]=" do
     it "stores a callable under a name" do
       formulae[:cost] = cost

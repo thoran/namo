@@ -1,6 +1,32 @@
 CHANGELOG
 _________
 
+20260626
+0.22.0: + Formulae#derive — move formula invocation out of Row#[] and into Formulae. [] keeps its meaning (the stored callable, as at 0.21.0); the new derive(name, row, namo, *arguments) resolves a named formula to its value. derive over call: the receiver is the collection, not the callable, so the verb says the collection derives a value via the named rule rather than borrowing Proc#call's "invoke the receiver"; and the result is whatever the proc returns, not necessarily numeric, which a neutral verb leaves open. Indexing a Formulae is storage access, not a Namo operation, so [] returning the callable carries no inconsistency with the dimension-value [] of Namo and Row — different domains, same spelling. Behaviour-preserving at the usage level: row[:revenue], namo[:x] = formula, values, and selections are unchanged.
+
+1. ~ lib/Namo/Formulae.rb: + derive(name, row, namo, *arguments), the formula resolver —
+   invocation mechanics lifted whole from Row's formula branch (collection-scoped formulae
+   are called (row, namo, *arguments), row-only formulae (row)). + required_parameter_count(name),
+   public, a property of the stored callable. collection_scoped? and raise_unless_namo_context
+   move in as private; the latter takes namo as a parameter rather than closing over Row's
+   @namo. [] and []= are untouched — [] still returns the stored callable.
+2. ~ lib/Namo/Row.rb: #[] delegates formula resolution to
+   @formulae.derive(name, self, @namo, *arguments); Row keeps only the fail-fast argument
+   guard, the formula-vs-data dispatch (@formulae.key?), and the data fallback (@row[name]).
+   collection_scoped?, required_parameter_count, and raise_unless_namo_context are gone
+   (now Formulae's). expected_argument_counts sources the count from
+   @formulae.required_parameter_count and the fixed-vs-variadic check from
+   @formulae[name].arity.
+3. + test/Namo/Formulae_test.rb: + #derive tests (row-only to value, collection-scoped with
+   namo context, missing-namo-context raise, parameterised with arguments) and +
+   #required_parameter_count tests (row-only, collection-scoped, parameterised, variadic).
+   The #[] and #[]= blocks are unchanged — [] still returns the callable.
+4. ~ test/Namo/Row_test.rb: the formulae fixture is a Namo::Formulae, not a bare {} — Row
+   now delegates formula resolution to its collaborator (call, required_parameter_count),
+   which production always wraps (lib/namo.rb initialize). The data-only equality/match
+   tests keep their {} literals: they never resolve a formula, so Hash#key? alone answers.
+5. ~ Namo::VERSION: /0.21.0/0.22.0/
+
 20260625
 0.21.0: + Namo::Formulae; @formulae: /Hash/Namo::Formulae/. Behaviour-preserving: no new capability, just an object for the formula collection to accrete behaviour onto later, mirroring the 0.1.0 extraction of Row.
 

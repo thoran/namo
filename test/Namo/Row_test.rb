@@ -10,7 +10,7 @@ describe Namo::Row do
   end
 
   let(:formulae) do
-    {}
+    Namo::Formulae.new
   end
 
   let(:row) do

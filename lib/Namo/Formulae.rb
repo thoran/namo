@@ -13,6 +13,21 @@ class Namo
       @store[name] = callable
     end
 
+    def derive(name, row, namo, *arguments)
+      formula = self[name]
+      if collection_scoped?(name)
+        raise_unless_namo_context(name, namo)
+        formula.call(row, namo, *arguments)
+      else
+        formula.call(row)
+      end
+    end
+
+    def required_parameter_count(name)
+      formula = self[name]
+      formula.arity >= 0 ? formula.arity : -formula.arity - 1
+    end
+
     def keys
       @store.keys
     end
@@ -66,6 +81,16 @@ class Namo
 
     def initialize(store = {})
       @store = store
+    end
+
+    def collection_scoped?(name)
+      required_parameter_count(name) >= 2
+    end
+
+    def raise_unless_namo_context(name, namo)
+      unless namo
+        raise ArgumentError, "collection-scoped formula #{name.inspect} requires a Namo context, but this Row has none"
+      end
     end
   end
 end
