@@ -716,9 +716,65 @@ prices[:sma_close_20] = proc{|row| row[:sma, :close, 20]}
 prices[:date, :sma_close_20]   # materialises per the usual projection rule
 ```
 
+#### Formularies
+
+A *formulary* is a reusable body of derived dimensions — a module whose public instance methods are formulae. A Namo attaches a formulary, and from then on those methods resolve as derived dimensions through the same interface as `[]=` formulae. The methods take `row` (and `namo`, and any further parameters) exactly as a `[]=` formula does:
+
+```ruby
+module OrderFlow
+  include Namo::Formulary
+
+  def signed_volume(row)
+    row[:buys] - row[:sells]
+  end
+
+  def cum_delta(row, namo)
+    namo[date: ..row[:date]].values(:signed_volume).sum
+  end
+
+  private
+
+  def net(row)
+    row[:buys] + row[:sells]
+  end
+end
+
+flows = Namo.new([
+  {date: 1, buys: 60, sells: 40},
+  {date: 2, buys: 80, sells: 120},
+  {date: 3, buys: 75, sells: 75}
+])
+
+flows.attach(OrderFlow)
+flows.values(:signed_volume)   # => [20, -40, 0]
+flows.values(:cum_delta)       # => [20, -20, -20]
+flows.derived_dimensions       # => [:signed_volume, :cum_delta]
+```
+
+`<<` is the operator form of `attach`, so `flows << OrderFlow` reads the same and chains: `flows << OrderFlow << Scoring`.
+
+A module brands itself a formulary by including `Namo::Formulary`. The marker is mandatory — `attach` raises `ArgumentError` for an untagged module, so an ordinary module of helpers can't be mistaken for a body of derivations. Within a formulary, the public methods are the derivations and `private` methods are helpers: `net` above never appears in `derived_dimensions` and never resolves as a dimension. The separation needs no per-method declaration — public or private says it.
+
+Attaching **copies** the formulary's public methods into the Namo's formula collection — each becomes a stored formula, indistinguishable from one assigned through `[]=`. From there they are `[]=` formulae in everything but how they were defined: they resolve through the same path, carry through the same operators, and obey the same exclusivity rule.
+
+The copy is a *snapshot* taken at the moment of attachment, and this is where a formulary departs from ordinary Ruby. A real `include` (or `extend`) is a live link: its methods resolve through the ancestor chain, so a method added to the module later, a redefinition, or a further module mixed in afterwards are all seen by objects that already include it. `attach` forgoes that — it copies the method set once, so later changes to the module are not reflected on an already-attached Namo. Re-attach to pick them up. (A live-link mechanism may come in a later release; it is not in 0.23.0.)
+
+**Two ways to give a Namo a formulary.** `attach` (and `<<`) adds one to an individual Namo at runtime, as above. Alternatively, `include` the formulary into a `Namo` subclass — `class TradingAnalysis < Namo; include OrderFlow; end` — and every instance picks it up when it is built. The rule that separates them is simple: *the class `include` is honoured once, when each instance is constructed; everything after that is `attach`.* Both copy (snapshot), so a formulary `include`d into the class **after** an instance exists won't reach that instance — `attach` to it, or build a fresh one. A one-off plain `Namo` has no class to `include` into per-instance, so it always takes `attach`. Where both apply, ordinary last-write-wins holds: a runtime `attach` (or `[]=`) overrides a class-included formula of the same name on that instance, and the most-recently `include`d formulary wins among the class's own.
+
+Because each method is copied into the store, the rules already governing `[]=` apply:
+
+- **Most-recent wins.** Attaching a second formulary that defines a colliding name overwrites the first, exactly as a second `[]=` would. Equally, `[]=` and `attach` interleave as plain last-write-wins on a shared name — whichever was applied last governs.
+- **Data collisions raise.** A name is data or derived, never both. If a formulary method's name collides with an existing data column, attaching raises an `ArgumentError` naming the collision rather than silently destroying the data. The reason it raises where `[]=` silently clears: `[]=` names one column at the call site, so replacing it is your explicit intent; a formulary names a whole *module*, so a data collision is a name you never typed — and possibly several columns at once — that you most likely didn't mean to destroy. The same raise guards the class-`include` channel, where it fires at construction. Resolve it explicitly first — contract the column away (`namo[-:signed_volume]`) or rename — then attach.
+- **Materialise-and-drop on projection.** Naming a formulary method in a projection snapshots its values into a data column *and drops the formula*, exactly as for a `[]=` formula: `flows[:date, :signed_volume]` returns a Namo reporting `:signed_volume` as data, not derived, with all access paths agreeing on the stored snapshot.
+- **Carry-through.** Selection, the set and composition operators, and a projection that *omits* the name all keep the formula live, computing against the result's own rows — the carry-through is free, because the formulae are ordinary store entries.
+
+Two Namos that expose the same names — one via `[]=`, one via a formulary — are `===`; a Namo with a formulary attached is not `===` to a vanilla Namo of the same data dimensions.
+
+Formulary methods take `row` explicitly and index it (`row[:buys]`), the same as `[]=` formulae. Resolving bare names inside a method body (`buys` for `row[:buys]`) and memoising derived values on a frozen Namo arrive in a later release; until then a formulary method is a plain function of its `row` (and `namo`).
+
 ### Polymorphic `[]=`
 
-`[]=` dispatches on the type of the value assigned. A proc registers a formula, as above. Anything else broadcasts the value to every row:
+`[]=` dispatches on the value assigned. A callable — anything that responds to `call`, so a proc, a lambda, or a `Method` — registers a formula, as above. Anything else broadcasts the value to every row:
 
 ```ruby
 sales[:status] = 'active'
@@ -732,7 +788,7 @@ sales.values(:revenue)
 
 The two branches mirror the polymorphism `[]` already has on the selection side, where a single bracket call dispatches over exact values, arrays, ranges, procs, and regexes. Rather than introduce a separate `broadcast` or `set_all` method for the scalar case, `[]=` reads the same way for both: `sales[:status] = 'active'` says "set status to active across this Namo," and `sales[:revenue] = proc{…}` says "derive revenue from each row."
 
-The two branches enforce **exclusive storage**: a name is either a data dimension or a derived dimension, never both. Assigning a proc clears any data column of that name; assigning anything else clears any formula of that name. The last write wins, and there is no shadowing:
+The two branches enforce **exclusive storage**: a name is either a data dimension or a derived dimension, never both. Assigning a callable clears any data column of that name; assigning anything else clears any formula of that name. The last write wins, and there is no shadowing:
 
 ```ruby
 sales[:x] = 5                       # :x is a broadcast data value
@@ -744,7 +800,7 @@ sales[:x] = 5                       # :x is now a broadcast data value — the f
 
 Exclusivity ties directly to the inspection vocabulary: a name assigned a scalar shows up in `data_dimensions`; a name assigned a proc shows up in `derived_dimensions`; never in both, so it appears in `dimensions` exactly once.
 
-Only a `Proc` takes the formula branch. An array is a value like any other, so it broadcasts as the per-row value rather than registering as a formula:
+Only a callable takes the formula branch. An array doesn't respond to `call`, so it broadcasts as the per-row value rather than registering as a formula:
 
 ```ruby
 sales[:weights] = [1, 2, 3]

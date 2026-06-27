@@ -13,6 +13,18 @@ class Namo
       @store[name] = callable
     end
 
+    def attach(modul)
+      unless modul.include?(Namo::Formulary)
+        raise ArgumentError, "not a Namo::Formulary: #{modul}"
+      end
+      host.extend(modul)
+      modul.public_instance_methods(false).each do |name|
+        @store[name] = host.method(name)
+      end
+      self
+    end
+    alias_method :<<, :attach
+
     def derive(name, row, namo, *arguments)
       formula = self[name]
       if collection_scoped?(name)
@@ -81,6 +93,10 @@ class Namo
 
     def initialize(store = {})
       @store = store
+    end
+
+    def host
+      @host ||= Object.new
     end
 
     def collection_scoped?(name)

@@ -2,6 +2,7 @@
 # Namo
 
 require_relative './Namo/NegatedDimension'
+require_relative './Namo/Formulary'
 require_relative './Namo/Formulae'
 require_relative './Namo/Row'
 require_relative './Namo/Collection'
@@ -78,8 +79,7 @@ class Namo
   end
 
   def []=(name, value)
-    case value
-    when Proc
+    if value.respond_to?(:call)
       @data.each{|row| row.delete(name)} if @data.first&.key?(name)
       @formulae[name] = value
     else
@@ -87,6 +87,17 @@ class Namo
       @data.each{|row| row[name] = value}
     end
   end
+
+  def attach(modul)
+    collisions = modul.public_instance_methods(false) & data_dimensions
+    unless collisions.empty?
+      raise ArgumentError, "formulary methods collide with data dimensions: #{collisions.inspect}"
+    end
+    @formulae.attach(modul)
+    self
+  end
+
+  alias_method :<<, :attach
 
   def +(other)
     raise_unless_namo(other)
@@ -238,6 +249,14 @@ class Namo
     @data = positional_data || data
     @formulae = formulae.is_a?(Formulae) ? formulae : Formulae.new(formulae)
     @name = name
+    attach_included_formularies
+  end
+
+  def attach_included_formularies
+    self.class.ancestors.reverse.each do |modul|
+      next if modul.is_a?(Class) || !modul.include?(Namo::Formulary)
+      attach(modul)
+    end
   end
 
   def values_for(dim)

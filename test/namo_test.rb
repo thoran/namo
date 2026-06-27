@@ -639,6 +639,24 @@ describe Namo do
       _(namo.values(:weights)).must_equal [[1, 2, 3], [1, 2, 3]]
     end
 
+    it "registers a formula when assigned a Method (responds to call)" do
+      calculator = Object.new
+      def calculator.revenue(row); row[:price] * row[:quantity]; end
+      namo = Namo.new([{price: 10.0, quantity: 100}, {price: 5.0, quantity: 200}])
+      namo[:revenue] = calculator.method(:revenue)
+      _(namo.derived_dimensions).must_include :revenue
+      _(namo.data_dimensions).wont_include :revenue
+      _(namo.values(:revenue)).must_equal [1000.0, 1000.0]
+    end
+
+    it "registers a formula when assigned a lambda (responds to call)" do
+      namo = Namo.new([{x: 1}, {x: 2}])
+      namo[:doubled] = ->(r){r[:x] * 2}
+      _(namo.derived_dimensions).must_include :doubled
+      _(namo.data_dimensions).wont_include :doubled
+      _(namo.values(:doubled)).must_equal [2, 4]
+    end
+
     it "is last-write-wins: scalar then proc leaves a formula only" do
       namo = Namo.new([{y: 7}])
       namo[:x] = 5
@@ -685,6 +703,247 @@ describe Namo do
       namo = Namo.new([])
       namo[:x] = proc{|r| 1}
       _(namo.derived_dimensions).must_include :x
+    end
+  end
+
+  describe "formularies" do
+    let(:flow_data) do
+      [
+        {date: 1, buys: 60, sells: 40},
+        {date: 2, buys: 80, sells: 120},
+        {date: 3, buys: 75, sells: 75},
+      ]
+    end
+
+    let(:delta) do
+      Module.new do
+        include Namo::Formulary
+        def signed_volume(row); row[:buys] - row[:sells]; end
+        def cum_delta(row, namo); namo[date: ..row[:date]].values(:signed_volume).sum; end
+        def scaled_volume(row, namo, factor); (row[:buys] + row[:sells]) * factor; end
+        private
+        def helper(row); row[:buys]; end
+      end
+    end
+
+    let(:untagged) do
+      Module.new do
+        def signed_volume(row); 0; end
+      end
+    end
+
+    let(:flows) do
+      Namo.new(flow_data).attach(delta)
+    end
+
+    describe "#attach" do
+      it "returns the Namo" do
+        namo = Namo.new(flow_data)
+        _(namo.attach(delta)).must_be_same_as namo
+      end
+
+      it "raises ArgumentError for a module not tagged Namo::Formulary" do
+        _(proc{Namo.new(flow_data).attach(untagged)}).must_raise ArgumentError
+      end
+    end
+
+    describe "#<<" do
+      it "attaches a formulary, the same as #attach" do
+        namo = Namo.new(flow_data)
+        namo << delta
+        _(namo.values(:signed_volume)).must_equal [20, -40, 0]
+      end
+
+      it "returns the Namo for chaining" do
+        namo = Namo.new(flow_data)
+        _(namo << delta).must_be_same_as namo
+      end
+    end
+
+    describe "#derived_dimensions" do
+      it "lists the formulary's public methods alongside store keys, unique" do
+        _(flows.derived_dimensions.sort).must_equal [:cum_delta, :scaled_volume, :signed_volume]
+      end
+
+      it "does not surface a private helper" do
+        _(flows.derived_dimensions).wont_include :helper
+      end
+
+      it "is empty for a vanilla Namo — no Namo public API leaks as a dimension" do
+        _(Namo.new(flow_data).derived_dimensions).must_equal []
+      end
+    end
+
+    describe "resolution" do
+      it "resolves a row-scoped formulary method through values" do
+        _(flows.values(:signed_volume)).must_equal [20, -40, 0]
+      end
+
+      it "resolves a row-scoped formulary method through a Row" do
+        _(flows.entries.first[:signed_volume]).must_equal 20
+      end
+
+      it "selects on a formulary-defined dimension" do
+        _(flows[signed_volume: 20].values(:date)).must_equal [1]
+      end
+
+      it "windows a two-arity formulary method over the yielding Namo" do
+        _(flows.values(:cum_delta)).must_equal [20, -20, -20]
+      end
+
+      it "raises the collection-scoped-context error on a Row built without a Namo" do
+        row = Namo::Row.new(flow_data.first, flows.formulae)
+        _(proc{row[:cum_delta]}).must_raise ArgumentError
+      end
+    end
+
+    describe "parameterised formulary method" do
+      it "is omitted from no-arg bulk views" do
+        _(flows.values.keys).wont_include :scaled_volume
+      end
+
+      it "raises when named directly with no argument" do
+        _(proc{flows.values(:scaled_volume)}).must_raise ArgumentError
+      end
+
+      it "materialises through a row-scoped wrapper that supplies the argument" do
+        flows[:double_flow] = ->(r){r[:scaled_volume, 2]}
+        _(flows.values(:double_flow)).must_equal [200, 400, 300]
+      end
+    end
+
+    describe "live re-attachment" do
+      it "resolves to the most-recently attached formulary on a name collision" do
+        alt = Module.new do
+          include Namo::Formulary
+          def signed_volume(row); row[:buys]; end
+        end
+        namo = Namo.new(flow_data).attach(delta).attach(alt)
+        _(namo.values(:signed_volume)).must_equal [60, 80, 75]
+      end
+    end
+
+    describe "precedence" do
+      it "lets an instance []= formula shadow a formulary method of the same name" do
+        flows[:signed_volume] = ->(r){0}
+        _(flows.values(:signed_volume)).must_equal [0, 0, 0]
+      end
+    end
+
+    describe "carry-through" do
+      it "carries the formulary live through selection" do
+        _(flows.select{|row| row[:date] >= 2}.values(:signed_volume)).must_equal [-40, 0]
+      end
+
+      it "carries the formulary live through projection by selection" do
+        _(flows[date: 1..2].values(:signed_volume)).must_equal [20, -40]
+      end
+
+      it "carries the formulary through concatenation" do
+        _((flows + Namo.new(flow_data)).derived_dimensions).must_include :signed_volume
+      end
+    end
+
+    describe "materialising a formulary dimension by projection" do
+      it "lists the name once, as data, not derived" do
+        proj = flows[:date, :signed_volume]
+        _(proj.data_dimensions).must_include :signed_volume
+        _(proj.derived_dimensions).wont_include :signed_volume
+        _(proj.dimensions.count(:signed_volume)).must_equal 1
+      end
+
+      it "reads the snapshot, not a recomputation, on per-Row access" do
+        proj = flows[:date, :signed_volume]
+        _(proj.entries.first[:signed_volume]).must_equal 20
+        _(proj.values(:signed_volume)).must_equal [20, -40, 0]
+      end
+
+      it "raises when a formulary method collides with a data dimension" do
+        widened = Namo.new(flow_data.map{|row| row.merge(signed_volume: 999)})
+        error = _(proc{widened.attach(delta)}).must_raise ArgumentError
+        _(error.message).must_match(/signed_volume/)
+      end
+    end
+
+    describe "#===" do
+      it "is not === to a vanilla Namo of the same data dimensions" do
+        _(flows === Namo.new(flow_data)).must_equal false
+      end
+
+      it "is === to a Namo exposing the same names via []=" do
+        other = Namo.new(flow_data)
+        other[:signed_volume] = ->(r){0}
+        other[:cum_delta] = ->(r, n){0}
+        other[:scaled_volume] = ->(r, n, f){0}
+        _(flows === other).must_equal true
+      end
+    end
+  end
+
+  describe "formularies via class include" do
+    let(:flow_data) do
+      [{buys: 60, sells: 40}]
+    end
+
+    let(:indicators) do
+      Module.new do
+        include Namo::Formulary
+        def signed_volume(row); row[:buys] - row[:sells]; end
+        def label(row); "indicators"; end
+        private
+        def helper(row); row[:buys]; end
+      end
+    end
+
+    let(:scoring) do
+      Module.new do
+        include Namo::Formulary
+        def momentum(row); row[:buys] + row[:sells]; end
+        def label(row); "scoring"; end
+      end
+    end
+
+    let(:analysis_class) do
+      klass = Class.new(Namo)
+      klass.include(indicators)
+      klass.include(scoring)
+      klass
+    end
+
+    it "lists an included formulary's public methods as derived dimensions" do
+      _(analysis_class.new(flow_data).derived_dimensions.sort).must_equal [:label, :momentum, :signed_volume]
+    end
+
+    it "excludes a private helper" do
+      _(analysis_class.new(flow_data).derived_dimensions).wont_include :helper
+    end
+
+    it "resolves an included formulary method" do
+      _(analysis_class.new(flow_data).values(:signed_volume)).must_equal [20]
+    end
+
+    it "lets the most-recently included formulary win on a name collision" do
+      _(analysis_class.new(flow_data).values(:label)).must_equal ["scoring"]
+    end
+
+    it "raises at construction when an included formulary collides with a data dimension" do
+      clash = Module.new do
+        include Namo::Formulary
+        def buys(row); 0; end
+      end
+      klass = Class.new(Namo)
+      klass.include(clash)
+      _(proc{klass.new([{buys: 5}])}).must_raise ArgumentError
+    end
+
+    it "reaches an instance built before a later include only through attach" do
+      klass = Class.new(Namo)
+      instance = klass.new(flow_data)
+      klass.include(scoring)
+      _(instance.derived_dimensions).wont_include :momentum
+      _(klass.new(flow_data).derived_dimensions).must_include :momentum
+      instance.attach(scoring)
+      _(instance.derived_dimensions).must_include :momentum
     end
   end
 

@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.21.0
+## Current state: 0.23.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1048,9 +1048,62 @@ Module absorption (`Formulae#<<` / `[]`-resolution); migrating the operators to 
 
 - No README change — the extraction is invisible at the API surface.
 
+## 0.23.0 (2026-06-27): Formularies
+
+A *formulary* is a reusable body of derived dimensions: a module, tagged by including `Namo::Formulary`, whose public instance methods are formulae. `namo.attach(OrderFlow)` makes those methods resolve as derived dimensions — through the same `Row#[]` → `Formulae` path, the same inspection vocabulary, and the same carry-through as `[]=` formulae. This is the module-based formula library the 2.x notes anticipated, brought forward as a real mechanism rather than a documented Ruby-`include` pattern, because `Namo::Formulae` (0.21.0) gave the formula collection an object to carry the behaviour and `Formulae#derive` (0.22.0) gave it the resolver. The dependency is the story: the type and the resolver existed, so the tier became an addition to `Formulae` rather than a new seam through the operators.
+
+### Attach copies into the store
+
+`attach` **copies** the formulary's `public_instance_methods(false)` into `@store`, each as a bound `Method`. `Formulae` holds **one** inert host (`@host ||= Object.new`) and `extend`s each attached formulary into it, so every bound `Method` shares the same self-free receiver — `self` is a meaningless object, and a formulary method named like a Namo method can't shadow Namo's own API (it's isolated on the host, not the Namo). From that point a formulary method is an ordinary store formula — indistinguishable from one assigned through `[]=`, and resolved by the unchanged 0.22.0 `derive`. So almost nothing in the tier is special-cased: `keys`, `key?`, `required_parameter_count`, `derive`, `dup`/`reject`/`merge`, and `Namo#derived_dimensions`/`===`/`requires_arguments?` all revert to their store-only forms and handle the formulary methods because they *are* store entries. `Namo::Formulary` (the marker) gates `attach` and `public_instance_methods(false)` selects the derivations — `private` helpers and inherited/`Object` methods are excluded with no per-method declaration, which is also why no Namo or Object API leaks as a dimension.
+
+### Two channels: `attach` and class `include`
+
+A formulary reaches a Namo two ways. `attach`/`<<` adds one to an individual Namo at runtime. Alternatively, `include` the formulary into a `Namo` subclass (`class TradingAnalysis < Namo; include OrderFlow`); `Namo#initialize` scans `self.class.ancestors.reverse`, and for each tagged module calls `attach(mod)` — so the class channel funnels through the same guarded `attach`, the same single host, the same store. The `reverse` is load-bearing: `ancestors` lists most-recent-`include` first, but `attach` is last-write-wins, so iterating in reverse makes the most-recently-included formulary win, matching Ruby's own method-resolution order. The contract: *the class `include` is honoured once, when each instance is constructed; everything after is `attach`.* Both copy, so `include`-ing into a class after an instance exists doesn't reach that instance (re-build or `attach`), and a plain `Namo` — no subclass to `include` into — always takes `attach`. Routing the class channel through `attach` (not bare `@formulae.attach`) keeps it **guarded**: an included formulary colliding with an instance's data raises at construction, so exclusivity holds with no hole — the class channel is `attach`-like (an explicit "give this a formulary"), not constructor-like, so it earns the guard rather than the constructor's unguarded trust.
+
+### Why the store, not a live carrier
+
+A live design was built first and rejected: `Formulae` holding the modules in an inert carrier's ancestor chain and resolving them live, nothing copied. It was elegant — the chain *is* the list, most-recent-wins falls out of Ruby's `include` order — but it re-created the exact aliasing 0.16.0 spent a release eliminating. 0.16.0's exclusivity machinery drops a materialised formula on projection via `@formulae.reject`; a carrier can't be `reject`ed one method at a time, so a projected formulary name materialised into a data column *and* lingered as a live method — `values(:sma)` reading the snapshot while `first[:sma]` recomputed off the projected-away inputs, the precise 0.16.0 bug. Patching it meant either data-first precedence in `Row#[]` (the alternative 0.16.0 explicitly rejected) or a propagating suppression set reimplementing the drop the store already does. Copying into the store sidesteps all of it: projection's existing `reject` drops a materialised formulary method for free, and the tier sits *inside* the exclusivity model instead of beside it. The cost is that attach is a snapshot, not a live link (below) — judged the smaller price, since value-liveness (recompute from each row's current data) is fully preserved and only "reflect a reopened module" is lost.
+
+### Inside the exclusivity model
+
+Because the methods land in the store, the 0.13.0/0.16.0 rules apply unchanged:
+
+- **Most-recent / last-write wins.** A second `attach` of a colliding name overwrites the first; `[]=` and `attach` interleave as plain last-write-wins on a shared name — the same rule `[]=` already documents, now spanning both channels.
+- **Data collisions raise on attach.** `Namo#attach` raises `ArgumentError` if a formulary method's name collides with a data column, rather than silently clearing it. The asymmetry with `[]=` (which silently clears) is justified by *intent and blast radius*, not by the `*`/`**` precedent (composition raises because two peer operands have no last-write order to appeal to — `attach`, like `[]=`, does have one, so that reasoning doesn't transfer). `[]=` names one column at the call site, so replacing it is the explicit intent; `attach` names a *module*, so a data collision is a name the user never typed, possibly across several columns at once, and silently destroying data is dangerous. So `attach` surfaces it: resolve explicitly first — contraction or rename — then attach. Formula-vs-formula collisions stay last-write-wins (that's re-attachment, not aliasing).
+- **Materialise-and-drop on projection.** Naming a formulary method in a projection snapshots it into a data column and drops the formula through 0.16.0's `reject`, so all access paths agree and `dimensions` lists it once. This is the whole reason for the store choice.
+- **Carry-through is free.** `dup`/`reject`/`merge` carry the formulae because they are store entries — no carrier to rebuild, no list to track.
+
+### `Namo#===` via the marker (Path B)
+
+The 2.x note flagged that `===`/`eql?`/`hash`, comparing formula names via `@formulae.keys.sort`, would wrongly equate a module-bearing Namo with a vanilla one once module formulae became real. The store approach answers it as Path B foresaw without changing those methods at all: formulary methods *are* store keys, so `@formulae.keys.sort` already counts them — a Namo with a formulary attached is not `===` to a vanilla one, while two Namos exposing the same names by different channels (`[]=` vs formulary) are `===`. The marker keeps it precise: only tagged modules are copied, so only intentional derivations become keys; the comparison adds names, never proc bodies — the 0.6.0 stance, extended for free.
+
+### `attach`, and `<<`
+
+The verb is `attach` — already the ROADMAP's word for adding derivations to a Namo. `Namo#attach(M)` forwards to `Formulae#attach(M)`; both return self and alias `<<`, so `namo << OrderFlow` reads as attaching the formulary and chains. `<<` here is a plain alias for `attach`, scoped to formularies — not the earlier polymorphic / module-lacing operator, which is dropped, and not a row-append (Namo has no single-row add; that stays with `+`). `Collection#<<` keeps its own meaning (member-add): it defines its own `<<`, so the inherited alias never reaches a Collection instance — `<<` adds a constituent appropriate to the receiver, a member to a Collection and a formulary to a plain Namo.
+
+### `respond_to?(:call)` in `[]=`
+
+Folded in as a separable footgun-fix: `[]=`'s formula branch widens from `when Proc` to `respond_to?(:call)`, so a directly-assigned `Method` or lambda registers as a formula rather than broadcasting per-row. Arrays are unaffected — they don't respond to `call`. This is independent of the formulary tier (the tier doesn't go through `[]=`); it ships here as its own change.
+
+### Snapshot, not a live link
+
+Attach is a snapshot: it copies the module's public methods *as they are at attach time*. This is the one PORO affordance the store choice gives up, and it's worth stating precisely, because real Ruby is more dynamic than it might seem. A normal `include`/`extend` is a *live link* — methods resolve through the ancestor chain, so a method added to the module later, a redefinition, and a further module mixed into it afterwards are all picked up by objects that already include it. A copy tracks none of that: change the module after attaching, or include another module into it, and an already-attached Namo is unaffected — re-attach to refresh. A live-link mechanism (re-resolving against the module, or holding it by reference for the name set while snapshotting values under `freeze`) is possible later if wanted; 0.23.0 ships the snapshot. Bare-name resolution inside method bodies (`buys` for `row[:buys]`) and freeze-gated memoisation both remain 2.x — a formulary method indexes its `row` explicitly.
+
+### Tests
+
+- `Formulae`: `attach` returns self, rejects an untagged module, and copies the formulary's public methods into the store (excluding a private helper); `<<` attaches as `attach` does; `key?`, `required_parameter_count`, and `derive` resolve the copied methods; most-recent-wins on re-attachment; a single shared host across several attaches (the bound `Method`s share a receiver); carry-through through `dup`/`reject`/`merge`.
+- `Namo` (runtime `attach`): `derived_dimensions` lists the copied names (private helper absent, vanilla Namo empty); resolution through `values`/`Row`/selection; two-arity windowing and the missing-namo raise; a parameterised method omitted from bulk and raising bare, materialising through a row-scoped wrapper; re-attachment; an instance `[]=` formula shadowing a formulary method; `attach` raising on a formulary/data-name collision; carry-through through selection, projection, and concatenation; projection materialising-and-dropping a formulary name (listed once as data, snapshot read on per-Row access); `===` against a vanilla Namo and against the same names via `[]=`; `<<` attaching as `attach` does.
+- `Namo` (class `include`): an included formulary's public methods listed as derived dimensions (private helper absent); resolution; most-recent-`include` wins on a name collision (MRO via `ancestors.reverse`); raising at construction on a formulary/data collision; an instance built before a later `include` not seeing it while a fresh instance and an `attach` do.
+- `[]=` polymorphic dispatch widened: a `Method` and a lambda register as formulae; an array still broadcasts.
+
+### Documentation
+
+- README: a "Formularies" subsection under Formulae — `attach` (and its `<<` operator form) and the marker, `private`-hides-helpers, the copy-into-the-store / snapshot model, the two channels (`attach` at runtime, class `include` at construction) and the build-time-vs-after contract, the raise on a data collision, materialise-and-drop, carry-through, and the forward-note that bare-name bodies and freeze-gated memoisation arrive later. The Polymorphic `[]=` section now says "a callable" (proc, lambda, or `Method`) rather than "a proc".
+- COMPARISON: a "Formularies" row — other tools reuse computation as external function libraries producing stored columns; Namo's formularies are modules whose methods become first-class derived dimensions of the dataset.
+
 ## 1.0.0: Stable release
 
-The 1.0 release includes everything through 0.21.0:
+The 1.0 release includes everything through 0.23.0:
 
 - Selection (exact, array, range, proc, regex), projection, contraction.
 - Single-row formulae, two-arity formulae, parameterised formulae.
@@ -1063,7 +1116,8 @@ The 1.0 release includes everything through 0.21.0:
 - Constructor widening (keyword `data:` and `name:`) and polymorphic `[]=`.
 - `Namo::Collection` for hierarchical aggregates, reachable by assembly (`<<`) or partition (`group_by`).
 - `group_by` returning a `Collection`, completing the Enumerable coherence pass.
-- `Namo::Formulae` as the formula collection's own type, extracted from a bare `Hash`.
+- `Namo::Formulae` as the formula collection's own type, extracted from a bare `Hash`, with `derive` as its value resolver.
+- Formularies — reusable modules of derived dimensions a Namo attaches, resolved live and carried through the algebra.
 
 This is the correct, tested, conservative foundation. No metaprogramming magic, no `method_missing`, no `instance_eval`. Formulae work via `e[:name] = proc{|row| row[:close] / row[:book_value]}` — clear, explicit, proven.
 
@@ -1160,6 +1214,8 @@ end
 
 ### Module-based formula libraries (documented pattern)
 
+> **Partly shipped at 0.23.0.** The *formulary* tier shipped the explicit form of this: a module tagged `Namo::Formulary`, attached with `namo.attach(M)`, whose methods take `row` (and `namo`) explicitly. What remains 2.x is the *bare-name* body shown below — methods that reference `close`/`symbol`/`date` directly rather than indexing `row` — and the `include`-into-subclass ergonomics that bare-name resolution via `method_missing` makes possible. 0.23.0 is the registration channel; 2.x is the bare-name reading on top of it.
+
 With bare name resolution in place, formulae can be defined as plain Ruby methods in modules and included into Namo subclasses. This is not a Namo feature — it's standard Ruby. It's documented here as a recommended pattern:
 
 ```ruby
@@ -1203,6 +1259,8 @@ end
 Scoring strategies are swappable via dependency injection.
 
 ### `Namo#===` revision under module-based formulae
+
+> **Resolved at 0.23.0 (Path B).** With the formulary tier real, `===`/`eql?`/`hash` now compare `derived_dimensions.sort` — the union of `@formulae.keys` and the attached formularies' public method names — so a formulary-bearing Namo is no longer `===` to a vanilla one, while `[]=`-vs-formulary parity holds. The marker (`Namo::Formulary`) is what makes the union precise. The analysis below is retained as the rationale; it now describes shipped behaviour for attached formularies, with the residual gap being only the bare-name `include`-into-subclass channel once that arrives.
 
 When module-based formulae become a real pattern (rather than a documented one), `Namo#===` (and `Namo#eql?`, and `Namo#hash`) must be revised to enumerate module-defined method names alongside `@formulae.keys`. The 0.6.0 implementation compares formula *names* via `@formulae.keys.sort` — which is correct for `[]=`-registered formulae, but module-defined formulae don't enter `@formulae`. They're plain Ruby methods on the included module, discovered by Row's `method_missing` through the normal method-lookup chain. So a `TradingAnalysis` instance with `include Indicators` would have `@formulae.keys == []` even though it has the full `Indicators` analytical surface; under 0.6.0's `===`, two such instances are correctly `===` to each other (same dimensions, same — empty — `@formulae.keys`), but they'd also be `===` to a vanilla `Namo` of the same dimensions, which is wrong: a vanilla `Namo` has no indicators.
 
@@ -1258,6 +1316,8 @@ The open design question. Two candidate mechanisms:
 
 The implicit approach is more ergonomic; the explicit approach is more robust. Choose based on what the module-based formula mechanism actually looks like once it's implemented.
 
+**Decided at 0.23.0: explicit, via a marker module.** A formulary is recognised by `include Namo::Formulary`, and its derivations are exactly its `public_instance_methods(false)` — so a `private` helper or an inherited/`Object` method is never misread as a formula, the precision the explicit approach buys. The union of names is read off the carrier's tagged modules; `class_formula_names` for the bare-name `include`-into-subclass channel will read the same marker off the subclass's ancestors when that channel arrives.
+
 #### Body equality is not part of any equality operator
 
 0.6.0 already settled this for the instance-level case: `===`, `eql?`, and `hash` all compare formula *names* (`@formulae.keys.sort`), not the procs themselves. The Path B revision extends that stance to module-defined formulae — adding more names to compare, not adding proc-body comparison. The rationale is the same as at 0.6.0 design time:
@@ -1270,7 +1330,7 @@ The deeper question of true behavioural equivalence (AST comparison, iseq compar
 
 #### When this revision lands
 
-In whichever 2.x release introduces module-based formula registration as a real mechanism (rather than just a documented pattern using plain Ruby methods). Until then, the 0.6.0 key-based implementation handles `[]=`-registered formulae correctly; the gap (module-defined methods) only matters once those methods actually exist as a registration channel.
+The attached-formulary case landed at 0.23.0, when `attach` made module-defined formulae a real registration channel. The residual case — bare-name methods `include`d into a Namo subclass and discovered through `method_missing` — lands with bare-name resolution in 2.x; `class_formula_names` reads the same marker off the subclass's ancestors. Until then, the 0.23.0 union over store keys and attached formularies handles every shipped channel.
 
 ### `DefineAccessors` optimisation
 

@@ -696,6 +696,29 @@ combine(groupby(df, :symbol),
 
 **Summary:** No other tool has parameterised formulae as a first-class concept attached to the dataset. In every other tool, reusable computations are external functions that you call during column creation. In Namo, they're named formulae on the dataset that accept arguments at access time.
 
+### Formularies
+
+**Namo** — shipped (0.23.0)
+
+A *formulary* is a reusable body of derived dimensions — a module whose public methods are formulae. A Namo attaches the module, and its methods then resolve as derived dimensions through the same interface as `[]=` formulae: live, lazy, carried through the algebra. The module is tagged by including `Namo::Formulary`, `private` methods are helpers rather than derivations, and the most-recently attached formulary wins on a name collision.
+
+```ruby
+module Indicators
+  include Namo::Formulary
+  def signed_volume(row); row[:buys] - row[:sells]; end
+  def cum_delta(row, namo); namo[date: ..row[:date]].values(:signed_volume).sum; end
+end
+
+flows.attach(Indicators)
+flows.values(:cum_delta)   # resolves live, like any other derived dimension
+```
+
+**Pandas / Polars / xarray** — no equivalent. You organise reusable computations in modules or functions, but they're external to the frame: each one assigns an eagerly-computed column, the result is data severed from the computation, and there's no notion of attaching a named, reusable, live-resolving body of derivations to the dataset.
+
+**R/dplyr, Julia/DataFrames.jl** — same. A package or file of functions is the reuse unit, applied during column creation. The functions don't become derived dimensions of the dataset; they produce stored columns when called.
+
+**Summary:** Other tools reuse computation as external function libraries that produce stored columns. Namo's formularies are modules of derived dimensions a dataset draws on — resolved live on every access, indistinguishable from data and from `[]=` formulae, and carried through every operation.
+
 
 ## Composition
 

@@ -208,4 +208,146 @@ describe Namo::Formulae do
       _(Namo::Formulae.new.keys).must_equal []
     end
   end
+
+  describe "formulary tier" do
+    let(:delta) do
+      Module.new do
+        include Namo::Formulary
+        def signed_volume(row); row[:buys] - row[:sells]; end
+        def echo_namo(row, namo); namo; end
+        def scaled(row, namo, factor); row[:buys] * factor; end
+        def windowed(row, namo, *rest); rest; end
+        private
+        def helper(row); row[:buys]; end
+      end
+    end
+
+    let(:untagged) do
+      Module.new do
+        def signed_volume(row); 0; end
+      end
+    end
+
+    let(:attached) do
+      Namo::Formulae.new.attach(delta)
+    end
+
+    describe "#attach" do
+      it "returns self" do
+        formulae = Namo::Formulae.new
+        _(formulae.attach(delta)).must_be_same_as formulae
+      end
+
+      it "raises ArgumentError for a module not tagged Namo::Formulary" do
+        _(proc{Namo::Formulae.new.attach(untagged)}).must_raise ArgumentError
+      end
+
+      it "copies the formulary's public methods into the callable store" do
+        _(attached.keys.sort).must_equal [:echo_namo, :scaled, :signed_volume, :windowed]
+      end
+
+      it "excludes a private helper" do
+        _(attached.keys).wont_include :helper
+      end
+
+      it "binds every attached formulary to a single shared host" do
+        other = Module.new do
+          include Namo::Formulary
+          def momentum(row); row[:buys]; end
+        end
+        formulae = Namo::Formulae.new.attach(delta).attach(other)
+        _(formulae[:signed_volume].receiver).must_be_same_as formulae[:momentum].receiver
+      end
+    end
+
+    describe "#<<" do
+      it "attaches a formulary, the same as #attach" do
+        formulae = Namo::Formulae.new
+        formulae << delta
+        _(formulae.keys).must_include :signed_volume
+      end
+
+      it "returns self for chaining" do
+        formulae = Namo::Formulae.new
+        _(formulae << delta).must_be_same_as formulae
+      end
+    end
+
+    describe "#key?" do
+      it "is true for a formulary method name" do
+        _(attached.key?(:signed_volume)).must_equal true
+      end
+
+      it "is false for a private helper" do
+        _(attached.key?(:helper)).must_equal false
+      end
+
+      it "is false for an absent name" do
+        _(attached.key?(:missing)).must_equal false
+      end
+    end
+
+    describe "#required_parameter_count" do
+      it "counts a row-scoped formulary method" do
+        _(attached.required_parameter_count(:signed_volume)).must_equal 1
+      end
+
+      it "counts a two-arity formulary method" do
+        _(attached.required_parameter_count(:echo_namo)).must_equal 2
+      end
+
+      it "counts a parameterised formulary method" do
+        _(attached.required_parameter_count(:scaled)).must_equal 3
+      end
+
+      it "excludes the splat for a variadic formulary method" do
+        _(attached.required_parameter_count(:windowed)).must_equal 2
+      end
+    end
+
+    describe "#derive" do
+      it "resolves a row-scoped formulary method to its value" do
+        _(attached.derive(:signed_volume, {buys: 60, sells: 40}, nil)).must_equal 20
+      end
+
+      it "resolves a two-arity formulary method with the namo context" do
+        namo = Object.new
+        _(attached.derive(:echo_namo, {buys: 60, sells: 40}, namo)).must_be_same_as namo
+      end
+
+      it "raises when a two-arity formulary method has no namo context" do
+        error = _(proc{attached.derive(:echo_namo, {buys: 60, sells: 40}, nil)}).must_raise ArgumentError
+        _(error.message).must_match(/echo_namo/)
+      end
+
+      it "resolves the most-recently attached formulary on a name collision" do
+        alt = Module.new do
+          include Namo::Formulary
+          def signed_volume(row); 999; end
+        end
+        formulae = Namo::Formulae.new.attach(delta).attach(alt)
+        _(formulae.derive(:signed_volume, {buys: 60, sells: 40}, nil)).must_equal 999
+      end
+    end
+
+    describe "carry-through" do
+      it "preserves attached formularies through #dup" do
+        _(attached.dup.keys).must_include :signed_volume
+      end
+
+      it "preserves attached formularies through #reject" do
+        _(attached.reject{|_name, _| false}.keys).must_include :signed_volume
+      end
+
+      it "carries both sides' formularies through #merge" do
+        other_delta = Module.new do
+          include Namo::Formulary
+          def momentum(row); row[:buys]; end
+        end
+        merged = attached.merge(Namo::Formulae.new.attach(other_delta))
+        _(merged.keys).must_include :momentum
+        _(merged.keys).must_include :signed_volume
+      end
+    end
+  end
 end
