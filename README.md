@@ -751,7 +751,7 @@ flows.values(:cum_delta)       # => [20, -20, -20]
 flows.derived_dimensions       # => [:signed_volume, :cum_delta]
 ```
 
-`<<` is the operator form of `attach`, so `flows << OrderFlow` reads the same and chains: `flows << OrderFlow << Scoring`.
+`<<` appends a *constituent*. For a base Namo the constituents are formularies and rows: a **module** attaches (the operator form of `attach`, so `flows << OrderFlow` reads the same as `flows.attach(OrderFlow)`); a **Hash** appends as a data row; a **Row** (one drawn from another Namo) appends its underlying hash as a row. It returns the Namo, so the arms chain freely: `flows << OrderFlow << {date: 4, buys: 10, sells: 5} << Scoring`. Two things `<<` deliberately does not take: a bare callable (formula *registration* stays with `[]=`, which dispatches callable-vs-scalar and enforces data/formula exclusivity) and a whole Namo (combining collections is `+`'s job) — both raise. A bare Hash is therefore always a row, never a body of formulae. Appending a row is a data mutation that does not pass through `[]=`, so it does not trigger formula-eviction; a row carrying a formula-named key is your data, surfacing live through the formula on access per the usual precedence.
 
 A module brands itself a formulary by including `Namo::Formulary`. The marker is mandatory — `attach` raises `ArgumentError` for an untagged module, so an ordinary module of helpers can't be mistaken for a body of derivations. Within a formulary, the public methods are the derivations and `private` methods are helpers: `net` above never appears in `derived_dimensions` and never resolves as a dimension. The separation needs no per-method declaration — public or private says it.
 
@@ -1073,6 +1073,8 @@ gt << SubAssembly.new(name: :powertrain, data: [...])   # replaces the existing 
 gt << [front_suspension, rear_suspension]               # adds each
 ```
 
+On a Collection `<<` dispatches to the *constituent* appropriate to a collection: a **member** (a Namo, or an array of them) is added as above; a **module** attaches a formulary (a Collection is a Namo, so it carries formulae over its detail view — see below); a loose **Hash or Row raises** an `ArgumentError` that redirects to member-add. This is the one place `Namo#<<` and `Collection#<<` deliberately diverge: a base Namo appends a loose row, a Collection refuses it — a Collection's rows are *derived* from its members, so a loose row has no durable home (the next member-add rebuilds the data view and would erase it). The honest response is to refuse and point at member-add. A whole Namo arriving at a Collection is unambiguously a member, never a row-merge, because `<<` has no whole-Namo arm (that is `+`).
+
 There is no insertion-time guard against unnamed members. An unnamed member is simply appended (no name to collide on) and is unfindable by `find` — the honest consequence of having no name, not an error. `find(name)` returns the member with that name, or `nil`:
 
 ```ruby
@@ -1081,6 +1083,23 @@ gt.find(:missing)    # => nil
 ```
 
 (`find(name)` is member lookup; it shadows `Enumerable#find` on Collections. Predicate search over rows remains available as `detect`.)
+
+#### Collection formulae
+
+A formulary attached to a Collection resolves over its detail rows like any other — a Collection is a Namo, and its data view is the materialised detail. A *collection formula* needs no new mechanism: it is an ordinary two-arity formulary method whose `namo` argument is the Collection, reaching for a collection view (`summary`, `detail`, `members`) in its body. It resolves through the same `derive` path as every other formula; member-awareness lives in the method body, not in any marker or second store. By convention, name that argument `namo_collection` to signal it expects a Collection — a plain Namo lacking `members`/`summary` will `NoMethodError`, which is honest self-enforcement, no guard needed.
+
+```ruby
+module FleetMetrics
+  include Namo::Formulary
+
+  def member_count(row, namo_collection)
+    namo_collection.members.size
+  end
+end
+
+gt << FleetMetrics
+gt.values(:member_count)   # => one entry per detail row, each the member count
+```
 
 #### View lifetime and liveness
 

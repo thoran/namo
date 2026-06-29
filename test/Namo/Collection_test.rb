@@ -45,6 +45,20 @@ describe Namo::Collection do
     Namo::Collection.new.tap{|c| c << [powertrain, chassis, body]}
   end
 
+  let(:component_pricing) do
+    Module.new do
+      include Namo::Formulary
+      def cost_per_kg(row); row[:cost] / row[:weight]; end
+    end
+  end
+
+  let(:fleet_metrics) do
+    Module.new do
+      include Namo::Formulary
+      def member_count(row, namo_collection); namo_collection.members.size; end
+    end
+  end
+
   describe "construction" do
     it "starts with empty members" do
       _(Namo::Collection.new.members).must_equal []
@@ -100,6 +114,34 @@ describe Namo::Collection do
     it "returns self" do
       collection = Namo::Collection.new
       _(collection << powertrain).must_be_same_as collection
+    end
+
+    it "attaches a formulary whose row-scoped method resolves over the detail rows" do
+      collection << component_pricing
+      _(collection.values(:cost_per_kg)).must_equal [250, 250, 200, 250]
+    end
+
+    it "attaches a formulary whose collection-scoped method reaches members" do
+      collection << fleet_metrics
+      _(collection.values(:member_count)).must_equal [3, 3, 3, 3]
+    end
+
+    it "raises an ArgumentError on a loose Hash, redirecting to member-add" do
+      error = _(proc{collection << {component: 'bolt', weight: 1, cost: 5}}).must_raise ArgumentError
+      _(error.message).must_match(/member/)
+    end
+
+    it "raises an ArgumentError on a loose Row, redirecting to member-add" do
+      row = Namo.new([{component: 'bolt', weight: 1, cost: 5}]).entries.first
+      error = _(proc{collection << row}).must_raise ArgumentError
+      _(error.message).must_match(/member/)
+    end
+
+    it "chains member-adds and a formulary attach" do
+      collection = Namo::Collection.new
+      collection << powertrain << chassis << component_pricing
+      _(collection.members.size).must_equal 2
+      _(collection.values(:cost_per_kg)).must_equal [250, 250, 200]
     end
   end
 

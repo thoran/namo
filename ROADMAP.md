@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.23.0
+## Current state: 0.24.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1101,9 +1101,40 @@ Attach is a snapshot: it copies the module's public methods *as they are at atta
 - README: a "Formularies" subsection under Formulae — `attach` (and its `<<` operator form) and the marker, `private`-hides-helpers, the copy-into-the-store / snapshot model, the two channels (`attach` at runtime, class `include` at construction) and the build-time-vs-after contract, the raise on a data collision, materialise-and-drop, carry-through, and the forward-note that bare-name bodies and freeze-gated memoisation arrive later. The Polymorphic `[]=` section now says "a callable" (proc, lambda, or `Method`) rather than "a proc".
 - COMPARISON: a "Formularies" row — other tools reuse computation as external function libraries producing stored columns; Namo's formularies are modules whose methods become first-class derived dimensions of the dataset.
 
+## 0.24.0 (2026-06-29): Polymorphic `<<`
+
+`Namo#<<` widens from the 0.23.0 formulary-only alias into an "append a constituent" operator. The verb is the same on both types — *append the constituent appropriate to the receiver* — but the constituents differ. For a base Namo they are formularies and rows: a `Module` attaches (0.23.0, unchanged), a `Hash` appends as a data row, a `Row` appends its underlying hash. For a `Collection` the constituent is a member: a `Namo` adds, a `Module` attaches (inherited), and a loose `Hash`/`Row` raises. `attach` stays the formulary-specific method, Module-only and unchanged; `<<` of a Module routes to it, so the collision-guard and formulary semantics carry over verbatim.
+
+### Three boundaries
+
+Each exclusion is load-bearing, not an omission. **No bare-callable arm:** formula *registration* is `[]=`'s job — it dispatches callable-vs-scalar and enforces data/formula exclusivity by eviction. `<<` is *append a constituent*, a different verb; a bare proc through `<<` would duplicate that path and reopen the eviction-vs-raise question. So `[]=` assigns a named thing, `<<` appends a constituent, cleanly split. **No whole-Namo arm:** `namo1 << namo0` does not mean "append namo0's rows" — that is `+`. Excluding it keeps `<<`-as-append distinct from `+`-as-combine and, on a Collection, makes a `Namo` argument unambiguously a *member*. **A bare Hash is always a row:** formulae never arrive through `<<` as a bare Hash (they arrive as a Module, or via `[]=`), so a Hash at `<<` is unconditionally a data row — the one legislated disambiguation the dispatch rests on.
+
+### The deliberate divergence
+
+`Namo#<<` and `Collection#<<` diverge on exactly the Hash/Row arm: a base Namo appends the loose row, a Collection refuses it. A Collection's `@data` is derived from its members and rebuilt on every member-add, so a loose row has no durable home — the next `<<` would erase it. The honest response is to refuse and redirect to member-add, rather than accept-then-silently-drop. This is recorded as intentional so it does not read as oversight.
+
+A row-append on a base Namo is a data mutation: it does not pass through `[]=`, so it does not trigger formula-eviction. A row carrying a formula-named key is therefore the user's data, surfacing live through the formula on access per existing precedence — not guarded in 0.24.0, because the data/formula exclusivity invariant is `[]=`'s to keep, and widening the eviction machinery to a data operation would be the wrong seam.
+
+### Collection formulae: no new mechanism
+
+A "collection formula" needs nothing built. It is an ordinary two-arity formulary method whose `namo` argument is a Collection and whose body reaches a collection view (`summary`, `detail`, `members`); it resolves through the existing `derive` path over the Collection's detail rows. Member-awareness lives in the method body, not in any marker or second store. Both a `Namo::CollectionFormulary` marker and a member-axis resolver were considered and rejected: tagging is admission-control (keep non-formulae from becoming live dimensions), not level-classification, and a formula's "level" is a per-method property of its body; while per-member-*output* computations are `summary`'s territory (member-in invocation), not derived dimensions at all. The convention is to name the argument `namo_collection`, which a plain Namo lacking `members`/`summary` self-enforces by `NoMethodError` — no guard needed.
+
+### Pivot / reshaping: a recorded decision
+
+Whether `<<` (or any operator) should grow a widening/pivot step was settled as *out*, and the reasoning is recorded so it isn't revisited blind. The non-lossy two-axis aggregation is long-form `summary` generalised — in-grain, a separate future item. The widening-to-a-grid is *presentational*: it breaks dimension peerage (every key a dimension, none privileged), so it belongs at an output edge, not in the algebra. Neither is 0.24.0, and neither is `<<`.
+
+### Tests
+
+- `Namo#<<`: a `Hash` appends as a data row (and returns the Namo); a `Row` appends its underlying hash; a whole `Namo` raises `TypeError` (that is `+`); a bare callable raises `TypeError` (that is `[]=`); a mixed chain interleaves rows and a formulary. The 0.23.0 Module-arm tests are unchanged.
+- `Collection#<<`: a formulary attaches and its row-scoped method resolves over the detail rows; a collection-scoped method (the `namo_collection` convention) reaches `members`; a loose `Hash` and a loose `Row` each raise `ArgumentError` with the member-redirect message; a chain mixes member-adds with a formulary attach. The 0.23.0 member-add tests are unchanged.
+
+### Documentation
+
+- README: the Formularies `<<` note widened — `<<` appends a constituent (Module, Hash, or Row) to a base Namo, chains, and raises on a bare callable or a whole Namo; the bare-Hash-is-always-a-row and row-append-does-not-evict notes. The Collection "`<<` and unnamed members" section gains the member/Module/raise dispatch and the deliberate Hash/Row divergence; a new "Collection formulae" subsection documents the `namo_collection` convention with no marker and no second store.
+
 ## 1.0.0: Stable release
 
-The 1.0 release includes everything through 0.23.0:
+The 1.0 release includes everything through 0.24.0:
 
 - Selection (exact, array, range, proc, regex), projection, contraction.
 - Single-row formulae, two-arity formulae, parameterised formulae.
@@ -1118,6 +1149,7 @@ The 1.0 release includes everything through 0.23.0:
 - `group_by` returning a `Collection`, completing the Enumerable coherence pass.
 - `Namo::Formulae` as the formula collection's own type, extracted from a bare `Hash`, with `derive` as its value resolver.
 - Formularies — reusable modules of derived dimensions a Namo attaches, resolved live and carried through the algebra.
+- Polymorphic `<<` — appends a constituent: a formulary (Module), a row (Hash or Row) on a base Namo; a member (Namo) or formulary on a Collection.
 
 This is the correct, tested, conservative foundation. No metaprogramming magic, no `method_missing`, no `instance_eval`. Formulae work via `e[:name] = proc{|row| row[:close] / row[:book_value]}` — clear, explicit, proven.
 

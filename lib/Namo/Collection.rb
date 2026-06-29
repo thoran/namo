@@ -5,10 +5,15 @@ class Namo
   class Collection < Namo
     attr_reader :members
 
-    def <<(*members)
-      members.flatten.each do |member|
-        @members.reject!{|existing| existing.name == member.name} unless member.name.nil?
-        @members << member
+    def <<(*constituents)
+      constituents.flatten.each do |constituent|
+        case constituent
+        when Namo then add_member(constituent)
+        when Module then attach(constituent)
+        when Hash, Row
+          raise ArgumentError, "a Collection's rows come from its members; add a member (a named Namo), not a loose row"
+        else raise TypeError, "can't append #{constituent.class} to a Collection"
+        end
       end
       @data = detail.data
       self
@@ -47,6 +52,11 @@ class Namo
     def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
       @members = []
       super
+    end
+
+    def add_member(member)
+      @members.reject!{|existing| existing.name == member.name} unless member.name.nil?
+      @members << member
     end
   end
 end

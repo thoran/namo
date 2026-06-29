@@ -758,6 +758,42 @@ describe Namo do
         namo = Namo.new(flow_data)
         _(namo << delta).must_be_same_as namo
       end
+
+      it "appends a Hash as a data row" do
+        namo = Namo.new(flow_data)
+        namo << {date: 4, buys: 10, sells: 5}
+        _(namo.values(:date)).must_equal [1, 2, 3, 4]
+        _(namo.values(:buys)).must_equal [60, 80, 75, 10]
+      end
+
+      it "returns the Namo when appending a row" do
+        namo = Namo.new(flow_data)
+        _(namo << {date: 4, buys: 10, sells: 5}).must_be_same_as namo
+      end
+
+      it "appends a Row's underlying hash as a data row" do
+        namo = Namo.new(flow_data)
+        row = Namo.new([{date: 4, buys: 10, sells: 5}]).entries.first
+        namo << row
+        _(namo.values(:date)).must_equal [1, 2, 3, 4]
+      end
+
+      it "raises a TypeError on a whole Namo, which is +'s job" do
+        namo = Namo.new(flow_data)
+        _(proc{namo << Namo.new(flow_data)}).must_raise TypeError
+      end
+
+      it "raises a TypeError on a bare callable, which is []='s job" do
+        namo = Namo.new(flow_data)
+        _(proc{namo << ->(row){row[:buys]}}).must_raise TypeError
+      end
+
+      it "chains mixed arms: rows and a formulary" do
+        namo = Namo.new(flow_data)
+        namo << {date: 4, buys: 10, sells: 5} << delta << {date: 5, buys: 0, sells: 0}
+        _(namo.values(:date)).must_equal [1, 2, 3, 4, 5]
+        _(namo.values(:signed_volume)).must_equal [20, -40, 0, 5, 0]
+      end
     end
 
     describe "#derived_dimensions" do

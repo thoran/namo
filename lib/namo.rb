@@ -97,7 +97,14 @@ class Namo
     self
   end
 
-  alias_method :<<, :attach
+  def <<(constituent)
+    case constituent
+    when Module then attach(constituent)
+    when Row then add_row(constituent.to_h)
+    when Hash then add_row(constituent)
+    else raise TypeError, "can't append #{constituent.class} to a Namo; expected a Module (formulary), a Hash, or a Row"
+    end
+  end
 
   def +(other)
     raise_unless_namo(other)
@@ -250,6 +257,11 @@ class Namo
     @formulae = formulae.is_a?(Formulae) ? formulae : Formulae.new(formulae)
     @name = name
     attach_included_formularies
+  end
+
+  def add_row(row)
+    @data << row
+    self
   end
 
   def attach_included_formularies
