@@ -794,6 +794,18 @@ describe Namo do
         _(namo.values(:date)).must_equal [1, 2, 3, 4, 5]
         _(namo.values(:signed_volume)).must_equal [20, -40, 0, 5, 0]
       end
+
+      it "raises an ArgumentError when an appended Hash's keys collide with a formula" do
+        namo = Namo.new(flow_data).attach(delta)
+        error = _(proc{namo << {date: 4, buys: 10, sells: 5, signed_volume: 999}}).must_raise ArgumentError
+        _(error.message).must_match(/signed_volume/)
+      end
+
+      it "raises likewise when an appended Row's keys collide with a formula" do
+        namo = Namo.new(flow_data).attach(delta)
+        row = Namo.new([{date: 4, buys: 10, sells: 5, signed_volume: 999}]).entries.first
+        _(proc{namo << row}).must_raise ArgumentError
+      end
     end
 
     describe "#derived_dimensions" do

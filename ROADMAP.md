@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.24.0
+## Current state: 0.24.1
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1113,7 +1113,7 @@ Each exclusion is load-bearing, not an omission. **No bare-callable arm:** formu
 
 `Namo#<<` and `Collection#<<` diverge on exactly the Hash/Row arm: a base Namo appends the loose row, a Collection refuses it. A Collection's `@data` is derived from its members and rebuilt on every member-add, so a loose row has no durable home — the next `<<` would erase it. The honest response is to refuse and redirect to member-add, rather than accept-then-silently-drop. This is recorded as intentional so it does not read as oversight.
 
-A row-append on a base Namo is a data mutation: it does not pass through `[]=`, so it does not trigger formula-eviction. A row carrying a formula-named key is therefore the user's data, surfacing live through the formula on access per existing precedence — not guarded in 0.24.0, because the data/formula exclusivity invariant is `[]=`'s to keep, and widening the eviction machinery to a data operation would be the wrong seam.
+A row-append on a base Namo is a data mutation: it does not pass through `[]=`, so it does not trigger formula-eviction. 0.24.0 shipped it *unguarded* on the reasoning that the data/formula exclusivity invariant was `[]=`'s to keep — but that left a reachable hole (see 0.24.1 below), so 0.24.1 guards it by raising on a name collision instead.
 
 ### Collection formulae: no new mechanism
 
@@ -1132,9 +1132,15 @@ Whether `<<` (or any operator) should grow a widening/pivot step was settled as 
 
 - README: the Formularies `<<` note widened — `<<` appends a constituent (Module, Hash, or Row) to a base Namo, chains, and raises on a bare callable or a whole Namo; the bare-Hash-is-always-a-row and row-append-does-not-evict notes. The Collection "`<<` and unnamed members" section gains the member/Module/raise dispatch and the deliberate Hash/Row divergence; a new "Collection formulae" subsection documents the `namo_collection` convention with no marker and no second store.
 
+## 0.24.1 (2026-06-30): Guard row-append against a formula collision
+
+0.24.0's row-append arms (`<<` of a Hash or Row) went in unguarded, on the stated reasoning that the data/formula exclusivity invariant was `[]=`'s to keep. The reasoning had a hole. When an appended row carries a key matching an existing formula name *and* lands as `@data.first` — the mainline case of streaming the first row into an empty formulary-bearing Namo — the two access paths disagree: bulk `values` reads the raw datum (because `data_dimensions` keys off `@data.first.keys`) while per-Row access derives the formula (`Row#[]` checks `@formulae` first). That is precisely the split-brain the data-or-derived-never-both invariant exists to prevent.
+
+So `add_row` now **raises** an `ArgumentError` naming the collision rather than admitting the row. The guard is symmetric with `attach`'s, and the asymmetry against `[]=` is deliberate: `[]=` names one column at the call site, so its scalar form *evicts* a same-named formula as your explicit intent; a row is a bulk append you didn't name column-by-column, so refusing is the safe response, not silently evicting a formula on a data operation. Resolve it the same way as the `attach`-side collision — contract the formula away or rename — then append. Nothing else in `<<` changed.
+
 ## 1.0.0: Stable release
 
-The 1.0 release includes everything through 0.24.0:
+The 1.0 release includes everything through 0.24.1:
 
 - Selection (exact, array, range, proc, regex), projection, contraction.
 - Single-row formulae, two-arity formulae, parameterised formulae.

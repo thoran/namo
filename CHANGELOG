@@ -2,6 +2,17 @@ CHANGELOG
 _________
 
 20260629
+0.24.1: ~ Namo#add_row — guard row-append against a data/formula name collision.
+
+0.24.0 left row-append (the Hash/Row arms of <<) unguarded, on the reasoning that the data/formula exclusivity invariant was []='s to keep. That reasoning had a hole: when an appended row carries a key matching an existing formula name and lands as @data.first (e.g. the first row streamed into an empty formulary-bearing Namo), bulk values reads the raw datum (data_dimensions keys off @data.first.keys) while per-Row access derives the formula (Row#[] checks @formulae first) — the two access paths disagree, the precise split the invariant exists to prevent. So add_row now raises rather than admitting the collision, symmetric with attach's guard: a row is a bulk append you didn't name column-by-column, so refusing is safer than []='s call-site eviction.
+
+1. ~ lib/namo.rb: ~ private add_row(row) — + a guard: collisions = row.keys & derived_dimensions; raise ArgumentError naming them unless empty, before appending. A non-colliding row appends and returns self as before. << is otherwise unchanged: Module→attach, Row→add_row(row.to_h), Hash→add_row(row), else→TypeError.
+2. ~ test/namo_test.rb: + the "#<<" describe gains two guard cases — an appended Hash whose keys collide with a formula raises ArgumentError naming the collision, and an appended Row likewise. The existing non-colliding row/chain tests are unchanged.
+3. ~ README.md: ~ the Formularies << note — the row arm now states the guard (a row colliding with a formula name raises, symmetric with attach), replacing the 0.24.0 "surfaces live per existing precedence" wording, which held only when the colliding key was not @data.first.
+4. ~ ROADMAP.md: + the 0.24.1 release entry; current-state bumped to 0.24.1; the 0.24.0 "not guarded" note annotated as guarded at 0.24.1.
+5. ~ Namo::VERSION: /0.24.0/0.24.1/
+
+20260629
 0.24.0: ~ Namo#<<, Namo::Collection#<< — widen from a formulary-only alias into a polymorphic "append a constituent" operator.
 
 A base Namo's constituents are formularies and rows: << dispatches a Module to attach (0.23.0 behaviour, unchanged), a Hash to a data-row append, and a Row to a row append of its underlying hash. It does not take a bare callable (formula registration stays with []=) or a whole Namo (combining is +'s job) — both raise. Collection#<< is reconciled to the same verb over its own constituents: a Namo is a member, a Module attaches, and a loose Hash/Row raises (a Collection's rows are derived from its members, so a loose row has no durable home). This Hash/Row divergence — a base Namo appends the row, a Collection refuses it — is deliberate, not an oversight.

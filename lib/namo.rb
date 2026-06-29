@@ -260,6 +260,10 @@ class Namo
   end
 
   def add_row(row)
+    collisions = row.keys & derived_dimensions
+    unless collisions.empty?
+      raise ArgumentError, "row keys collide with formulae: #{collisions.inspect}"
+    end
     @data << row
     self
   end
