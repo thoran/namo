@@ -1,6 +1,18 @@
 CHANGELOG
 _________
 
+20260703
+0.25.0: + Namo#attach! — attach a formulary, evicting any data column whose name a formulary method collides with, rather than raising.
+
+attach! evicts the colliding data columns first (as []='s proc-over-data assignment does), then attaches — the bang is the explicit consent that attach's raise withholds by default. << stays guarded: a Module still routes to attach.
+
+1. ~ Namo#attach — extract the collision set into a new private attach_collisions(modul) (modul.public_instance_methods(false) & data_dimensions); behaviour unchanged, still raises ArgumentError naming the collisions when the set is non-empty.
+2, + Namo#attach! — evicts each colliding data column (@data.each{|row| row.delete(name)} per colliding name, the column membership already confirmed by attach_collisions so no key-guard is needed), then forwards to @formulae.attach and returns self. The eviction mirrors []='s proc-branch clear. + private attach_collisions(modul). << is unchanged: a Module still routes to attach (the guarded form), so the operator stays safe and attach! is reached only by explicit call — one safe operator, one explicit forceful method, matching []= having no operator shortcut for its own eviction.
+3. ~ test/namo_test.rb: + an "#attach!" describe — attach! attaches as attach does for a non-colliding module (returns self, methods resolve); attach! evicts a colliding data column and registers the formulary method in its place, with all access paths (values, Row, selection) agreeing on the formula afterward and the name appearing once in derived_dimensions, not in data_dimensions; attach! over several colliding columns evicts all of them; attach! on a vanilla collision-free module leaves the data untouched; the existing attach collision-raise tests are unchanged, pinning that the guarded form still raises where attach! evicts.
+4. ~ README.md: ~ the Formularies section — + attach! as the forceful sibling of attach, with the materialised-snapshot refresh as the motivating case and the bang-is-consent rationale; + the self-eviction-recurses caveat (a formulary method that reads a column its own name evicts recurses on access, exclusive storage leaving no shadowed value behind the formula — the one way attach!'s eviction differs in feel from []='s); note that << stays the guarded form.
+5. ~ ROADMAP.md: + the 0.25.0 release entry; current-state bumped to 0.25.0.
+6. ~ Namo::VERSION: /0.24.1/0.25.0/
+
 20260629
 0.24.1: ~ Namo#add_row — guard row-append against a data/formula name collision.
 

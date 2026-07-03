@@ -747,6 +747,58 @@ describe Namo do
       end
     end
 
+    describe "#attach!" do
+      it "attaches as attach does for a non-colliding module" do
+        namo = Namo.new(flow_data)
+        _(namo.attach!(delta)).must_be_same_as namo
+        _(namo.values(:signed_volume)).must_equal [20, -40, 0]
+      end
+
+      it "evicts a colliding data column and registers the formulary method in its place" do
+        widened = Namo.new(flow_data.map{|row| row.merge(signed_volume: 999)})
+        widened.attach!(delta)
+        _(widened.data_dimensions).wont_include :signed_volume
+        _(widened.derived_dimensions).must_include :signed_volume
+        _(widened.dimensions.count(:signed_volume)).must_equal 1
+      end
+
+      it "agrees across all access paths on the evicted-then-derived name" do
+        widened = Namo.new(flow_data.map{|row| row.merge(signed_volume: 999)})
+        widened.attach!(delta)
+        _(widened.values(:signed_volume)).must_equal [20, -40, 0]
+        _(widened.entries.first[:signed_volume]).must_equal 20
+        _(widened[signed_volume: 20].values(:date)).must_equal [1]
+      end
+
+      it "evicts every colliding column when several collide" do
+        clash = Module.new do
+          include Namo::Formulary
+          def buys(row); row[:date] * 2; end
+          def sells(row); row[:date] * 3; end
+        end
+        namo = Namo.new(flow_data)
+        namo.attach!(clash)
+        _(namo.data_dimensions).wont_include :buys
+        _(namo.data_dimensions).wont_include :sells
+        _(namo.derived_dimensions).must_include :buys
+        _(namo.derived_dimensions).must_include :sells
+        _(namo.values(:buys)).must_equal [2, 4, 6]
+        _(namo.values(:sells)).must_equal [3, 6, 9]
+      end
+
+      it "leaves the data untouched when the module does not collide" do
+        namo = Namo.new(flow_data)
+        namo.attach!(delta)
+        _(namo.values(:buys)).must_equal [60, 80, 75]
+        _(namo.values(:sells)).must_equal [40, 120, 75]
+      end
+
+      it "raises through attach (the guarded form) where attach! evicts" do
+        widened = Namo.new(flow_data.map{|row| row.merge(signed_volume: 999)})
+        _(proc{widened.attach(delta)}).must_raise ArgumentError
+      end
+    end
+
     describe "#<<" do
       it "attaches a formulary, the same as #attach" do
         namo = Namo.new(flow_data)

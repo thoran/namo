@@ -89,10 +89,16 @@ class Namo
   end
 
   def attach(modul)
-    collisions = modul.public_instance_methods(false) & data_dimensions
+    collisions = attach_collisions(modul)
     unless collisions.empty?
       raise ArgumentError, "formulary methods collide with data dimensions: #{collisions.inspect}"
     end
+    @formulae.attach(modul)
+    self
+  end
+
+  def attach!(modul)
+    attach_collisions(modul).each{|name| @data.each{|row| row.delete(name)}}
     @formulae.attach(modul)
     self
   end
@@ -266,6 +272,10 @@ class Namo
     end
     @data << row
     self
+  end
+
+  def attach_collisions(modul)
+    modul.public_instance_methods(false) & data_dimensions
   end
 
   def attach_included_formularies

@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.24.1
+## Current state: 0.25.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1137,6 +1137,14 @@ Whether `<<` (or any operator) should grow a widening/pivot step was settled as 
 0.24.0's row-append arms (`<<` of a Hash or Row) went in unguarded, on the stated reasoning that the data/formula exclusivity invariant was `[]=`'s to keep. The reasoning had a hole. When an appended row carries a key matching an existing formula name *and* lands as `@data.first` — the mainline case of streaming the first row into an empty formulary-bearing Namo — the two access paths disagree: bulk `values` reads the raw datum (because `data_dimensions` keys off `@data.first.keys`) while per-Row access derives the formula (`Row#[]` checks `@formulae` first). That is precisely the split-brain the data-or-derived-never-both invariant exists to prevent.
 
 So `add_row` now **raises** an `ArgumentError` naming the collision rather than admitting the row. The guard is symmetric with `attach`'s, and the asymmetry against `[]=` is deliberate: `[]=` names one column at the call site, so its scalar form *evicts* a same-named formula as your explicit intent; a row is a bulk append you didn't name column-by-column, so refusing is the safe response, not silently evicting a formula on a data operation. Resolve it the same way as the `attach`-side collision — contract the formula away or rename — then append. Nothing else in `<<` changed.
+
+### 0.25.0 (2026-06-29): `attach!` — forceful formulary attachment
+
+`attach` (0.23.0) raises when a formulary method's name collides with a data column, on the blast-radius reasoning: a formulary names a whole *module*, so a collision is a name you never typed — possibly several columns at once — and silently destroying data is dangerous. `attach!` is the explicit override. It **evicts** the colliding data columns first — deleting each exactly as assigning a proc through `[]=` clears a same-named data column — then attaches. The bang is consent: the blast-radius objection dissolves once the eviction is intentional, named, and bang-marked, so `attach` keeps the guard as the safe default and `attach!` is its deliberate forceful sibling — the same relationship `[]=` already holds between its silent eviction (one named column, explicit intent) and `attach`'s raise (a whole module, names you didn't type). `<<` is unchanged: a `Module` still routes to the guarded `attach`, so the operator never evicts and `attach!` is reached only by explicit call — one safe operator, one explicit forceful method, mirroring `[]=` having no operator shortcut for its own eviction.
+
+The driving case is refreshing a formulary over a *materialised snapshot*. Once a derived dimension has been projected into a stored column (0.16.0 materialise-and-drop), re-attaching the formulary that defined it collides with the now-data column; `attach!` re-attaches over it in one step, where `attach` would require an explicit contraction first.
+
+One hazard has no counterpart in `[]=`'s scalar↔proc eviction; a formulary method that reads a column its own name evicts recurses on access. The eviction removes the datum, and exclusive storage leaves no shadowed value behind the formula, so `Row#[]` re-enters the formula rather than falling back to data. `[]=` rarely bites this way because the incoming proc is written at the call site, beside the name it replaces; a formulary is authored elsewhere, so a method reading its own evicted column is easy to attach without noticing. No recursion guard is added — `derive` resolves self-reference unguarded, as the formula mechanism has since two-arity (0.15.0) and parameterised (0.17.0) formulae: Ruby doesn't guard method recursion either, and a cycle detector would tax every resolution to catch a bug the stack trace already names in a handful of frames.
 
 ## 1.0.0: Stable release
 
