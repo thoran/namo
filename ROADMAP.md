@@ -937,15 +937,11 @@ It also unifies the relation. The subset operators already tallied (keyed on `eq
 
 It takes its own release because it stands on its own — any two `nil`-containing Namos raised on `==` before it, grouping or not — and because it is the prerequisite that lets a `nil`-valued group round-trip through `==`, which `group_by` (0.20.0) relies on for its partition/`as_detail` idempotence.
 
-### Summary
-
-The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped, two-arity collection-scoped, and parameterised receiving arguments at access time, mixing freely), polymorphic assignment via `[]=` (proc registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, a constructor that takes data positionally or by keyword and carries an optional `name:`, `Namo::Collection` — a hierarchical aggregate of named member Namos, assembled with `<<` and queried through `summary`/`detail` views with lazy detail materialisation — and `group_by`, the partition-side constructor that splits a Namo into a `Collection` (the mirror of assembling one), give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, combining or decomposing datasets with different dimensions, composing named datasets into a queryable whole, and partitioning one back into named pieces, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase is the 1.0.0 stable release.
-
-## 0.20.0 (2026-06-15): group_by returns a Collection
+### 0.20.0 (2026-06-15): group_by returns a Collection
 
 `Namo#group_by(dimension)` splits a Namo into a `Namo::Collection`, partitioning the rows by the values of the given dimension. This completes the Enumerable coherence pass begun at 0.11.0 — it is the one Enumerable method that produces row-shaped output and was not included there.
 
-### Why this is a separate release, and why it's here at all
+#### Why this is a separate release, and why it's here at all
 
 `group_by` was originally scheduled for 2.x. It comes forward to 0.20.0 *because* 0.18.0 built `Namo::Collection` — its return type. The dependency is the whole story:
 
@@ -953,7 +949,7 @@ The 0.11.0 Enumerable pass shipped every method that returns a `Namo`. `group_by
 
 So `group_by` could not land until `Collection` existed. 0.18.0 built `Collection`; 0.20.0 is the first release in which `group_by` is expressible. The two-release split (0.18.0 then 0.20.0) records the causality: `Collection`'s existence is what unblocks and brings forward `group_by`.
 
-### Behaviour
+#### Behaviour
 
 `group_by(dimension)` returns a `Collection` whose members are the groups — one member per distinct value of `dimension`, each a Namo holding the rows that share that value. Because `dimension` is a pre-existing dimension of the data, it is retained in every member's rows (the split happens *along* the axis, it does not consume it). This is what makes the split round-trip exactly idempotent with `as_detail` on the same dimension:
 
@@ -973,11 +969,11 @@ This collapses the round-trip into one uniform law over the whole dimension name
 
 The nil-key case falls out cleanly from the use-site naming decision (0.18.0). If some rows have `dimension` missing or nil-valued, they form a group keyed by `nil`, and that member is named `nil`. There is no insertion guard to trip — `<<` accepts it — and the member is simply unfindable by `find` (you can't `find(nil)` meaningfully), but its rows still materialise into the detail view and round-trip correctly, because the grouping dimension (nil-valued for those rows, but present) is intrinsic. No rows are dropped, no sentinel is invented; the nil group is a first-class member that happens to have a nil name. This is exactly why 0.18.0 moved name-enforcement to use-site rather than guarding `<<`.
 
-### Relationship to the Enumerable pass
+#### Relationship to the Enumerable pass
 
 With `group_by` landing here, the coherence statement from 0.11.0 completes: every Enumerable method that produces row-shaped output returns a Namo-family type. The subset methods (`select`, `reject`, `sort_by`, `uniq`, `partition`, take/drop) return `Namo` (or `[Namo, Namo]`); `group_by` returns `Namo::Collection`. The family is `Namo` and `Namo::Collection`; the rule is uniform across both.
 
-### Implementation
+#### Implementation
 
 ```ruby
 def group_by(dimension)
@@ -994,7 +990,7 @@ Each group is constructed as an instance of the receiver's class (subclass type 
 
 A block form (`group_by{|row| ...}` computing the group key from a block rather than naming a dimension) is a natural extension. Deferred consideration: the block form's groups are keyed by a computed value with no corresponding dimension in the rows, so the split round-trip would be the *assembly* case (the computed key must be injected as a dimension on `as_detail`), not the exact-idempotent case. Worth supporting, but the dimension-named form is the primary one and the one that round-trips cleanly.
 
-### Tests
+#### Tests
 
 - `group_by(:symbol)` returns a `Namo::Collection`.
 - The Collection has one member per distinct value of `:symbol`.
@@ -1010,61 +1006,73 @@ A block form (`group_by{|row| ...}` computing the group key from a block rather 
 - `group_by(:sector)` where some rows have nil `:sector` produces a nil-named member holding those rows; no rows are dropped; the split round-trip still holds.
 - `summary`/`detail` work on a `group_by`-derived Collection identically to an assembled one.
 
-### Documentation
+#### Documentation
 
 - README section on `group_by` returning a Collection, with the round-trip example.
 - Note that this completes the Enumerable coherence pass started at 0.11.0.
 - Cross-reference to `Collection` (0.18.0) for the assembly side of the same structure.
 
-## 0.21.0 (2026-06-25): Formulae extraction
+### 0.21.0 (2026-06-25): Formulae extraction
 
 The formula collection — the `{name => callable}` map every Namo carries — is promoted from a bare `Hash` to a `Namo::Formulae` object. This is behaviour-preserving: no new capability, and nothing a user observes changes beyond the type of the `formulae` accessor itself. It exists to give the formula collection an object to accrete behaviour onto, exactly as `Row` was extracted empty-handed at 0.1.0 and later grew value semantics (0.10.0) and arity dispatch (0.15.0).
 
-### Why an empty extraction is its own release
+#### Why an empty extraction is its own release
 
 `Formulae` answers exactly the subset of `Hash` that `lib/namo.rb` and `Row` already send the formula collection — `[]`, `[]=`, `keys`, `key?`, `empty?`, `each`, `delete`, `merge`, `reject`, `dup` — so every operator, projection, and comparison behaves as before: each message it sent still works and returns an equivalent result. The proof is the prior test suite passing unchanged. Naming the collection now, before it carries behaviour, lets a later release add capability (module absorption, `[]`-resolution) onto a type that already exists, rather than threading a second extraction through the operators at the same time as the feature. Relocate first under a green suite; add capability second — the discipline of the Row (0.1.0) and Enumerable (0.11.1) extractions.
 
-### The normalisation seam
+#### The normalisation seam
 
 The one behavioural change is in the constructor: incoming formulae are normalised to a `Formulae`. A `Hash` — what every internal construction passes, being the result of `Hash#merge`/`Hash#dup` in the operators — is wrapped; a `Formulae` — what the operators now pass, since `Formulae#merge`/`dup` return `Formulae` — passes through unchanged. No other call site changed; they all send messages `Formulae` answers. The public `formulae` accessor therefore returns a `Formulae` now, not a `Hash`, and the two tests that compared it to a literal `{}` assert emptiness instead — the formula set being empty is the behaviour they pin, the wrapper type is not.
 
-### Three deliberate choices
+#### Three deliberate choices
 
 - `to_h` returns a copy (`@store.dup`), not the live store. The bare-Hash version could not leak its internals because there was no wrapper; the wrapper must not introduce the leak.
 - `==`/`eql?`/`hash` are names-only (`keys.sort`), matching Namo's own formula equality, where two sets with the same names but different proc *objects* are equivalent (`@formulae.keys.sort` in `===`/`eql?`/`hash`). A full-store equality would be stricter than Namo means, and a landmine if `Namo#===` is later migrated onto `Formulae#==`.
 - `merge`/`reject`/`dup` return a `Formulae`, and `include Enumerable` — with `each` yielding `[name, callable]` pairs — gives `map`/`select`/`any?` for free, matching Hash's Enumerable behaviour.
 
-### Out of scope
+#### Out of scope
 
 Module absorption (`Formulae#<<` / `[]`-resolution); migrating the operators to pass `Formulae` throughout and dropping the constructor's Hash-acceptance branch; moving the left-wins merge rule into `Formulae#merge`; and migrating `Namo#===`/`eql?` onto `Formulae#==`. Each is a capability or a tidy-up that the named type now makes possible; none belongs in the extraction itself.
 
-### Tests
+#### Tests
 
 - A `Formulae` unit test pinning the three deliberate choices and the Hash-compatible surface (`[]`, `[]=`, `keys`, `key?`, `delete`, `merge`, `reject`, `dup`, `each`, plus Enumerable `map`/`select`).
 - Construction tests for the normalisation seam: a Hash given by keyword is wrapped in a `Formulae`; a `Formulae` given by keyword passes through unchanged (same object).
 - The prior suite passes unchanged but for the two `formulae`-accessor assertions, now asserting emptiness rather than a literal `{}`.
 
-### Documentation
+#### Documentation
 
 - No README change — the extraction is invisible at the API surface.
 
-## 0.23.0 (2026-06-27): Formularies
+### 0.22.0 (2026-06-26): The `derive` resolver
+
+Formula *invocation* moves out of `Row#[]` and into `Namo::Formulae`. `Formulae#[]` keeps its 0.21.0 meaning — it returns the stored callable — and a new `derive(name, row, namo, *arguments)` resolves a named formula to its *value*. `Row#[]` stops calling the proc itself and delegates: it keeps only the fail-fast argument guard, the formula-vs-data dispatch (`@formulae.key?`), and the data fallback (`@row[name]`), handing the invocation mechanics to its collaborator. Behaviour-preserving at the usage level — `row[:revenue]`, `namo[:x] = formula`, `values`, and selections are all unchanged. Like the 0.21.0 extraction it enables the next release rather than changing this one: once `Formulae` owns resolution, 0.23.0's formulary methods are ordinary store entries that `derive` invokes with no new resolution path.
+
+#### Why `derive`, not `call`
+
+The receiver is the collection, not the callable, so the verb names what the collection does — *derive a value via the named rule* — rather than borrowing `Proc#call`'s "invoke the receiver". And the result is whatever the proc returns, not necessarily numeric, which a neutral verb leaves open. `Formulae#[]` returning the stored callable is storage access, not a Namo operation, so it carries no inconsistency with the dimension-value `[]` of `Namo` and `Row`: different domains, the same spelling.
+
+#### What moved
+
+`derive` lifts the formula branch whole from `Row` — collection-scoped formulae are called `(row, namo, *arguments)`, row-only formulae `(row)`. The private `collection_scoped?` and `raise_unless_namo_context` move across with it (the latter now takes `namo` as a parameter rather than closing over `Row`'s `@namo`), and `required_parameter_count(name)` becomes a public property of the stored callable, since it is a fact about the formula, not about the row asking for it. `Row#[]` sources its argument-count check from `@formulae.required_parameter_count` and the fixed-vs-variadic distinction from `@formulae[name].arity`. `[]` and `[]=` are untouched — `[]` still returns the stored callable.
+
+### 0.23.0 (2026-06-27): Formularies
 
 A *formulary* is a reusable body of derived dimensions: a module, tagged by including `Namo::Formulary`, whose public instance methods are formulae. `namo.attach(OrderFlow)` makes those methods resolve as derived dimensions — through the same `Row#[]` → `Formulae` path, the same inspection vocabulary, and the same carry-through as `[]=` formulae. This is the module-based formula library the 2.x notes anticipated, brought forward as a real mechanism rather than a documented Ruby-`include` pattern, because `Namo::Formulae` (0.21.0) gave the formula collection an object to carry the behaviour and `Formulae#derive` (0.22.0) gave it the resolver. The dependency is the story: the type and the resolver existed, so the tier became an addition to `Formulae` rather than a new seam through the operators.
 
-### Attach copies into the store
+#### Attach copies into the store
 
 `attach` **copies** the formulary's `public_instance_methods(false)` into `@store`, each as a bound `Method`. `Formulae` holds **one** inert host (`@host ||= Object.new`) and `extend`s each attached formulary into it, so every bound `Method` shares the same self-free receiver — `self` is a meaningless object, and a formulary method named like a Namo method can't shadow Namo's own API (it's isolated on the host, not the Namo). From that point a formulary method is an ordinary store formula — indistinguishable from one assigned through `[]=`, and resolved by the unchanged 0.22.0 `derive`. So almost nothing in the tier is special-cased: `keys`, `key?`, `required_parameter_count`, `derive`, `dup`/`reject`/`merge`, and `Namo#derived_dimensions`/`===`/`requires_arguments?` all revert to their store-only forms and handle the formulary methods because they *are* store entries. `Namo::Formulary` (the marker) gates `attach` and `public_instance_methods(false)` selects the derivations — `private` helpers and inherited/`Object` methods are excluded with no per-method declaration, which is also why no Namo or Object API leaks as a dimension.
 
-### Two channels: `attach` and class `include`
+#### Two channels: `attach` and class `include`
 
 A formulary reaches a Namo two ways. `attach`/`<<` adds one to an individual Namo at runtime. Alternatively, `include` the formulary into a `Namo` subclass (`class TradingAnalysis < Namo; include OrderFlow`); `Namo#initialize` scans `self.class.ancestors.reverse`, and for each tagged module calls `attach(mod)` — so the class channel funnels through the same guarded `attach`, the same single host, the same store. The `reverse` is load-bearing: `ancestors` lists most-recent-`include` first, but `attach` is last-write-wins, so iterating in reverse makes the most-recently-included formulary win, matching Ruby's own method-resolution order. The contract: *the class `include` is honoured once, when each instance is constructed; everything after is `attach`.* Both copy, so `include`-ing into a class after an instance exists doesn't reach that instance (re-build or `attach`), and a plain `Namo` — no subclass to `include` into — always takes `attach`. Routing the class channel through `attach` (not bare `@formulae.attach`) keeps it **guarded**: an included formulary colliding with an instance's data raises at construction, so exclusivity holds with no hole — the class channel is `attach`-like (an explicit "give this a formulary"), not constructor-like, so it earns the guard rather than the constructor's unguarded trust.
 
-### Why the store, not a live carrier
+#### Why the store, not a live carrier
 
 A live design was built first and rejected: `Formulae` holding the modules in an inert carrier's ancestor chain and resolving them live, nothing copied. It was elegant — the chain *is* the list, most-recent-wins falls out of Ruby's `include` order — but it re-created the exact aliasing 0.16.0 spent a release eliminating. 0.16.0's exclusivity machinery drops a materialised formula on projection via `@formulae.reject`; a carrier can't be `reject`ed one method at a time, so a projected formulary name materialised into a data column *and* lingered as a live method — `values(:sma)` reading the snapshot while `first[:sma]` recomputed off the projected-away inputs, the precise 0.16.0 bug. Patching it meant either data-first precedence in `Row#[]` (the alternative 0.16.0 explicitly rejected) or a propagating suppression set reimplementing the drop the store already does. Copying into the store sidesteps all of it: projection's existing `reject` drops a materialised formulary method for free, and the tier sits *inside* the exclusivity model instead of beside it. The cost is that attach is a snapshot, not a live link (below) — judged the smaller price, since value-liveness (recompute from each row's current data) is fully preserved and only "reflect a reopened module" is lost.
 
-### Inside the exclusivity model
+#### Inside the exclusivity model
 
 Because the methods land in the store, the 0.13.0/0.16.0 rules apply unchanged:
 
@@ -1073,66 +1081,66 @@ Because the methods land in the store, the 0.13.0/0.16.0 rules apply unchanged:
 - **Materialise-and-drop on projection.** Naming a formulary method in a projection snapshots it into a data column and drops the formula through 0.16.0's `reject`, so all access paths agree and `dimensions` lists it once. This is the whole reason for the store choice.
 - **Carry-through is free.** `dup`/`reject`/`merge` carry the formulae because they are store entries — no carrier to rebuild, no list to track.
 
-### `Namo#===` via the marker (Path B)
+#### `Namo#===` via the marker (Path B)
 
 The 2.x note flagged that `===`/`eql?`/`hash`, comparing formula names via `@formulae.keys.sort`, would wrongly equate a module-bearing Namo with a vanilla one once module formulae became real. The store approach answers it as Path B foresaw without changing those methods at all: formulary methods *are* store keys, so `@formulae.keys.sort` already counts them — a Namo with a formulary attached is not `===` to a vanilla one, while two Namos exposing the same names by different channels (`[]=` vs formulary) are `===`. The marker keeps it precise: only tagged modules are copied, so only intentional derivations become keys; the comparison adds names, never proc bodies — the 0.6.0 stance, extended for free.
 
-### `attach`, and `<<`
+#### `attach`, and `<<`
 
 The verb is `attach` — already the ROADMAP's word for adding derivations to a Namo. `Namo#attach(M)` forwards to `Formulae#attach(M)`; both return self and alias `<<`, so `namo << OrderFlow` reads as attaching the formulary and chains. `<<` here is a plain alias for `attach`, scoped to formularies — not the earlier polymorphic / module-lacing operator, which is dropped, and not a row-append (Namo has no single-row add; that stays with `+`). `Collection#<<` keeps its own meaning (member-add): it defines its own `<<`, so the inherited alias never reaches a Collection instance — `<<` adds a constituent appropriate to the receiver, a member to a Collection and a formulary to a plain Namo.
 
-### `respond_to?(:call)` in `[]=`
+#### `respond_to?(:call)` in `[]=`
 
 Folded in as a separable footgun-fix: `[]=`'s formula branch widens from `when Proc` to `respond_to?(:call)`, so a directly-assigned `Method` or lambda registers as a formula rather than broadcasting per-row. Arrays are unaffected — they don't respond to `call`. This is independent of the formulary tier (the tier doesn't go through `[]=`); it ships here as its own change.
 
-### Snapshot, not a live link
+#### Snapshot, not a live link
 
 Attach is a snapshot: it copies the module's public methods *as they are at attach time*. This is the one PORO affordance the store choice gives up, and it's worth stating precisely, because real Ruby is more dynamic than it might seem. A normal `include`/`extend` is a *live link* — methods resolve through the ancestor chain, so a method added to the module later, a redefinition, and a further module mixed into it afterwards are all picked up by objects that already include it. A copy tracks none of that: change the module after attaching, or include another module into it, and an already-attached Namo is unaffected — re-attach to refresh. A live-link mechanism (re-resolving against the module, or holding it by reference for the name set while snapshotting values under `freeze`) is possible later if wanted; 0.23.0 ships the snapshot. Bare-name resolution inside method bodies (`buys` for `row[:buys]`) and freeze-gated memoisation both remain 2.x — a formulary method indexes its `row` explicitly.
 
-### Tests
+#### Tests
 
 - `Formulae`: `attach` returns self, rejects an untagged module, and copies the formulary's public methods into the store (excluding a private helper); `<<` attaches as `attach` does; `key?`, `required_parameter_count`, and `derive` resolve the copied methods; most-recent-wins on re-attachment; a single shared host across several attaches (the bound `Method`s share a receiver); carry-through through `dup`/`reject`/`merge`.
 - `Namo` (runtime `attach`): `derived_dimensions` lists the copied names (private helper absent, vanilla Namo empty); resolution through `values`/`Row`/selection; two-arity windowing and the missing-namo raise; a parameterised method omitted from bulk and raising bare, materialising through a row-scoped wrapper; re-attachment; an instance `[]=` formula shadowing a formulary method; `attach` raising on a formulary/data-name collision; carry-through through selection, projection, and concatenation; projection materialising-and-dropping a formulary name (listed once as data, snapshot read on per-Row access); `===` against a vanilla Namo and against the same names via `[]=`; `<<` attaching as `attach` does.
 - `Namo` (class `include`): an included formulary's public methods listed as derived dimensions (private helper absent); resolution; most-recent-`include` wins on a name collision (MRO via `ancestors.reverse`); raising at construction on a formulary/data collision; an instance built before a later `include` not seeing it while a fresh instance and an `attach` do.
 - `[]=` polymorphic dispatch widened: a `Method` and a lambda register as formulae; an array still broadcasts.
 
-### Documentation
+#### Documentation
 
 - README: a "Formularies" subsection under Formulae — `attach` (and its `<<` operator form) and the marker, `private`-hides-helpers, the copy-into-the-store / snapshot model, the two channels (`attach` at runtime, class `include` at construction) and the build-time-vs-after contract, the raise on a data collision, materialise-and-drop, carry-through, and the forward-note that bare-name bodies and freeze-gated memoisation arrive later. The Polymorphic `[]=` section now says "a callable" (proc, lambda, or `Method`) rather than "a proc".
 - COMPARISON: a "Formularies" row — other tools reuse computation as external function libraries producing stored columns; Namo's formularies are modules whose methods become first-class derived dimensions of the dataset.
 
-## 0.24.0 (2026-06-29): Polymorphic `<<`
+### 0.24.0 (2026-06-29): Polymorphic `<<`
 
 `Namo#<<` widens from the 0.23.0 formulary-only alias into an "append a constituent" operator. The verb is the same on both types — *append the constituent appropriate to the receiver* — but the constituents differ. For a base Namo they are formularies and rows: a `Module` attaches (0.23.0, unchanged), a `Hash` appends as a data row, a `Row` appends its underlying hash. For a `Collection` the constituent is a member: a `Namo` adds, a `Module` attaches (inherited), and a loose `Hash`/`Row` raises. `attach` stays the formulary-specific method, Module-only and unchanged; `<<` of a Module routes to it, so the collision-guard and formulary semantics carry over verbatim.
 
-### Three boundaries
+#### Three boundaries
 
 Each exclusion is load-bearing, not an omission. **No bare-callable arm:** formula *registration* is `[]=`'s job — it dispatches callable-vs-scalar and enforces data/formula exclusivity by eviction. `<<` is *append a constituent*, a different verb; a bare proc through `<<` would duplicate that path and reopen the eviction-vs-raise question. So `[]=` assigns a named thing, `<<` appends a constituent, cleanly split. **No whole-Namo arm:** `namo1 << namo0` does not mean "append namo0's rows" — that is `+`. Excluding it keeps `<<`-as-append distinct from `+`-as-combine and, on a Collection, makes a `Namo` argument unambiguously a *member*. **A bare Hash is always a row:** formulae never arrive through `<<` as a bare Hash (they arrive as a Module, or via `[]=`), so a Hash at `<<` is unconditionally a data row — the one legislated disambiguation the dispatch rests on.
 
-### The deliberate divergence
+#### The deliberate divergence
 
 `Namo#<<` and `Collection#<<` diverge on exactly the Hash/Row arm: a base Namo appends the loose row, a Collection refuses it. A Collection's `@data` is derived from its members and rebuilt on every member-add, so a loose row has no durable home — the next `<<` would erase it. The honest response is to refuse and redirect to member-add, rather than accept-then-silently-drop. This is recorded as intentional so it does not read as oversight.
 
 A row-append on a base Namo is a data mutation: it does not pass through `[]=`, so it does not trigger formula-eviction. 0.24.0 shipped it *unguarded* on the reasoning that the data/formula exclusivity invariant was `[]=`'s to keep — but that left a reachable hole (see 0.24.1 below), so 0.24.1 guards it by raising on a name collision instead.
 
-### Collection formulae: no new mechanism
+#### Collection formulae: no new mechanism
 
 A "collection formula" needs nothing built. It is an ordinary two-arity formulary method whose `namo` argument is a Collection and whose body reaches a collection view (`summary`, `detail`, `members`); it resolves through the existing `derive` path over the Collection's detail rows. Member-awareness lives in the method body, not in any marker or second store. Both a `Namo::CollectionFormulary` marker and a member-axis resolver were considered and rejected: tagging is admission-control (keep non-formulae from becoming live dimensions), not level-classification, and a formula's "level" is a per-method property of its body; while per-member-*output* computations are `summary`'s territory (member-in invocation), not derived dimensions at all. The convention is to name the argument `namo_collection`, which a plain Namo lacking `members`/`summary` self-enforces by `NoMethodError` — no guard needed.
 
-### Pivot / reshaping: a recorded decision
+#### Pivot / reshaping: a recorded decision
 
 Whether `<<` (or any operator) should grow a widening/pivot step was settled as *out*, and the reasoning is recorded so it isn't revisited blind. The non-lossy two-axis aggregation is long-form `summary` generalised — in-grain, a separate future item. The widening-to-a-grid is *presentational*: it breaks dimension peerage (every key a dimension, none privileged), so it belongs at an output edge, not in the algebra. Neither is 0.24.0, and neither is `<<`.
 
-### Tests
+#### Tests
 
 - `Namo#<<`: a `Hash` appends as a data row (and returns the Namo); a `Row` appends its underlying hash; a whole `Namo` raises `TypeError` (that is `+`); a bare callable raises `TypeError` (that is `[]=`); a mixed chain interleaves rows and a formulary. The 0.23.0 Module-arm tests are unchanged.
 - `Collection#<<`: a formulary attaches and its row-scoped method resolves over the detail rows; a collection-scoped method (the `namo_collection` convention) reaches `members`; a loose `Hash` and a loose `Row` each raise `ArgumentError` with the member-redirect message; a chain mixes member-adds with a formulary attach. The 0.23.0 member-add tests are unchanged.
 
-### Documentation
+#### Documentation
 
 - README: the Formularies `<<` note widened — `<<` appends a constituent (Module, Hash, or Row) to a base Namo, chains, and raises on a bare callable or a whole Namo; the bare-Hash-is-always-a-row and row-append-does-not-evict notes. The Collection "`<<` and unnamed members" section gains the member/Module/raise dispatch and the deliberate Hash/Row divergence; a new "Collection formulae" subsection documents the `namo_collection` convention with no marker and no second store.
 
-## 0.24.1 (2026-06-30): Guard row-append against a formula collision
+### 0.24.1 (2026-06-30): Guard row-append against a formula collision
 
 0.24.0's row-append arms (`<<` of a Hash or Row) went in unguarded, on the stated reasoning that the data/formula exclusivity invariant was `[]=`'s to keep. The reasoning had a hole. When an appended row carries a key matching an existing formula name *and* lands as `@data.first` — the mainline case of streaming the first row into an empty formulary-bearing Namo — the two access paths disagree: bulk `values` reads the raw datum (because `data_dimensions` keys off `@data.first.keys`) while per-Row access derives the formula (`Row#[]` checks `@formulae` first). That is precisely the split-brain the data-or-derived-never-both invariant exists to prevent.
 
@@ -1146,9 +1154,13 @@ The driving case is refreshing a formulary over a *materialised snapshot*. Once 
 
 One hazard has no counterpart in `[]=`'s scalar↔proc eviction; a formulary method that reads a column its own name evicts recurses on access. The eviction removes the datum, and exclusive storage leaves no shadowed value behind the formula, so `Row#[]` re-enters the formula rather than falling back to data. `[]=` rarely bites this way because the incoming proc is written at the call site, beside the name it replaces; a formulary is authored elsewhere, so a method reading its own evicted column is easy to attach without noticing. No recursion guard is added — `derive` resolves self-reference unguarded, as the formula mechanism has since two-arity (0.15.0) and parameterised (0.17.0) formulae: Ruby doesn't guard method recursion either, and a cycle detector would tax every resolution to catch a bug the stack trace already names in a handful of frames.
 
+### Summary
+
+The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped, two-arity collection-scoped, and parameterised receiving arguments at access time, mixing freely), polymorphic assignment via `[]=` (a callable — proc, lambda, or `Method` — registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, a constructor that takes data positionally or by keyword and carries an optional `name:`, `Namo::Collection` — a hierarchical aggregate of named member Namos, assembled with `<<` and queried through `summary`/`detail` views with lazy detail materialisation — and `group_by`, the partition-side constructor that splits a Namo into a `Collection` (the mirror of assembling one), formularies (`Namo::Formulary`) — reusable modules of derived dimensions attached to a Namo at runtime through `attach`/`<<` (or `attach!`, the forceful sibling that evicts a colliding data column rather than raising) or mixed into a subclass through `include`, resolving as first-class derived dimensions — and the polymorphic `<<` operator that appends the constituent appropriate to its receiver (a formulary or a data row to a base Namo, guarding a row against a data/formula name collision; a member to a `Collection`), give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, combining or decomposing datasets with different dimensions, composing named datasets into a queryable whole, partitioning one back into named pieces, and drawing on reusable libraries of derived dimensions, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase is the 1.0.0 stable release.
+
 ## 1.0.0: Stable release
 
-The 1.0 release includes everything through 0.24.1:
+The 1.0 release includes everything through 0.25.0:
 
 - Selection (exact, array, range, proc, regex), projection, contraction.
 - Single-row formulae, two-arity formulae, parameterised formulae.
@@ -1164,6 +1176,7 @@ The 1.0 release includes everything through 0.24.1:
 - `Namo::Formulae` as the formula collection's own type, extracted from a bare `Hash`, with `derive` as its value resolver.
 - Formularies — reusable modules of derived dimensions a Namo attaches, resolved live and carried through the algebra.
 - Polymorphic `<<` — appends a constituent: a formulary (Module), a row (Hash or Row) on a base Namo; a member (Namo) or formulary on a Collection.
+- `attach!` — the forceful sibling of `attach`, evicting a colliding data column rather than raising when a formulary is attached over it.
 
 This is the correct, tested, conservative foundation. No metaprogramming magic, no `method_missing`, no `instance_eval`. Formulae work via `e[:name] = proc{|row| row[:close] / row[:book_value]}` — clear, explicit, proven.
 

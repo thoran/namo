@@ -1,19 +1,29 @@
-CHANGELOG
-_________
+# CHANGELOG
 
-20260703
+## 20260703
+
+0.25.1: Fix documentation and reformat CHANGELOG to use Markdown headers.
+
+1. ~ ROADMAP.md: + the missing 0.22.0 entry (Formulae#derive) between 0.21.0 and 0.23.0; normalise 0.20.0–0.24.1 to ### under ## Current state (#### subsections), matching 0.0.0–0.19.0 and the already-correct 0.25.0; relocate ### Summary to close the shipped block, its vocabulary brought current through the formulary tier and attach!; the 1.0.0 "everything through" line → 0.25.0 with an attach! bullet.
+2. ~ CHANGELOG: reformat to Markdown headers (# CHANGELOG, ## <date>), keeping the extensionless name; entry bodies unchanged.
+3. ~ docs/: regenerate the print-ready PDFs via rake docs:gen (stale for several releases).
+4. ~ Namo::VERSION: /0.25.0/0.25.1/
+
+## 20260703
+
 0.25.0: + Namo#attach! — attach a formulary, evicting any data column whose name a formulary method collides with, rather than raising.
 
 attach! evicts the colliding data columns first (as []='s proc-over-data assignment does), then attaches — the bang is the explicit consent that attach's raise withholds by default. << stays guarded: a Module still routes to attach.
 
 1. ~ Namo#attach — extract the collision set into a new private attach_collisions(modul) (modul.public_instance_methods(false) & data_dimensions); behaviour unchanged, still raises ArgumentError naming the collisions when the set is non-empty.
-2, + Namo#attach! — evicts each colliding data column (@data.each{|row| row.delete(name)} per colliding name, the column membership already confirmed by attach_collisions so no key-guard is needed), then forwards to @formulae.attach and returns self. The eviction mirrors []='s proc-branch clear. + private attach_collisions(modul). << is unchanged: a Module still routes to attach (the guarded form), so the operator stays safe and attach! is reached only by explicit call — one safe operator, one explicit forceful method, matching []= having no operator shortcut for its own eviction.
+2. + Namo#attach! — evicts each colliding data column (@data.each{|row| row.delete(name)} per colliding name, the column membership already confirmed by attach_collisions so no key-guard is needed), then forwards to @formulae.attach and returns self. The eviction mirrors []='s proc-branch clear. + private attach_collisions(modul). << is unchanged: a Module still routes to attach (the guarded form), so the operator stays safe and attach! is reached only by explicit call — one safe operator, one explicit forceful method, matching []= having no operator shortcut for its own eviction.
 3. ~ test/namo_test.rb: + an "#attach!" describe — attach! attaches as attach does for a non-colliding module (returns self, methods resolve); attach! evicts a colliding data column and registers the formulary method in its place, with all access paths (values, Row, selection) agreeing on the formula afterward and the name appearing once in derived_dimensions, not in data_dimensions; attach! over several colliding columns evicts all of them; attach! on a vanilla collision-free module leaves the data untouched; the existing attach collision-raise tests are unchanged, pinning that the guarded form still raises where attach! evicts.
 4. ~ README.md: ~ the Formularies section — + attach! as the forceful sibling of attach, with the materialised-snapshot refresh as the motivating case and the bang-is-consent rationale; + the self-eviction-recurses caveat (a formulary method that reads a column its own name evicts recurses on access, exclusive storage leaving no shadowed value behind the formula — the one way attach!'s eviction differs in feel from []='s); note that << stays the guarded form.
 5. ~ ROADMAP.md: + the 0.25.0 release entry; current-state bumped to 0.25.0.
 6. ~ Namo::VERSION: /0.24.1/0.25.0/
 
-20260629
+## 20260629
+
 0.24.1: ~ Namo#add_row — guard row-append against a data/formula name collision.
 
 0.24.0 left row-append (the Hash/Row arms of <<) unguarded, on the reasoning that the data/formula exclusivity invariant was []='s to keep. That reasoning had a hole: when an appended row carries a key matching an existing formula name and lands as @data.first (e.g. the first row streamed into an empty formulary-bearing Namo), bulk values reads the raw datum (data_dimensions keys off @data.first.keys) while per-Row access derives the formula (Row#[] checks @formulae first) — the two access paths disagree, the precise split the invariant exists to prevent. So add_row now raises rather than admitting the collision, symmetric with attach's guard: a row is a bulk append you didn't name column-by-column, so refusing is safer than []='s call-site eviction.
@@ -24,7 +34,8 @@ attach! evicts the colliding data columns first (as []='s proc-over-data assignm
 4. ~ ROADMAP.md: + the 0.24.1 release entry; current-state bumped to 0.24.1; the 0.24.0 "not guarded" note annotated as guarded at 0.24.1.
 5. ~ Namo::VERSION: /0.24.0/0.24.1/
 
-20260629
+## 20260629
+
 0.24.0: ~ Namo#<<, Namo::Collection#<< — widen from a formulary-only alias into a polymorphic "append a constituent" operator.
 
 A base Namo's constituents are formularies and rows: << dispatches a Module to attach (0.23.0 behaviour, unchanged), a Hash to a data-row append, and a Row to a row append of its underlying hash. It does not take a bare callable (formula registration stays with []=) or a whole Namo (combining is +'s job) — both raise. Collection#<< is reconciled to the same verb over its own constituents: a Namo is a member, a Module attaches, and a loose Hash/Row raises (a Collection's rows are derived from its members, so a loose row has no durable home). This Hash/Row divergence — a base Namo appends the row, a Collection refuses it — is deliberate, not an oversight.
@@ -37,7 +48,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 6. ~ ROADMAP.md: + the 0.24.0 release entry; current-state bumped to 0.24.0; pivot/reshaping recorded as a decision (long-form aggregation is in-grain future work, widening-to-a-grid is presentational and belongs at an output edge, not the algebra), and collection formulae noted as needing no new mechanism.
 7. ~ Namo::VERSION: /0.23.0/0.24.0/
 
-20260627
+## 20260627
+
 0.23.0: + Namo::Formulary — A formulary is a reusable body of derived dimensions a Namo instance may draw upon.
 
 1. + lib/Namo/Formulary.rb: + Namo::Formulary, an empty marker module. A module includes it to brand itself a formulary; attach raises ArgumentError for an untagged module, so an ordinary module of helpers can't be mistaken for a body of derivations.
@@ -48,341 +60,132 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 6. ~ README.md: + a "Formularies" subsection under Formulae (attach and the marker, private-hides-helpers, the copy-into-the-store / snapshot model, the raise on a data collision, materialise-and-drop, carry-through, the bare-name/memoisation forward-note); the Polymorphic []= section now says "a callable" (proc, lambda, or Method) rather than "a proc". ~ COMPARISON.md: + a "Formularies" row. ~ ROADMAP.md: + the 0.23.0 release entry; current-state bumped to 0.23.0; the 2.x "module-based formula libraries", "Namo#=== revision", and marker-vs-implicit notes annotated as shipped/decided at 0.23.0, with bare-name bodies remaining 2.x.
 7. ~ Namo::VERSION: /0.22.0/0.23.0/
 
-20260626
+## 20260626
+
 0.22.0: + Formulae#derive — move formula invocation out of Row#[] and into Formulae. [] keeps its meaning (the stored callable, as at 0.21.0); the new derive(name, row, namo, *arguments) resolves a named formula to its value. derive over call: the receiver is the collection, not the callable, so the verb says the collection derives a value via the named rule rather than borrowing Proc#call's "invoke the receiver"; and the result is whatever the proc returns, not necessarily numeric, which a neutral verb leaves open. Indexing a Formulae is storage access, not a Namo operation, so [] returning the callable carries no inconsistency with the dimension-value [] of Namo and Row — different domains, same spelling. Behaviour-preserving at the usage level: row[:revenue], namo[:x] = formula, values, and selections are unchanged.
 
-1. ~ lib/Namo/Formulae.rb: + derive(name, row, namo, *arguments), the formula resolver —
-   invocation mechanics lifted whole from Row's formula branch (collection-scoped formulae
-   are called (row, namo, *arguments), row-only formulae (row)). + required_parameter_count(name),
-   public, a property of the stored callable. collection_scoped? and raise_unless_namo_context
-   move in as private; the latter takes namo as a parameter rather than closing over Row's
-   @namo. [] and []= are untouched — [] still returns the stored callable.
-2. ~ lib/Namo/Row.rb: #[] delegates formula resolution to
-   @formulae.derive(name, self, @namo, *arguments); Row keeps only the fail-fast argument
-   guard, the formula-vs-data dispatch (@formulae.key?), and the data fallback (@row[name]).
-   collection_scoped?, required_parameter_count, and raise_unless_namo_context are gone
-   (now Formulae's). expected_argument_counts sources the count from
-   @formulae.required_parameter_count and the fixed-vs-variadic check from
-   @formulae[name].arity.
-3. + test/Namo/Formulae_test.rb: + #derive tests (row-only to value, collection-scoped with
-   namo context, missing-namo-context raise, parameterised with arguments) and +
-   #required_parameter_count tests (row-only, collection-scoped, parameterised, variadic).
-   The #[] and #[]= blocks are unchanged — [] still returns the callable.
-4. ~ test/Namo/Row_test.rb: the formulae fixture is a Namo::Formulae, not a bare {} — Row
-   now delegates formula resolution to its collaborator (call, required_parameter_count),
-   which production always wraps (lib/namo.rb initialize). The data-only equality/match
-   tests keep their {} literals: they never resolve a formula, so Hash#key? alone answers.
+1. ~ lib/Namo/Formulae.rb: + derive(name, row, namo, *arguments), the formula resolver — invocation mechanics lifted whole from Row's formula branch (collection-scoped formulae are called (row, namo, *arguments), row-only formulae (row)). + required_parameter_count(name), public, a property of the stored callable. collection_scoped? and raise_unless_namo_context move in as private; the latter takes namo as a parameter rather than closing over Row's @namo. [] and []= are untouched — [] still returns the stored callable.
+2. ~ lib/Namo/Row.rb: #[] delegates formula resolution to @formulae.derive(name, self, @namo, *arguments); Row keeps only the fail-fast argument guard, the formula-vs-data dispatch (@formulae.key?), and the data fallback (@row[name]). collection_scoped?, required_parameter_count, and raise_unless_namo_context are gone (now Formulae's). expected_argument_counts sources the count from @formulae.required_parameter_count and the fixed-vs-variadic check from @formulae[name].arity.
+3. + test/Namo/Formulae_test.rb: + #derive tests (row-only to value, collection-scoped with namo context, missing-namo-context raise, parameterised with arguments) and + #required_parameter_count tests (row-only, collection-scoped, parameterised, variadic). The #[] and #[]= blocks are unchanged — [] still returns the callable.
+4. ~ test/Namo/Row_test.rb: the formulae fixture is a Namo::Formulae, not a bare {} — Row now delegates formula resolution to its collaborator (call, required_parameter_count), which production always wraps (lib/namo.rb initialize). The data-only equality/match tests keep their {} literals: they never resolve a formula, so Hash#key? alone answers.
 5. ~ Namo::VERSION: /0.21.0/0.22.0/
 
-20260625
+## 20260625
+
 0.21.0: + Namo::Formulae; @formulae: /Hash/Namo::Formulae/. Behaviour-preserving: no new capability, just an object for the formula collection to accrete behaviour onto later, mirroring the 0.1.0 extraction of Row.
 
-1. + lib/Namo/Formulae.rb: + Namo::Formulae, a thin class wrapping a Hash @store.
-   Responds to exactly the subset of Hash that lib/namo.rb and Row send the formula
-   collection: [], []=, keys, key?, empty?, each, delete, merge, reject, dup; includes
-   Enumerable (each yields [name, callable] pairs, giving map/select/etc. for free).
-   Three deliberate choices: to_h returns a copy (@store.dup) so callers cannot mutate
-   internals; ==/eql?/hash are names-only (keys.sort), matching Namo's own formula
-   equality where two sets with the same names but different proc objects are equivalent;
-   merge/reject/dup return a Formulae, not a Hash.
-2. ~ lib/namo.rb: + the require; initialize now normalises the incoming formulae to a
-   Formulae (Formulae.new(formulae) unless already one). This is the single behavioural
-   seam — every existing internal construction passes a Hash and is wrapped, while
-   operator results that now pass a Formulae (merge/dup return Formulae) pass through.
-   No other call site changed: each sends a message Formulae answers.
-3. ~ test/namo_test.rb: the two assertions comparing the public #formulae accessor to a
-   literal {} now assert emptiness (must_be_empty). The accessor returns a Formulae, not a
-   Hash; the formula set being empty is the unchanged behaviour these tests pin. + two
-   construction tests pinning the normalisation seam: a Hash given by keyword is wrapped in
-   a Formulae, and a Formulae given by keyword passes through unchanged (same object).
-4. + test/Namo/Formulae_test.rb: + unit test pinning the three deliberate choices (to_h
-   copy, names-only ==/eql?/hash, the Hash-compatible surface plus Enumerable map/select).
+1. + lib/Namo/Formulae.rb: + Namo::Formulae, a thin class wrapping a Hash @store. Responds to exactly the subset of Hash that lib/namo.rb and Row send the formula collection: [], []=, keys, key?, empty?, each, delete, merge, reject, dup; includes Enumerable (each yields [name, callable] pairs, giving map/select/etc. for free). Three deliberate choices: to_h returns a copy (@store.dup) so callers cannot mutate internals; ==/eql?/hash are names-only (keys.sort), matching Namo's own formula equality where two sets with the same names but different proc objects are equivalent; merge/reject/dup return a Formulae, not a Hash.
+2. ~ lib/namo.rb: + the require; initialize now normalises the incoming formulae to a Formulae (Formulae.new(formulae) unless already one). This is the single behavioural seam — every existing internal construction passes a Hash and is wrapped, while operator results that now pass a Formulae (merge/dup return Formulae) pass through. No other call site changed: each sends a message Formulae answers.
+3. ~ test/namo_test.rb: the two assertions comparing the public #formulae accessor to a literal {} now assert emptiness (must_be_empty). The accessor returns a Formulae, not a Hash; the formula set being empty is the unchanged behaviour these tests pin. + two construction tests pinning the normalisation seam: a Hash given by keyword is wrapped in a Formulae, and a Formulae given by keyword passes through unchanged (same object).
+4. + test/Namo/Formulae_test.rb: + unit test pinning the three deliberate choices (to_h copy, names-only ==/eql?/hash, the Hash-compatible surface plus Enumerable map/select).
 5. ~ Namo::VERSION: /0.20.0/0.21.0/
 
-20260615
+## 20260615
+
 0.20.0: + group_by(dimension) — splits a Namo into a Namo::Collection, one member per distinct value, completing the Enumerable coherence pass begun at 0.11.0.
 
-1. ~ lib/Namo/Enumerable.rb: + Namo#group_by(dimension). Returns a Namo::Collection
-   whose members are the groups — one member per distinct value, each a Namo of the
-   matching rows, named by its group value, carrying the surviving formulae, preserving
-   subclass type via self.class.new. The grouping dimension is retained (the split is
-   along the axis, not consuming it), so namo.group_by(d).as_detail(d) inverts it. A
-   nil-valued group produces a nil-named member that holds its rows and round-trips, the
-   use-site naming decision (0.18.0) paying off. A ternary makes the materialise
-   decision: when dimension is derived, the group source is the projection
-   (self[*data_dimensions, dimension], 0.16.0) so the grouped-by formula becomes a stored
-   column and is dropped while every other formula carries through live; when data, the
-   source is self untouched. A parameterised formula raises the 0.17.0 ArgumentError at
-   the materialisation site, group_by needing no enforcement of its own.
-2. ~ test/namo_test.rb: + "#group_by" describe — return type, one-member-per-value,
-   row partitioning, grouping-dimension retention, find-by-name, formula carry-through,
-   subclass preservation, non-mutation, empty-Namo; the uniform inversion law
-   (data: exact; formula: against the materialised form); grouping by a formula
-   (partition by value, materialise-and-drop, only-grouped-formula-altered with a live
-   dependent, parameterised raise); the nil-valued grouping dimension (nil-named member,
-   no rows dropped, round-trip); and consistency with assembly (summary/detail on a
-   partitioned Collection).
-3. ~ README.md: + group_by subsection under Collections — the partition constructor as
-   the mirror of <<, the round-trip example, the materialise-on-formula behaviour, and
-   the cross-reference to the assembly side.
-4. ~ ROADMAP.md: Promote 0.20.0 to shipped; Current state -> 0.20.0; + the materialisation
-   rationale (unified-treatment requires it; materialise-and-drop is the only invertible
-   choice; the uniform inversion law); Summary folds in group_by; next phase -> 1.0.0.
-5. ~ COMPARISON.md: Aggregation entry — group_by repointed from planned (0.20.0) to
-   shipped, the partition constructor now realised; + the grouping-by-formula comparison
-   (computed-key grouping is parity, but only Namo partitions on a named, attached formula
-   through the data-dimension interface). Date bumped.
+1. ~ lib/Namo/Enumerable.rb: + Namo#group_by(dimension). Returns a Namo::Collection whose members are the groups — one member per distinct value, each a Namo of the matching rows, named by its group value, carrying the surviving formulae, preserving subclass type via self.class.new. The grouping dimension is retained (the split is along the axis, not consuming it), so namo.group_by(d).as_detail(d) inverts it. A nil-valued group produces a nil-named member that holds its rows and round-trips, the use-site naming decision (0.18.0) paying off. A ternary makes the materialise decision: when dimension is derived, the group source is the projection (self[*data_dimensions, dimension], 0.16.0) so the grouped-by formula becomes a stored column and is dropped while every other formula carries through live; when data, the source is self untouched. A parameterised formula raises the 0.17.0 ArgumentError at the materialisation site, group_by needing no enforcement of its own.
+2. ~ test/namo_test.rb: + "#group_by" describe — return type, one-member-per-value, row partitioning, grouping-dimension retention, find-by-name, formula carry-through, subclass preservation, non-mutation, empty-Namo; the uniform inversion law (data: exact; formula: against the materialised form); grouping by a formula (partition by value, materialise-and-drop, only-grouped-formula-altered with a live dependent, parameterised raise); the nil-valued grouping dimension (nil-named member, no rows dropped, round-trip); and consistency with assembly (summary/detail on a partitioned Collection).
+3. ~ README.md: + group_by subsection under Collections — the partition constructor as the mirror of <<, the round-trip example, the materialise-on-formula behaviour, and the cross-reference to the assembly side.
+4. ~ ROADMAP.md: Promote 0.20.0 to shipped; Current state -> 0.20.0; + the materialisation rationale (unified-treatment requires it; materialise-and-drop is the only invertible choice; the uniform inversion law); Summary folds in group_by; next phase -> 1.0.0.
+5. ~ COMPARISON.md: Aggregation entry — group_by repointed from planned (0.20.0) to shipped, the partition constructor now realised; + the grouping-by-formula comparison (computed-key grouping is parity, but only Namo partitions on a named, attached formula through the data-dimension interface). Date bumped.
 6. ~ Namo::VERSION: /0.19.0/0.20.0/
 
-20260614
+## 20260614
+
 0.19.0: ~ row-multiset equality — replace the sorted canonical form with a row multiset, so ==, eql?, hash, and the subset operators compare without sorting: nil/NaN-safe, row- and dimension-order blind, and consistently type-strict.
 
-1. ~ lib/namo.rb: replace canonical_data (which sorted @data by row.values_at(*data_dimensions.sort))
-   with row_multiset (@data.tally). ==, eql?, hash, and subset_of_rows? now compare row
-   multisets keyed by Hash#hash/#eql?. The sort was only ever a mechanism for reaching the
-   already-decided multiset semantics (0.6.0); a multiset reaches them directly and needs no
-   ordering, so the latent ArgumentError when a dimension mixed nil (or NaN) with present
-   values — neither has a <=> against the other — is gone. The relation is now uniformly
-   eql?-based, so == agrees with the subset operators, which already tallied: {a: 1} and
-   {a: 1.0} are consistently distinct (== previously called them equal via Hash#==, while <=
-   called them distinct).
-2. ~ test/namo_test.rb: + four "#==" cases — equality across row order and across dimension
-   (key) order when a dimension mixes nil and non-nil values; inequality when such rows
-   differ; and type-strictness on values, consistent with <=.
+1. ~ lib/namo.rb: replace canonical_data (which sorted @data by row.values_at(*data_dimensions.sort)) with row_multiset (@data.tally). ==, eql?, hash, and subset_of_rows? now compare row multisets keyed by Hash#hash/#eql?. The sort was only ever a mechanism for reaching the already-decided multiset semantics (0.6.0); a multiset reaches them directly and needs no ordering, so the latent ArgumentError when a dimension mixed nil (or NaN) with present values — neither has a <=> against the other — is gone. The relation is now uniformly eql?-based, so == agrees with the subset operators, which already tallied: {a: 1} and {a: 1.0} are consistently distinct (== previously called them equal via Hash#==, while <= called them distinct).
+2. ~ test/namo_test.rb: + four "#==" cases — equality across row order and across dimension (key) order when a dimension mixes nil and non-nil values; inequality when such rows differ; and type-strictness on values, consistent with <=.
 3. ~ Namo::VERSION: /0.18.0/0.19.0/
 
-20260613
+## 20260613
+
 0.18.0: + Namo::Collection — hierarchical aggregate of named Namos with summary/detail views.
 
-1. + lib/Namo/Collection.rb: Namo::Collection < Namo, the first family member beyond Namo
-   itself. Holds @members (an Array of named Namos, attr_reader :members) whose substance is
-   the collection; the inherited @data is a derived view rebuilt from the members. << accepts a
-   member or an array (via flatten), replaces by name (last-write-wins, unless member.name.nil?
-   so nil-named members always append), rebuilds @data = detail.data, and returns self. find(name)
-   returns the named member or nil (find(nil) is nil, and an unnamed member never matches),
-   shadowing Enumerable#find on Collections. summary(dimension, by: :member, reducer: :sum)
-   reduces each member to a {by => member.name, dimension => reduced} row; detail(by: :member)
-   unions the members' rows under the inject-iff-absent conditional
-   (row.key?(by) ? row : row.merge(by => member.name)); both return a fresh Namo (non-mutating).
-   as_summary(...) and as_detail(by = :member) set @data to the chosen view and return self
-   (mutating); the view persists until the next << re-materialises detail. Private initialize
-   sets @members = [] before super.
+1. + lib/Namo/Collection.rb: Namo::Collection < Namo, the first family member beyond Namo itself. Holds @members (an Array of named Namos, attr_reader :members) whose substance is the collection; the inherited @data is a derived view rebuilt from the members. << accepts a member or an array (via flatten), replaces by name (last-write-wins, unless member.name.nil? so nil-named members always append), rebuilds @data = detail.data, and returns self. find(name) returns the named member or nil (find(nil) is nil, and an unnamed member never matches), shadowing Enumerable#find on Collections. summary(dimension, by: :member, reducer: :sum) reduces each member to a {by => member.name, dimension => reduced} row; detail(by: :member) unions the members' rows under the inject-iff-absent conditional (row.key?(by) ? row : row.merge(by => member.name)); both return a fresh Namo (non-mutating). as_summary(...) and as_detail(by = :member) set @data to the chosen view and return self (mutating); the view persists until the next << re-materialises detail. Private initialize sets @members = [] before super.
 2. ~ lib/namo.rb: + require_relative './Namo/Collection'.
-3. + test/Namo/Collection_test.rb: empty members; lazy detail materialisation and selection;
-   pure-live reflection of <<; <<' add/replace-by-name/array/unnamed/returns-self; find by name,
-   absent, nil, and unnamed; summary's labelled rows, custom by:, :mean reducer (local Array#mean),
-   and non-mutation; detail's plain-Namo return, inject-iff-absent both ways, and non-mutation;
-   live recomputation after <<; as_summary/as_detail mutate and return self and surface the
-   summary's columns in dimensions; as_* view persistence until the next <<; assembly round-trip
-   (as_detail(:assembly) injects and is retained, removed only by contraction); subclass default
-   by: via a Car < Namo::Collection overriding summary/detail.
-4. ~ README.md: + Collections section after Named Namos — the GT-budget example (Car/SubAssembly,
-   <<, summary, detail), lazy detail materialisation, the four view methods and the
-   non-mutating/mutating split, the inject-iff-absent rule, << replace-by-name with use-site
-   handling of unnamed members, the rebuild-on-<< view lifetime, and forward-notes to group_by
-   (0.19.0) and freeze-gated memoisation (2.x).
-5. ~ ROADMAP.md: Promote 0.18.0 to shipped, recording the resolved materialisation model
-   (rebuild-on-<<, as_* persists until the next <<, diverging from the drafted pure-live-per-access
-   / transient wording) and the find/Enumerable#find shadowing; Current state -> 0.18.0; Summary
-   folds in Namo::Collection; next phase -> group_by (0.19.0). The upcoming 0.18.0 design block
-   folded into the shipped entry.
-6. ~ COMPARISON.md: Aggregation entry repointed — Namo::Collection shipped (0.18.0), group_by
-   constructor still planned (0.19.0); persistent-named-collection retained as Namo's novelty
-   versus the other tools' transient group-by intermediates.
+3. + test/Namo/Collection_test.rb: empty members; lazy detail materialisation and selection; pure-live reflection of <<; <<' add/replace-by-name/array/unnamed/returns-self; find by name, absent, nil, and unnamed; summary's labelled rows, custom by:, :mean reducer (local Array#mean), and non-mutation; detail's plain-Namo return, inject-iff-absent both ways, and non-mutation; live recomputation after <<; as_summary/as_detail mutate and return self and surface the summary's columns in dimensions; as_* view persistence until the next <<; assembly round-trip (as_detail(:assembly) injects and is retained, removed only by contraction); subclass default by: via a Car < Namo::Collection overriding summary/detail.
+4. ~ README.md: + Collections section after Named Namos — the GT-budget example (Car/SubAssembly, <<, summary, detail), lazy detail materialisation, the four view methods and the non-mutating/mutating split, the inject-iff-absent rule, << replace-by-name with use-site handling of unnamed members, the rebuild-on-<< view lifetime, and forward-notes to group_by (0.19.0) and freeze-gated memoisation (2.x).
+5. ~ ROADMAP.md: Promote 0.18.0 to shipped, recording the resolved materialisation model (rebuild-on-<<, as_* persists until the next <<, diverging from the drafted pure-live-per-access / transient wording) and the find/Enumerable#find shadowing; Current state -> 0.18.0; Summary folds in Namo::Collection; next phase -> group_by (0.19.0). The upcoming 0.18.0 design block folded into the shipped entry.
+6. ~ COMPARISON.md: Aggregation entry repointed — Namo::Collection shipped (0.18.0), group_by constructor still planned (0.19.0); persistent-named-collection retained as Namo's novelty versus the other tools' transient group-by intermediates.
 7. ~ Namo::VERSION: /0.17.0/0.18.0/
 
-20260613
+## 20260613
+
 0.17.0: + parameterised formulae — formulae with required parameters beyond (row, namo) receive arguments at access time through Row#[].
 
-1. ~ lib/Namo/Row.rb: Row#[] gains a trailing splat and forwards call-site arguments. Dispatch
-   generalises from exact arity 2 to required-parameter count via the new private
-   collection_scoped? and required_parameter_count — one required parameter or none stays
-   row-scoped, two or more call formula.call(self, @namo, *arguments). Settles the 0.15.0
-   negative-arity deferral: |row, *rest| and ->(row, namo = nil){} stay row-scoped;
-   |row, namo, *fields| is collection-scoped with optional arguments.
-2. ~ lib/Namo/Row.rb: + argument-count enforcement — the new private expected_argument_counts
-   and raise_unless_expected_arguments raise ArgumentError ("wrong number of arguments for
-   :sma (given 0, expected 2)") on the wrong count for any dimension: too few or too many for
-   a fixed-arity formula, fewer than required for a splatted one, any at all for a data
-   dimension, a row-scoped formula, or a two-arity formula. Checked before the Namo-context
-   guard, whose message generalises from "two-arity formula" to "collection-scoped formula".
-3. ~ lib/namo.rb: the no-arg values (and so coordinates and to_h) materialise via the new
-   private materialisable_dimensions, omitting formulae that require arguments (private
-   requires_arguments? and required_parameter_count); explicit asks — values(:dim),
-   coordinates(:dim), naming the dimension in a projection, selecting on it — raise through
-   Row#[]. dimensions and derived_dimensions still list the name; the empty-Namo case returns
-   [] without invoking the formula.
-4. ~ test/Namo/Row_test.rb: + "#[] parameterised formulae" describe — arity 3 and 4 receive
-   (row, namo, args...), trailing-splat forwarding (arity -3 and -4), one-required-parameter
-   procs stay row-scoped, a row-scoped formula calling a parameterised one with arguments,
-   missing-Namo-context raise; + "#[] argument-count enforcement" describe — the message
-   matrix for too few, too many, splat minimum, and arguments handed to data dimensions,
-   row-scoped, two-arity, and missing dimensions.
-5. ~ test/namo_test.rb: + "#[]= parameterised formulae" describe — resolution with arguments
-   through yielded Rows, one definition serving different fields and periods, Enumerable
-   predicates, a one-arity formula referencing a parameterised one, dimension listing, bulk
-   views omitting, explicit values/coordinates/projection/selection raises, carry through
-   contraction, selection (windowing over the filtered rows), and set operators, the
-   one-arity wrapper materialisation idiom, namo-plus-splat formulae materialising in the
-   bulk views, and the empty-Namo case.
-6. ~ README.md: + Parameterised formulae subsection under Formulae — access-time arguments,
-   the required-parameter scope rule, argument-count enforcement, materialisation behaviour,
-   and the wrapper idiom.
-7. ~ ROADMAP.md: Promote 0.17.0 to shipped with the dispatch-rule, enforcement, and
-   materialisation rationale; Current state -> 0.17.0; Summary folds in parameterised
-   formulae; next phase -> Namo::Collection (0.18.0). Date bumped.
-8. ~ COMPARISON.md: Parameterised formulae -> shipped (0.17.0), the entry noting access-time
-   arguments and argument-count enforcement. Date bumped.
-9. ~ EXAMPLES.md: The finance section's composition blocks (all three Namo stages) corrected
-   from max_by, which returns a Row, to sort_by + last(1), which returns the Namo the 0.14.0
-   block contract requires — the 1.x stage, parameterised sma included, now runs end to end
-   against this release. The finance highlight notes the parameterised formula as shipped
-   (0.17.0). Date bumped.
+1. ~ lib/Namo/Row.rb: Row#[] gains a trailing splat and forwards call-site arguments. Dispatch generalises from exact arity 2 to required-parameter count via the new private collection_scoped? and required_parameter_count — one required parameter or none stays row-scoped, two or more call formula.call(self, @namo, *arguments). Settles the 0.15.0 negative-arity deferral: |row, *rest| and ->(row, namo = nil){} stay row-scoped; |row, namo, *fields| is collection-scoped with optional arguments.
+2. ~ lib/Namo/Row.rb: + argument-count enforcement — the new private expected_argument_counts and raise_unless_expected_arguments raise ArgumentError ("wrong number of arguments for :sma (given 0, expected 2)") on the wrong count for any dimension: too few or too many for a fixed-arity formula, fewer than required for a splatted one, any at all for a data dimension, a row-scoped formula, or a two-arity formula. Checked before the Namo-context guard, whose message generalises from "two-arity formula" to "collection-scoped formula".
+3. ~ lib/namo.rb: the no-arg values (and so coordinates and to_h) materialise via the new private materialisable_dimensions, omitting formulae that require arguments (private requires_arguments? and required_parameter_count); explicit asks — values(:dim), coordinates(:dim), naming the dimension in a projection, selecting on it — raise through Row#[]. dimensions and derived_dimensions still list the name; the empty-Namo case returns [] without invoking the formula.
+4. ~ test/Namo/Row_test.rb: + "#[] parameterised formulae" describe — arity 3 and 4 receive (row, namo, args...), trailing-splat forwarding (arity -3 and -4), one-required-parameter procs stay row-scoped, a row-scoped formula calling a parameterised one with arguments, missing-Namo-context raise; + "#[] argument-count enforcement" describe — the message matrix for too few, too many, splat minimum, and arguments handed to data dimensions, row-scoped, two-arity, and missing dimensions.
+5. ~ test/namo_test.rb: + "#[]= parameterised formulae" describe — resolution with arguments through yielded Rows, one definition serving different fields and periods, Enumerable predicates, a one-arity formula referencing a parameterised one, dimension listing, bulk views omitting, explicit values/coordinates/projection/selection raises, carry through contraction, selection (windowing over the filtered rows), and set operators, the one-arity wrapper materialisation idiom, namo-plus-splat formulae materialising in the bulk views, and the empty-Namo case.
+6. ~ README.md: + Parameterised formulae subsection under Formulae — access-time arguments, the required-parameter scope rule, argument-count enforcement, materialisation behaviour, and the wrapper idiom.
+7. ~ ROADMAP.md: Promote 0.17.0 to shipped with the dispatch-rule, enforcement, and materialisation rationale; Current state -> 0.17.0; Summary folds in parameterised formulae; next phase -> Namo::Collection (0.18.0). Date bumped.
+8. ~ COMPARISON.md: Parameterised formulae -> shipped (0.17.0), the entry noting access-time arguments and argument-count enforcement. Date bumped.
+9. ~ EXAMPLES.md: The finance section's composition blocks (all three Namo stages) corrected from max_by, which returns a Row, to sort_by + last(1), which returns the Namo the 0.14.0 block contract requires — the 1.x stage, parameterised sma included, now runs end to end against this release. The finance highlight notes the parameterised formula as shipped (0.17.0). Date bumped.
 10. ~ Namo::VERSION: /0.16.0/0.17.0/
 
-20260612
+## 20260612
+
 0.16.0: ~ data/formula exclusivity — projection drops the formulae it materialises; * and ** raise on a data/formula name collision.
 
-1. ~ lib/namo.rb: Namo#[]'s positive-projection branch carries @formulae minus the projected
-   derived names — naming a derived dimension materialises it (stored values, computed against
-   the yielding Namo, windowed over any same-call selection) and drops the formula; omitted
-   formulae carry live and recompute from the result's own rows. Contraction and selection-only
-   calls are unchanged. The projection list is the materialise/live selector.
-2. ~ lib/namo.rb: Namo#* and Namo#** raise ArgumentError via the new private
-   raise_unless_data_formula_exclusivity when one operand's data dimension is the other's
-   derived dimension, block and no-block forms alike. Formula-vs-formula stays left-wins; the
-   set operators need no guard (matching-data-dimensions blocks the asymmetric case); the
-   constructor stays unguarded.
-3. ~ test/namo_test.rb: + "data/formula exclusivity" describe — access-path agreement on a
-   materialised dimension, dimension-listing, dependent-formula carry, omitted-formula
-   liveness, live-without-inputs caveat, two-arity windowing at materialisation,
-   contraction/selection unchanged, subclass type, composition collision raises (both
-   directions, both operators, block forms), left-wins formula merge, contraction-first
-   resolution.
-4. ~ test/namo_test.rb: + "range selection" context under #[] — basic range, beginless and
-   endless forms, range composed with projection, range on a formula-defined dimension
-   (Row_test holds the predicate matrix; these pin the Namo-level wiring).
-5. ~ README.md: + Projection of derived dimensions subsection under Formulae (naming
-   materialises, omitting carries live); data/formula collision sentences under Composition
-   and Cartesian product.
-6. ~ ROADMAP.md: Promote 0.16.0 to shipped; Current state -> 0.16.0; Summary folds in
-   exclusivity; next phase -> 0.17.0. window.length -> window.count and n.length -> n.count
-   in the remaining future-release examples (0.17.0, 2.x, 4.x) — Namo has no #length,
-   extending the 0.15.0 correction.
-7. ~ COMPARISON.md: Repoint the pre-renumbering planned markers to what shipped — proc-based,
-   regex-based, and mixed selection -> shipped (0.8.0); Enumerable methods return Namos ->
-   shipped (0.11.0), with the entry summary's parity sentence and the Sorting entry's
-   "as of 0.14.0" corrected to 0.11.0; values and to_h -> shipped (0.7.0). Aspect classes ->
-   not planned, the entry rewritten to record 0.7.0's plain-return-types decision (Namo#===
-   and subclassing cover case dispatch; a Matcher factory can serve a finer split later).
-   Aggregation repointed from 2.x to group_by returning a Namo::Collection at 0.19.0 (gated
-   on Collection at 0.18.0), with summary/members examples; bare names stay 2.x. Parameterised
-   formulae stays planned (0.17.0), its example's window.length -> window.count.
-8. ~ EXAMPLES.md: + Epidemiology / public health section — a cross-row (two-arity) rolling
-   weekly average in the four-stage format (Polars, then Namo 1.x/2.x/3.x), with the
-   (row, namo) window over the yielding Namo and a one-arity formula referencing the
-   two-arity one. window.length -> window.count in the finance 1.x and 2.x stages. Date
-   bumped to 20260612.
+1. ~ lib/namo.rb: Namo#[]'s positive-projection branch carries @formulae minus the projected derived names — naming a derived dimension materialises it (stored values, computed against the yielding Namo, windowed over any same-call selection) and drops the formula; omitted formulae carry live and recompute from the result's own rows. Contraction and selection-only calls are unchanged. The projection list is the materialise/live selector.
+2. ~ lib/namo.rb: Namo#* and Namo#** raise ArgumentError via the new private raise_unless_data_formula_exclusivity when one operand's data dimension is the other's derived dimension, block and no-block forms alike. Formula-vs-formula stays left-wins; the set operators need no guard (matching-data-dimensions blocks the asymmetric case); the constructor stays unguarded.
+3. ~ test/namo_test.rb: + "data/formula exclusivity" describe — access-path agreement on a materialised dimension, dimension-listing, dependent-formula carry, omitted-formula liveness, live-without-inputs caveat, two-arity windowing at materialisation, contraction/selection unchanged, subclass type, composition collision raises (both directions, both operators, block forms), left-wins formula merge, contraction-first resolution.
+4. ~ test/namo_test.rb: + "range selection" context under #[] — basic range, beginless and endless forms, range composed with projection, range on a formula-defined dimension (Row_test holds the predicate matrix; these pin the Namo-level wiring).
+5. ~ README.md: + Projection of derived dimensions subsection under Formulae (naming materialises, omitting carries live); data/formula collision sentences under Composition and Cartesian product.
+6. ~ ROADMAP.md: Promote 0.16.0 to shipped; Current state -> 0.16.0; Summary folds in exclusivity; next phase -> 0.17.0. window.length -> window.count and n.length -> n.count in the remaining future-release examples (0.17.0, 2.x, 4.x) — Namo has no #length, extending the 0.15.0 correction.
+7. ~ COMPARISON.md: Repoint the pre-renumbering planned markers to what shipped — proc-based, regex-based, and mixed selection -> shipped (0.8.0); Enumerable methods return Namos -> shipped (0.11.0), with the entry summary's parity sentence and the Sorting entry's "as of 0.14.0" corrected to 0.11.0; values and to_h -> shipped (0.7.0). Aspect classes -> not planned, the entry rewritten to record 0.7.0's plain-return-types decision (Namo#=== and subclassing cover case dispatch; a Matcher factory can serve a finer split later). Aggregation repointed from 2.x to group_by returning a Namo::Collection at 0.19.0 (gated on Collection at 0.18.0), with summary/members examples; bare names stay 2.x. Parameterised formulae stays planned (0.17.0), its example's window.length -> window.count.
+8. ~ EXAMPLES.md: + Epidemiology / public health section — a cross-row (two-arity) rolling weekly average in the four-stage format (Polars, then Namo 1.x/2.x/3.x), with the (row, namo) window over the yielding Namo and a one-arity formula referencing the two-arity one. window.length -> window.count in the finance 1.x and 2.x stages. Date bumped to 20260612.
 9. ~ Namo::VERSION: /0.15.0/0.16.0/
 
-20260612
+## 20260612
+
 0.15.0: + two-arity formulae — procs with arity 2 receive (row, namo) for cross-row computation.
 
-1. ~ lib/Namo/Row.rb: Row's constructor gains an optional third parameter, namo (default nil),
-   stored in @namo — the Namo that yielded the Row; the two-argument form keeps working.
-   Row#[] dispatches on formula arity: exactly 2 calls formula.call(self, @namo), raising
-   ArgumentError via the new private raise_unless_namo_context when @namo is nil; every
-   other arity (0, 1, negative) keeps the existing formula.call(self) unchanged.
-2. ~ lib/Namo/Enumerable.rb: every Row construction (each, select and its aliases, reject,
-   sort_by, first, last, take_while, drop_while, uniq's block form, partition) passes self
-   as the Row's namo, so two-arity formulae resolve during enumeration and predicate
-   evaluation, with the yielding Namo as the window.
-3. ~ lib/namo.rb: values_for's derived branch and the * and ** block paths pass self as the
-   Row's namo — values/coordinates/to_h resolve two-arity dimensions, and composition-block
-   rows can resolve self's two-arity formulae (extension of the 0.14.0 block contract; the
-   (Row, Namo) -> Namo contract and result-formulae rule are unchanged).
-4. ~ test/Namo/Row_test.rb: + constructor third-argument and backward-compatibility tests,
-   arity-dispatch tests (1, 2, 0, negative), the nil-namo ArgumentError, and match? on a
-   two-arity derived dimension.
-5. ~ test/namo_test.rb: + "#[]= two-arity formulae" describe — SMA cross-row resolution via
-   values/coordinates/to_h, selection and subset-predicate resolution, first/last Rows,
-   yielding-Namo (filtered-window) semantics, liveness, operator carry-through, composition-
-   block resolution, mixed-arity chains, and the empty-Namo case.
-6. ~ README.md: + Cross-row formulae subsection under Formulae, with the SMA example, the
-   yielding-Namo semantic, and the no-context error.
-7. ~ ROADMAP.md: Promote 0.15.0 to shipped; Current state -> 0.15.0; Summary folds in
-   two-arity formulae; the example's window.length corrected to window.count (Namo has
-   no length); "Live computation objects" phrasing updated. + upcoming 0.16.0 section,
-   Data/formula exclusivity — projection drops the formulae it materialises, * and **
-   raise on a data/formula name collision — with parameterised formulae renumbered to
-   0.17.0, Namo::Collection to 0.18.0, and group_by to 0.19.0; next phase -> 0.16.0.
-8. ~ COMPARISON.md: Two-arity formulae -> shipped (0.15.0) with the same window.count
-   correction; Parameterised formulae repointed to planned (0.17.0). Date bumped.
+1. ~ lib/Namo/Row.rb: Row's constructor gains an optional third parameter, namo (default nil), stored in @namo — the Namo that yielded the Row; the two-argument form keeps working. Row#[] dispatches on formula arity: exactly 2 calls formula.call(self, @namo), raising ArgumentError via the new private raise_unless_namo_context when @namo is nil; every other arity (0, 1, negative) keeps the existing formula.call(self) unchanged.
+2. ~ lib/Namo/Enumerable.rb: every Row construction (each, select and its aliases, reject, sort_by, first, last, take_while, drop_while, uniq's block form, partition) passes self as the Row's namo, so two-arity formulae resolve during enumeration and predicate evaluation, with the yielding Namo as the window.
+3. ~ lib/namo.rb: values_for's derived branch and the * and ** block paths pass self as the Row's namo — values/coordinates/to_h resolve two-arity dimensions, and composition-block rows can resolve self's two-arity formulae (extension of the 0.14.0 block contract; the (Row, Namo) -> Namo contract and result-formulae rule are unchanged).
+4. ~ test/Namo/Row_test.rb: + constructor third-argument and backward-compatibility tests, arity-dispatch tests (1, 2, 0, negative), the nil-namo ArgumentError, and match? on a two-arity derived dimension.
+5. ~ test/namo_test.rb: + "#[]= two-arity formulae" describe — SMA cross-row resolution via values/coordinates/to_h, selection and subset-predicate resolution, first/last Rows, yielding-Namo (filtered-window) semantics, liveness, operator carry-through, composition- block resolution, mixed-arity chains, and the empty-Namo case.
+6. ~ README.md: + Cross-row formulae subsection under Formulae, with the SMA example, the yielding-Namo semantic, and the no-context error.
+7. ~ ROADMAP.md: Promote 0.15.0 to shipped; Current state -> 0.15.0; Summary folds in two-arity formulae; the example's window.length corrected to window.count (Namo has no length); "Live computation objects" phrasing updated. + upcoming 0.16.0 section, Data/formula exclusivity — projection drops the formulae it materialises, * and ** raise on a data/formula name collision — with parameterised formulae renumbered to 0.17.0, Namo::Collection to 0.18.0, and group_by to 0.19.0; next phase -> 0.16.0.
+8. ~ COMPARISON.md: Two-arity formulae -> shipped (0.15.0) with the same window.count correction; Parameterised formulae repointed to planned (0.17.0). Date bumped.
 9. ~ Namo::VERSION: /0.14.0/0.15.0/
 
-20260608
+## 20260608
+
 0.14.0: + blocks on the composition operators (*, **) for custom match refinement.
 
-1. ~ lib/namo.rb: Namo#* takes an optional block. Without a block, behaviour is unchanged.
-   With a block, the right rows matched on the shared data dimensions are passed as a Namo
-   (candidates, carrying other's formulae) alongside the left Row (carrying self's
-   formulae); the block returns a Namo of the rows to pair, each merged into the left row.
-   An empty returned Namo drops the left row (inner-join semantics). Result formulae are
-   other.formulae.merge(@formulae) as before — the block does not affect result formulae.
-   The shared-dimension precondition still applies with a block present.
-2. ~ lib/namo.rb: Namo#** takes an optional block, same contract, with candidates being all
-   of other's rows (no shared-dimension pre-filter). The disjoint-dimensions precondition
-   still applies with a block present.
-3. ~ test/namo_test.rb: + "with a block" context under #* (single-match one-row return, empty-return
-   drop, multi-row return, selection on other's derived dimension, reference to self's
-   derived dimension, result-formulae parity with no-block, derived-not-stored-but-resolves,
-   subclass type, preconditions still raise) and under #** (selector filtering one-to-many,
-   empty-return drop, full-candidates reproduces no-block, selection on other's derived
-   dimension, result-formulae parity, disjoint precondition still raises, subclass type).
-   Existing no-block #* and #** tests unchanged and green.
-4. ~ README.md: + block subsections under Composition and Cartesian product, with the
-   price/quarterly matching and orders/tiers worked examples and the (row, candidates) ->
-   Namo contract.
-5. ~ ROADMAP.md: Promote 0.14.0 to shipped (composition blocks only); Current state -> 0.14.0;
-   Summary folds in composition blocks; next phase -> 0.15.0. + the governing principle
-   (a block form is warranted iff the operation gives consideration to a dimension in
-   isolation), tied to the orthogonality/efficiency rationale for why set-operator/`/`
-   blocks were not added. The now-redundant upcoming 0.14.0 section removed.
+1. ~ lib/namo.rb: Namo#* takes an optional block. Without a block, behaviour is unchanged. With a block, the right rows matched on the shared data dimensions are passed as a Namo (candidates, carrying other's formulae) alongside the left Row (carrying self's formulae); the block returns a Namo of the rows to pair, each merged into the left row. An empty returned Namo drops the left row (inner-join semantics). Result formulae are other.formulae.merge(@formulae) as before — the block does not affect result formulae. The shared-dimension precondition still applies with a block present.
+2. ~ lib/namo.rb: Namo#** takes an optional block, same contract, with candidates being all of other's rows (no shared-dimension pre-filter). The disjoint-dimensions precondition still applies with a block present.
+3. ~ test/namo_test.rb: + "with a block" context under #* (single-match one-row return, empty-return drop, multi-row return, selection on other's derived dimension, reference to self's derived dimension, result-formulae parity with no-block, derived-not-stored-but-resolves, subclass type, preconditions still raise) and under #** (selector filtering one-to-many, empty-return drop, full-candidates reproduces no-block, selection on other's derived dimension, result-formulae parity, disjoint precondition still raises, subclass type). Existing no-block #* and #** tests unchanged and green.
+4. ~ README.md: + block subsections under Composition and Cartesian product, with the price/quarterly matching and orders/tiers worked examples and the (row, candidates) -> Namo contract.
+5. ~ ROADMAP.md: Promote 0.14.0 to shipped (composition blocks only); Current state -> 0.14.0; Summary folds in composition blocks; next phase -> 0.15.0. + the governing principle (a block form is warranted iff the operation gives consideration to a dimension in isolation), tied to the orthogonality/efficiency rationale for why set-operator/`/` blocks were not added. The now-redundant upcoming 0.14.0 section removed.
 6. ~ COMPARISON.md: "Conditional join with block" -> shipped (0.14.0).
 7. ~ Namo::VERSION: /0.13.2/0.14.0/
 
-20260608
+## 20260608
+
 0.13.2: Narrow the planned 0.14.0 block-form scope to the composition operators and document the rationale.
 
-1. ~ ROADMAP.md: Rewrite the 0.14.0 section from "blocks on comparison, composition, and
-   set operators" to "blocks on composition operators (*, **)". State the governing
-   principle (a block belongs only where the operator's matching is underdetermined).
-   Remove the comparison-operator and set-operator block subsections; note that their use
-   cases are expressed by comparing projections and by projection + proc selection
-   respectively. State explicitly that / takes no block. Replace "The unifying pattern"
-   with the composition-only rationale.
+1. ~ ROADMAP.md: Rewrite the 0.14.0 section from "blocks on comparison, composition, and set operators" to "blocks on composition operators (*, **)". State the governing principle (a block belongs only where the operator's matching is underdetermined). Remove the comparison-operator and set-operator block subsections; note that their use cases are expressed by comparing projections and by projection + proc selection respectively. State explicitly that / takes no block. Replace "The unifying pattern" with the composition-only rationale.
 2. ~ ROADMAP.md: Rescope the Summary's "next phase" pointer to composition-only block forms.
-3. ~ COMPARISON.md: Replace the "Blocks on set operators" subsection (feature no longer
-   planned) with a shipped "Keyed anti-join" entry expressing keyed exclusion via projection
-   + proc selection; repoint the composition "Conditional join with block" entry to planned
-   (0.14.0). Date bumped to 20260608.
+3. ~ COMPARISON.md: Replace the "Blocks on set operators" subsection (feature no longer planned) with a shipped "Keyed anti-join" entry expressing keyed exclusion via projection + proc selection; repoint the composition "Conditional join with block" entry to planned (0.14.0). Date bumped to 20260608.
 4. ~ Namo::VERSION: /0.13.1/0.13.2/
 
-20260604
+## 20260604
+
 0.13.1: Correct the row-order claim across the docs and document the same-dimension-order precondition.
 
-1. ~ README.md: Scope the "row order is ignored" statement to the comparison operators
-   (==, eql?, ===, <, <=, >, >=) in the Equality section; drop "accident of ingestion".
-   + Positive note that row order is preserved through to_h/values, each, first, last,
-   take, drop, and +.
-2. ~ README.md: At Concatenation, state that the set operators require the same dimension
-   names in the same order, with guidance to normalise inputs to a common column order
-   before combining.
-3. ~ ROADMAP.md: Scope the 0.6.0 section's "row order is an accident of ingestion" to the
-   comparison operators; drop "accident of ingestion". Date bumped to 20260604.
+1. ~ README.md: Scope the "row order is ignored" statement to the comparison operators (==, eql?, ===, <, <=, >, >=) in the Equality section; drop "accident of ingestion". + Positive note that row order is preserved through to_h/values, each, first, last, take, drop, and +.
+2. ~ README.md: At Concatenation, state that the set operators require the same dimension names in the same order, with guidance to normalise inputs to a common column order before combining.
+3. ~ ROADMAP.md: Scope the 0.6.0 section's "row order is an accident of ingestion" to the comparison operators; drop "accident of ingestion". Date bumped to 20260604.
 4. ~ Namo::VERSION: /0.13.0/0.13.1/
 
-20260601
+## 20260601
+
 0.13.0: Polymorphic []= — proc registers a formula, scalar broadcasts to every row.
 
 1. ~ lib/namo.rb: Namo#[]= now dispatches on value type. Parameter renamed `proc` -> `value`. A Proc registers a formula and clears any data column of the same name (`@data.each{|row| row.delete(name)} if @data.first&.key?(name)`); anything else broadcasts the value to every row and clears any formula of the same name (`@formulae.delete(name)`). Enforces the exclusive-storage invariant — a name is data or derived, never both — at the assignment site. Existing proc-registration behaviour preserved.
@@ -391,7 +194,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 4. ~ ROADMAP.md: Promote 0.13.0 from upcoming to shipped — `## Current state` bumped to 0.13.0, a `### 0.13.0 (2026-06-01)` entry added in the shipped section, the now-redundant `## 0.13.0` upcoming section removed, polymorphic []= folded into the Summary's completed vocabulary, "next phase" pointed at 0.14.0+.
 5. ~ Namo::VERSION: /0.12.0/0.13.0/
 
-20260601
+## 20260601
+
 0.12.0: Constructor widening — keyword data: and name:.
 
 1. ~ lib/namo.rb: Namo#initialize widened from `(data = [], formulae: {})` to `(positional_data = nil, data: [], formulae: {}, name: nil)`. Data may now be passed positionally or by the `data:` keyword; positional wins when both are given (`@data = positional_data || data`). The positional default changes from `[]` to `nil` so it acts as a "not supplied" sentinel that lets `|| data` fall through to the keyword path; an explicit `Namo.new([])` still yields `@data == []` because the truthy empty array short-circuits. + `name:` keyword, stored in `@name`. Every pre-existing call site (positional data, positional data + keyword formulae, no-arg, formulae-only, and the operators' internal `self.class.new(rows, formulae: ...)`) is unaffected.
@@ -401,7 +205,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 5. ~ ROADMAP.md: Promote 0.12.0 from upcoming to shipped — `## Current state` bumped to 0.12.0, a `### 0.12.0 (2026-06-01)` entry added in the shipped section (written in shipped voice), and the now-redundant `## 0.12.0` upcoming section removed; fold the widened constructor into the Summary's completed vocabulary and point "next phase" at 0.13.0+.
 6. ~ Namo::VERSION: /0.11.1/0.12.0/
 
-20260601
+## 20260601
+
 0.11.1: Extract the subset Enumerable methods into a Namo::Enumerable module.
 
 1. + lib/Namo/Enumerable.rb: New module Namo::Enumerable holding each and the subset-returning Enumerable methods (select plus its filter/find_all aliases, reject, sort_by, first, last, take, drop, take_while, drop_while, uniq, partition), moved verbatim from Namo. The module does `include ::Enumerable` — the leading :: is required, because under the nested `class Namo; module Enumerable` scope a bare `Enumerable` resolves to Namo::Enumerable itself and raises a cyclic-include error.
@@ -410,7 +215,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 4. ~ ROADMAP.md: + note in the 0.11.0 section that, as of 0.11.1, these methods live in the Namo::Enumerable module; bump Date to 20260601.
 5. ~ Namo::VERSION: /0.11.0/0.11.1/
 
-20260531
+## 20260531
+
 0.11.0: ~ Subset Enumerable methods (select, reject, sort_by, first, last, take, drop, take_while, drop_while, uniq, partition) return Namos
 
 1. + Namo#select, Namo#reject, Namo#sort_by, Namo#take_while, Namo#drop_while: Predicate and ordering subset methods that wrap the @data Array result in `self.class.new(..., formulae: @formulae.dup)`, shadowing Enumerable's Array-returning defaults. Blocks receive a Row, so formulae resolve inside the predicate, and formulae carry through to the returned Namo. Namo#select is aliased as filter and find_all (the only overridden method with Enumerable aliases), so the aliases return Namos too.
@@ -423,7 +229,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 8. ~ ROADMAP.md: Promote 0.11.0 from upcoming to shipped under "Current state: 0.11.0"; fold the subset Enumerable methods into the Summary's completed vocabulary and point "next phase" at 0.12.0+; bump Date to 20260531.
 9. ~ Namo::VERSION: /0.10.0/0.11.0/
 
-20260528
+## 20260528
+
 0.10.0: + Row value semantics: ==, eql?, hash
 
 1. + Namo::Row#==: Data equality. Two Rows are equal iff the other is a Row and their `@row` hashes are `==`. Class identity not gated (Row has no subclass hierarchy with included modules); formulae ignored (a formula is a property of the surrounding Namo, not of the row's identity). Mirrors `Namo#==` one level down.
@@ -434,13 +241,15 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 6. ~ ROADMAP.md: Promote 0.10.0 from upcoming to shipped under "Current state: 0.10.0"; revise Summary to point "next phase" at 0.11.0+ and note Row value semantics among the algebra-completing pieces.
 7. ~ Namo::VERSION: /0.9.2/0.10.0/
 
-20260525
+## 20260525
+
 0.9.2: ~ Auto-load Namo::VERSION
 
 1. ~ lib/namo.rb: + `require_relative './Namo/VERSION'`. Namo::VERSION is now defined when `namo` is required, without needing a separate require.
 2. ~ Namo::VERSION: /0.9.1/0.9.2/
 
-20260525
+## 20260525
+
 0.9.1: ~ Namo#initialize: default data to [], ~ Namo#data_dimensions to handle empty data
 
 1. ~ Namo#initialize: Default `data` parameter changed from `nil` to `[]`. Construction with no arguments now produces a usable empty Namo rather than one whose introspection methods crash on `nil`.
@@ -449,7 +258,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 4. ~ test/namo_test.rb: + Empty-Namo tests (dimensions, data_dimensions, formula surfacing on a Namo with no data).
 5. ~ Namo::VERSION: /0.9.0/0.9.1/
 
-20260521
+## 20260521
+
 0.9.0: + composition operators: equi-join (*), Cartesian product (**), decomposition (/)
 
 1. + Namo#*: Equi-join on shared data dimensions. Inner-join semantics — unmatched rows from both sides are dropped. Raises ArgumentError ("no shared dimensions, need to have shared dimensions") when operands have no overlap. Preserves duplicates multiplicatively. Formulae merge with self winning on conflict.
@@ -462,7 +272,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 8. ~ COMPARISON.md: /planned (0.9.0)/shipped (0.9.0)/ for Equi-join, Cartesian product, and Decomposition. + Paragraph in the Decomposition entry on the combining-vs-projecting distinction. Date bumped to 20260521.
 9. ~ Namo::VERSION: /0.8.0/0.9.0/
 
-20260521
+## 20260521
+
 0.8.0: + proc and regex-based selection
 
 1. ~ Namo::Row#match?: + `when Proc` branch — calls the proc with the dimension value; truthy result selects the row. Predicate receives nil for missing or nil-valued dimensions and decides.
@@ -474,7 +285,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 7. ~ CHANGELOG: Update with 0.8.0's changes and retroactively log the 0.7.0 changes to README (+ Coordinates and values section), COMPARISON.md, and EXAMPLES.md (2 sections relocated from EXAMPLES.md to COMPARISON.md).
 8. ~ Namo::VERSION: /0.7.0/0.8.0/
 
-20260520
+## 20260520
+
 0.7.0: + derived-dimension surfacing, lazy single-column access, live views
 
 1. + Namo#data_dimensions: Returns the storage dimensions as a plain Array (keys of the first row).
@@ -494,7 +306,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 15. ~ Rakefile: + -V mainfont=Charter -V monofont=Menlo on pandoc invocation in docs:md2pdf, for a cleaner serif body font and so code spans containing Unicode math glyphs (e.g. ∅) render correctly under xelatex.
 16. ~ Namo::VERSION: /0.6.0/0.7.0/
 
-20260511
+## 20260511
+
 0.6.0: + equality, pattern-match, and subset/superset operators
 
 1. + Namo#==: Multiset equality on row data, ignoring class and formulae.
@@ -509,7 +322,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 10. + script/md4print, ~ Rakefile: + rake docs:print, docs:pdf, docs:all for regenerating docs/*.print.md and docs/*.print.pdf.
 11. ~ Namo::VERSION: /0.5.0/0.6.0/
 
-20260416
+## 20260416
+
 0.5.0: + row-axis set operations: intersection (&), union (|), symmetric difference (^)
 
 1. + Namo#&: Intersection. Returns rows present in both Namo objects. Requires matching dimensions.
@@ -519,7 +333,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 5. ~ README.md: + Intersection section, + Union section, + Symmetric difference section.
 6. ~ Namo::VERSION: /0.4.0/0.5.0/
 
-20260415
+## 20260415
+
 0.4.0: + concatenation (+) and row removal (-)
 
 1. + Namo#+: Concatenate two Namo instances with matching dimensions. Appends rows from the second to the first. Raises ArgumentError when dimensions differ.
@@ -528,7 +343,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 4. ~ README.md: + Concatenation section, + Row removal section.
 5. ~ Namo::VERSION: /0.3.0/0.4.0/
 
-20260415
+## 20260415
+
 0.3.0: + contraction
 
 1. + Namo::NegatedDimension: Wrapper for negated dimension names used in contraction.
@@ -539,7 +355,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 6. ~ README.md: + Contraction section
 7. ~ Namo::VERSION: /0.2.0/0.3.0/
 
-20260414
+## 20260414
+
 0.2.0: Include Enumerable.
 
 1. ~ Namo: include Enumerable
@@ -552,7 +369,8 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 8. ~ README.md: + Enumerable section
 9. ~ Namo::VERSION: /0.1.0/0.2.0/; /module/class/ to match Namo's definition.
 
-20260328
+## 20260328
+
 0.1.0: Add formulae via []=. Formulae are procs which receive a Row object, compose via named references, and carry through selection.
 
 1. ~ Namo#[]: Refactor to accept *names for projection alongside **selections. Always returns a Namo instance.
@@ -565,14 +383,16 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 8. ~ namo_test.rb: Add tests for projection, formulae, composition, chained and single-call selection with projection.
 9. ~ Namo::VERSION: /0.0.1/0.1.0/
 
-20260315
+## 20260315
+
 0.0.1: Fix README.md and CHANGELOG.
 
 1. ~ README.md: Fix Contributing secton.
 2. ~ CHANGELOG: Use the same description in the summary as in the commit message.
 3. ~ Namo::VERSION: /0.0.0/0.0.1/
 
-20260315
+## 20260315
+
 0.0.0: The initial release has instantiation from hashes, automatic inferral of dimension names and co-ordinates, and selection of data by a single value, an array, or a range.
 
 1. + Namo
