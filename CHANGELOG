@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 20260704
+
+0.26.0: + Namo#detach, Namo::Formulae#detach — remove a formula by name or a formulary's methods by module, completing the attach/attach!/detach family.
+
+detach becomes the sanctioned formula-removal idiom, displacing the namo.formulae.delete(:name) reach-through. It is by-name with no provenance (the store is a snapshot): the Module arm removes whatever currently holds each of the module's method names. There is no detach! (removing a formula can't collide with data, so no guard to force through) and no removal operator (<< appends; per the 0.14.0 principle, no >>).
+
+1. + Namo::Formulae#detach(constituent) — dispatches a Symbol to @store.delete(constituent); a Module to deleting each of its public_instance_methods(false) names, after the same Namo::Formulary marker guard attach uses (an untagged module raises ArgumentError); anything else raises TypeError naming the class, in the << else-arm's style. Returns self. Placed directly after attach/<<. Formulae#delete is unchanged — it stays the store-level primitive detach sits on.
+2. + Namo#detach(constituent) — forwards to @formulae.detach and returns self, placed with the attach family (after attach!, before <<). No guard at the Namo level: there is no data-side interaction, so the Formulae worker owns the dispatch and the raises. Collection inherits detach harmlessly.
+3. ~ test/Namo/Formulae_test.rb: + a "#detach" describe in the formulary tier — both arms return self; the Symbol arm removes the named formula and no-ops on an absent name; the Module arm removes exactly the formulary's method names, leaves a []= name it doesn't contribute, and deletes a []= overwrite occupying a formulary-method name (the by-name/no-provenance pin); ArgumentError on an untagged module; TypeError on a String and a Hash naming the class; chaining removes both. ~ test/namo_test.rb: + a "#detach" describe under formularies — returns the Namo; removes a []= formula from the queryable namespace (derived_dimensions drops it, values returns one nil per row); leaves other formulae resolving; the Module arm empties derived_dimensions; a data dimension is a no-op (the column survives); an absent name no-ops returning the Namo; TypeError on a non-Symbol non-Module and ArgumentError on an untagged module; the #dimensions "reflects mutation" test migrates sales.formulae.delete(:revenue) to sales.detach(:revenue). ~ test/Namo/Collection_test.rb: + a "#detach" describe pinning that a Collection inherits detach — a formulary attached to the collection detaches, so the detail rows no longer resolve its name.
+4. ~ README.md: + a "Removing a formula" note under Formulae (detach removes a formula, returns the Namo, chains, no-ops on an absent name; complements contraction across the data/derived and algebra/mutation splits; never touches @data); + a detach(Module) note in the Formularies section (the reverse of attach, by-name with no provenance, raises on an untagged module, the attach/attach!/detach family, no << removal counterpart, no detach!).
+5. ~ ROADMAP.md: + the 0.26.0 release entry recording the settled decisions (by-name/no-provenance, marker required, loose-on-absent, derived-side-only, no-bang, no-operator, single-argument/chaining, untouched-host-ancestry); current-state bumped to 0.26.0; detach folded into the Summary's formulary vocabulary and the 1.0.0 feature list.
+6. ~ Namo::VERSION: /0.25.1/0.26.0/
+
 ## 20260703
 
 0.25.1: Fix documentation and reformat CHANGELOG to use Markdown headers.

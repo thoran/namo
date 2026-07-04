@@ -25,6 +25,21 @@ class Namo
     end
     alias_method :<<, :attach
 
+    def detach(constituent)
+      case constituent
+      when Symbol
+        @store.delete(constituent)
+      when Module
+        unless constituent.include?(Namo::Formulary)
+          raise ArgumentError, "not a Namo::Formulary: #{constituent}"
+        end
+        constituent.public_instance_methods(false).each{|name| @store.delete(name)}
+      else
+        raise TypeError, "can't detach #{constituent.class} from a Formulae; expected a Symbol or a Module (formulary)"
+      end
+      self
+    end
+
     def derive(name, row, namo, *arguments)
       formula = self[name]
       if collection_scoped?(name)

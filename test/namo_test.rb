@@ -165,7 +165,7 @@ describe Namo do
     it "reflects mutation on the next call" do
       sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
       _(sales.dimensions).must_include :revenue
-      sales.formulae.delete(:revenue)
+      sales.detach(:revenue)
       _(sales.dimensions).wont_include :revenue
     end
   end
@@ -976,6 +976,56 @@ describe Namo do
         other[:cum_delta] = ->(r, n){0}
         other[:scaled_volume] = ->(r, n, f){0}
         _(flows === other).must_equal true
+      end
+    end
+
+    describe "#detach" do
+      it "returns the Namo" do
+        _(flows.detach(:signed_volume)).must_be_same_as flows
+      end
+
+      it "removes a formula from the queryable namespace" do
+        namo = Namo.new(flow_data)
+        namo[:revenue] = proc{|r| r[:buys]}
+        namo.detach(:revenue)
+        _(namo.derived_dimensions).wont_include :revenue
+        _(namo.values(:revenue)).must_equal [nil, nil, nil]
+      end
+
+      it "leaves other formulae resolving" do
+        namo = Namo.new(flow_data)
+        namo[:revenue] = proc{|r| r[:buys]}
+        namo[:tally] = proc{|r| r[:sells]}
+        namo.detach(:revenue)
+        _(namo.values(:tally)).must_equal [40, 120, 75]
+      end
+
+      it "removes an attached formulary's methods via the Module arm" do
+        flows.detach(delta)
+        _(flows.derived_dimensions).must_equal []
+      end
+
+      it "never exposed the formulary's private helper" do
+        _(flows.derived_dimensions).wont_include :helper
+      end
+
+      it "never touches data — a data dimension is a no-op" do
+        flows.detach(:date)
+        _(flows.data_dimensions).must_include :date
+        _(flows.values(:date)).must_equal [1, 2, 3]
+      end
+
+      it "is a no-op on an absent name, returning the Namo" do
+        _(flows.detach(:missing)).must_be_same_as flows
+        _(flows.values(:signed_volume)).must_equal [20, -40, 0]
+      end
+
+      it "raises TypeError on a non-Symbol non-Module" do
+        _(proc{flows.detach("signed_volume")}).must_raise TypeError
+      end
+
+      it "raises ArgumentError on an untagged module" do
+        _(proc{flows.detach(untagged)}).must_raise ArgumentError
       end
     end
   end

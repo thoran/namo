@@ -330,6 +330,64 @@ describe Namo::Formulae do
       end
     end
 
+    describe "#detach" do
+      it "returns self for a Symbol" do
+        _(attached.detach(:signed_volume)).must_be_same_as attached
+      end
+
+      it "returns self for a Module" do
+        _(attached.detach(delta)).must_be_same_as attached
+      end
+
+      it "removes the named formula, leaving the others" do
+        attached.detach(:signed_volume)
+        _(attached.key?(:signed_volume)).must_equal false
+        _(attached.key?(:echo_namo)).must_equal true
+      end
+
+      it "is a no-op on an absent name, still returning self" do
+        _(attached.detach(:missing)).must_be_same_as attached
+        _(attached.key?(:signed_volume)).must_equal true
+      end
+
+      it "removes exactly the formulary's public method names via the Module arm" do
+        attached.detach(delta)
+        _(attached.keys).must_equal []
+      end
+
+      it "leaves a []= formula not among the formulary's methods when detaching the module" do
+        attached[:extra] = proc{|r| 0}
+        attached.detach(delta)
+        _(attached.key?(:extra)).must_equal true
+      end
+
+      it "deletes a []= overwrite occupying a formulary-method name" do
+        attached[:signed_volume] = proc{|r| 0}
+        attached.detach(delta)
+        _(attached.key?(:signed_volume)).must_equal false
+      end
+
+      it "raises ArgumentError for an untagged module" do
+        _(proc{attached.detach(untagged)}).must_raise ArgumentError
+      end
+
+      it "raises TypeError for a String, naming the class" do
+        error = _(proc{attached.detach("signed_volume")}).must_raise TypeError
+        _(error.message).must_match(/String/)
+      end
+
+      it "raises TypeError for a Hash, naming the class" do
+        error = _(proc{attached.detach({})}).must_raise TypeError
+        _(error.message).must_match(/Hash/)
+      end
+
+      it "chains, removing both named formulae" do
+        formulae[:cost] = cost
+        formulae.detach(:revenue).detach(:cost)
+        _(formulae.keys).must_equal []
+      end
+    end
+
     describe "carry-through" do
       it "preserves attached formularies through #dup" do
         _(attached.dup.keys).must_include :signed_volume

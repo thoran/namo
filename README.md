@@ -716,6 +716,12 @@ prices[:sma_close_20] = proc{|row| row[:sma, :close, 20]}
 prices[:date, :sma_close_20]   # materialises per the usual projection rule
 ```
 
+#### Removing a formula
+
+`detach(:name)` removes a formula, returns the Namo, and chains — `sales.detach(:revenue).detach(:cost)`. Detaching a name that isn't there is a quiet no-op, so a cleanup step composes over any Namo without first checking whether the formula is present. It is the sanctioned way to drop a derived dimension, sitting over the store-level primitive `formulae.delete`.
+
+`detach` and contraction are complements across two axes. Contraction (`sales[-:price]`) is non-mutating — it returns a *new* Namo with a *data* dimension removed and the formulae carried. `detach` mutates the receiver and removes a *derived* dimension. So the pair spans both the data/derived split and the algebra/mutation split: contraction is algebra over data, `detach` is mutation of the derived side. `detach` never touches `@data` — naming a data dimension is a no-op and the column survives; removing a data dimension is contraction's job.
+
 #### Formularies
 
 A *formulary* is a reusable body of derived dimensions — a module whose public instance methods are formulae. A Namo attaches a formulary, and from then on those methods resolve as derived dimensions through the same interface as `[]=` formulae. The methods take `row` (and `namo`, and any further parameters) exactly as a `[]=` formula does:
@@ -771,6 +777,8 @@ Because each method is copied into the store, the rules already governing `[]=` 
 `attach!` is the forceful sibling of `attach`. Where `attach` refuses a data collision, `attach!` **evicts** the colliding data columns first — deleting each one exactly as assigning a proc through `[]=` clears a same-named data column — then attaches. The bang is consent: `attach` won't destroy a column you never named, but `attach!` is you saying you meant to. The motivating case is refreshing a formulary over a *materialised snapshot* — once a derived dimension has been projected into a stored column (materialise-and-drop, above), re-attaching the formulary that defined it collides with the now-data column, and `attach!` re-attaches over it in one step where `attach` would require you to contract the column away first. `<<` stays the guarded form: a module through `<<` routes to `attach`, so the operator never evicts — only an explicit `attach!` call does.
 
 Note that there is no counterpart in `[]=`'s scalar-over-formula eviction and is worth naming: a formulary method that reads a column its own name evicts will **recurse** on access. The eviction removes the datum, and exclusive storage leaves no shadowed value behind the formula, so `Row#[]` re-enters the formula rather than falling back to data — a `def close(row); row[:close] * ...; end` attached with `attach!` over a `:close` data column has no `:close` data left to read. `[]=` rarely bites this way because you write the proc at the call site, beside the name it replaces; a formulary is authored elsewhere, so a method reading its own evicted column is easy to attach without noticing. Self-reference is unguarded here as everywhere in the formula mechanism — keep a formulary's inputs and outputs under distinct names, or `attach` (not `attach!`) and contract deliberately.
+
+`detach(OrderFlow)` is the reverse of `attach`: it removes the formulary's public method names from the store, so `flows.attach(OrderFlow)` then `flows.detach(OrderFlow)` leaves the formulae as they started. It works by name and keeps no provenance — the store is a snapshot, so `detach` removes *whatever currently holds each name*, including a `[]=` formula that later overwrote a formulary method of the same name. Like the `attach` side, the marker is required: `detach` raises `ArgumentError` for an untagged module, so you can only detach what could have been attached. The mutating family is `attach` / `attach!` / `detach`; `<<` has no removal counterpart (it *appends* constituents — a removal operator would be cuteness over clarity), and there is no `detach!` because removing a formula can't collide with data, so there is no guard for a bang to force through.
 
 Two Namos that expose the same names — one via `[]=`, one via a formulary — are `===`; a Namo with a formulary attached is not `===` to a vanilla Namo of the same data dimensions.
 

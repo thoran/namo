@@ -103,6 +103,11 @@ class Namo
     self
   end
 
+  def detach(constituent)
+    @formulae.detach(constituent)
+    self
+  end
+
   def <<(constituent)
     case constituent
     when Module then attach(constituent)

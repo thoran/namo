@@ -145,6 +145,15 @@ describe Namo::Collection do
     end
   end
 
+  describe "#detach" do
+    it "detaches a formulary attached to the collection, so the detail rows no longer resolve its name" do
+      collection << component_pricing
+      _(collection.values(:cost_per_kg)).must_equal [250, 250, 200, 250]
+      collection.detach(component_pricing)
+      _(collection.derived_dimensions).wont_include :cost_per_kg
+    end
+  end
+
   describe "#find" do
     it "returns the member with the given name" do
       _(collection.find(:chassis)).must_be_same_as chassis
