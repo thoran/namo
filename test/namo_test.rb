@@ -3,6 +3,13 @@ require 'minitest-spec-context'
 
 require_relative '../lib/namo'
 
+module SupportedFlow
+  include Namo::Formulary
+  def net_volume(row); gross(row) - row[:sells] * 2; end
+  private
+  def gross(row); row[:buys] + row[:sells]; end
+end
+
 describe Namo do
   let(:sample_data) do
     [
@@ -1026,6 +1033,36 @@ describe Namo do
 
       it "raises ArgumentError on an untagged module" do
         _(proc{flows.detach(untagged)}).must_raise ArgumentError
+      end
+    end
+
+    describe "private support methods" do
+      it "resolves a public formulary method through its private helper" do
+        namo = Namo.new(flow_data).attach(SupportedFlow)
+        _(namo.values(:net_volume)).must_equal [20, -40, 0]
+        _(namo.derived_dimensions).must_equal [:net_volume]
+      end
+
+      it "resolves an anonymous formulary's public method through its private helper (carrier-collected, host-resolved)" do
+        anonymous = Module.new do
+          include Namo::Formulary
+          def net_volume(row); gross(row) - row[:sells] * 2; end
+          private
+          def gross(row); row[:buys] + row[:sells]; end
+        end
+        namo = Namo.new(flow_data).attach(anonymous)
+        _(namo.values(:net_volume)).must_equal [20, -40, 0]
+      end
+
+      it "lets a later-attached formulary's same-named private helper shadow the earlier one (single shared host)" do
+        shadower = Module.new do
+          include Namo::Formulary
+          def momentum(row); 0; end
+          private
+          def gross(row); 0; end
+        end
+        namo = Namo.new(flow_data).attach(SupportedFlow).attach(shadower)
+        _(namo.values(:net_volume)).must_equal [-80, -240, -150]
       end
     end
   end

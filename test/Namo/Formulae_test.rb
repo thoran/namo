@@ -111,7 +111,8 @@ describe Namo::Formulae do
     it "yields name/callable pairs" do
       yielded = {}
       formulae.each{|name, callable| yielded[name] = callable}
-      _(yielded).must_equal({revenue: revenue})
+      _(yielded.keys).must_equal [:revenue]
+      _(yielded[:revenue].call({price: 10.0, quantity: 100})).must_equal 1000.0
     end
 
     it "returns an enumerator with no block" do
@@ -136,7 +137,7 @@ describe Namo::Formulae do
     it "lets the argument win on a name conflict" do
       other = proc{|r| 0}
       merged = formulae.merge(Namo::Formulae.new({revenue: other}))
-      _(merged[:revenue]).must_be_same_as other
+      _(merged[:revenue].call({price: 10.0, quantity: 100})).must_equal 0
     end
 
     it "does not mutate the receiver" do
@@ -177,7 +178,9 @@ describe Namo::Formulae do
 
     it "supports select returning name/callable pairs" do
       formulae[:cost] = cost
-      _(formulae.select{|name, _| name == :cost}).must_equal [[:cost, cost]]
+      selected = formulae.select{|name, _| name == :cost}
+      _(selected.map(&:first)).must_equal [:cost]
+      _(selected.first.last.call({quantity: 100})).must_equal 400.0
     end
   end
 
@@ -206,6 +209,12 @@ describe Namo::Formulae do
   describe "constructor" do
     it "defaults to an empty store" do
       _(Namo::Formulae.new.keys).must_equal []
+    end
+
+    it "stores a seeded callable as given, resolvable thereafter" do
+      formulae = Namo::Formulae.new({revenue: revenue})
+      _(formulae[:revenue]).must_be_same_as revenue
+      _(formulae.derive(:revenue, {price: 10.0, quantity: 100}, nil)).must_equal 1000.0
     end
   end
 
@@ -257,6 +266,20 @@ describe Namo::Formulae do
         end
         formulae = Namo::Formulae.new.attach(delta).attach(other)
         _(formulae[:signed_volume].receiver).must_be_same_as formulae[:momentum].receiver
+      end
+
+      it "stores a formulary's methods as Methods owned by the module, bound to the shared host" do
+        _(attached[:signed_volume]).must_be_kind_of Method
+        _(attached[:signed_volume].owner).must_be_same_as delta
+        _(attached.derive(:signed_volume, {buys: 60, sells: 40}, nil)).must_equal 20
+      end
+
+      it "lets a []= overwrite take effect after an anonymous formulary attached the name" do
+        formulae = Namo::Formulae.new
+        formulae[:signed_volume] = proc{|r| 1}
+        formulae.attach(delta)
+        formulae[:signed_volume] = proc{|r| 0}
+        _(formulae.derive(:signed_volume, {buys: 60, sells: 40}, nil)).must_equal 0
       end
     end
 
@@ -327,6 +350,15 @@ describe Namo::Formulae do
         end
         formulae = Namo::Formulae.new.attach(delta).attach(alt)
         _(formulae.derive(:signed_volume, {buys: 60, sells: 40}, nil)).must_equal 999
+      end
+
+      it "brings a shadowed formulary's definition back when it is re-attached (binds the module's own method, not the shared host's ancestry order)" do
+        alt = Module.new do
+          include Namo::Formulary
+          def signed_volume(row); 999; end
+        end
+        formulae = Namo::Formulae.new.attach(delta).attach(alt).attach(delta)
+        _(formulae.derive(:signed_volume, {buys: 60, sells: 40}, nil)).must_equal 20
       end
     end
 

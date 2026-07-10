@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 20260710
+
+0.26.1: Refactor Namo::Formulae#attach through a private #bind, and document mutability and the corrected collision-resolution idioms.
+
+1. ~ lib/Namo/Formulae.rb — attach binds each of a formulary's public method names through a new private bind(name, modul): marker guard, host.extend(modul), then self[name] = modul.instance_method(name).bind(host). attach and detach share one private raise_unless_formulary marker guard. bind stays private — attach is its only caller.
+2. ~ README.md: + a "Mutability" section (Namos are mutable; an unfrozen Namo is not a reliable Hash key or Set member since hash tracks data and formula names; the deliberate attr_accessor :data back door and the sanctioned namo << row append idiom); + a private-helper support note under Formularies (a public formulary method resolves its private helpers through the shared host; a same-named helper in a later-attached formulary shadows the earlier one); ~ the collision-resolution passages — correct a prescribed rename operation Namo does not have to the shipped idioms (detach, formula-plus-projection, re-key before ingestion, attach!).
+3. ~ ROADMAP.md: + a note in the deep-freeze open question — the attr_accessor :data back door means a generation counter cannot observe all mutation, deciding the 2.x caching mechanism in deep freeze's favour.
+4. ~ test/Namo/Formulae_test.rb, test/namo_test.rb: identity assertions on stored callables migrate to behavioural ones; + a "private support methods" describe (a public formulary method resolving through its private helper; shared-host same-named-helper shadowing).
+5. ~ docs/: regenerate the print-ready PDFs.
+6. ~ Namo::VERSION: /0.26.0/0.26.1/
+
 ## 20260704
 
 0.26.0: + Namo#detach, Namo::Formulae#detach — remove a formula by name or a formulary's methods by module, completing the attach/attach!/detach family.

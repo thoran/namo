@@ -14,13 +14,8 @@ class Namo
     end
 
     def attach(modul)
-      unless modul.include?(Namo::Formulary)
-        raise ArgumentError, "not a Namo::Formulary: #{modul}"
-      end
-      host.extend(modul)
-      modul.public_instance_methods(false).each do |name|
-        @store[name] = host.method(name)
-      end
+      raise_unless_formulary(modul)
+      modul.public_instance_methods(false).each{|name| bind(name, modul)}
       self
     end
     alias_method :<<, :attach
@@ -30,9 +25,7 @@ class Namo
       when Symbol
         @store.delete(constituent)
       when Module
-        unless constituent.include?(Namo::Formulary)
-          raise ArgumentError, "not a Namo::Formulary: #{constituent}"
-        end
+        raise_unless_formulary(constituent)
         constituent.public_instance_methods(false).each{|name| @store.delete(name)}
       else
         raise TypeError, "can't detach #{constituent.class} from a Formulae; expected a Symbol or a Module (formulary)"
@@ -112,6 +105,19 @@ class Namo
 
     def host
       @host ||= Object.new
+    end
+
+    def bind(name, modul)
+      raise_unless_formulary(modul)
+      host.extend(modul)
+      self[name] = modul.instance_method(name).bind(host)
+      self
+    end
+
+    def raise_unless_formulary(modul)
+      unless modul.include?(Namo::Formulary)
+        raise ArgumentError, "not a Namo::Formulary: #{modul}"
+      end
     end
 
     def collection_scoped?(name)

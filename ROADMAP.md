@@ -1849,6 +1849,8 @@ For streaming/live Namos that stay unfrozen, formula results cached on Rows beco
 
 The simplest approach (no caching when unfrozen) is probably right for the first implementation. Optimise if profiling shows it matters.
 
+One structural fact bears on the choice: the deliberate `attr_accessor :data` back door (see the README's Mutability contract) means mutation can bypass every method Namo could instrument, so a generation counter cannot observe all mutation — which decides the 2.x mechanism in deep freeze's favour. Freezing `@data` when the Namo freezes closes the back door without removing the accessor, and caching then engages only where staleness is impossible by construction.
+
 ### Coercion design
 
 The coercion section (under 3.x) proposes a dual-purpose `coerce` keyword for both ingestion type fixing and dimensional alignment. Open questions:
