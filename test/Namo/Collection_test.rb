@@ -181,9 +181,10 @@ describe Namo::Collection do
       _(summary.values(:weight)).must_equal [280, 150, 60]
     end
 
-    it "labels with a custom by dimension" do
+    it "labels with a custom by dimension, carrying the reduced value alongside" do
       summary = collection.summary(:weight, by: :assembly)
       _(summary.values(:assembly)).must_equal [:powertrain, :chassis, :body]
+      _(summary.values(:weight)).must_equal [280, 150, 60]
     end
 
     it "reduces with a custom reducer" do
@@ -194,6 +195,32 @@ describe Namo::Collection do
     it "is non-mutating — leaves the collection's data untouched" do
       collection.summary(:weight)
       _(collection.values(:weight)).must_equal [200, 80, 150, 60]
+    end
+
+    it "with a block returns one row per member, the block's hash merged with the member label" do
+      result = collection.summary do |member|
+        {heaviest: member.max_by{|row| row[:weight]}[:component]}
+      end
+      _(result.values(:member)).must_equal [:powertrain, :chassis, :body]
+      _(result.values(:heaviest)).must_equal ['engine', 'frame', 'panels']
+    end
+
+    it "with a block, the member label wins over a by key the block returns" do
+      result = collection.summary(by: :assembly) do |member|
+        {assembly: :overridden, total: member.values(:weight).sum}
+      end
+      _(result.values(:assembly)).must_equal [:powertrain, :chassis, :body]
+      _(result.values(:total)).must_equal [280, 150, 60]
+    end
+
+    it "raises an ArgumentError when given neither a dimension nor a block" do
+      error = _(proc{collection.summary}).must_raise ArgumentError
+      _(error.message).must_match(/dimension or a block/)
+    end
+
+    it "yields one row per member (map), where detail yields all rows per member (flat_map)" do
+      _(collection.summary(:weight).data.size).must_equal collection.members.size
+      _(collection.detail.data.size).must_equal collection.members.sum{|member| member.data.size}
     end
   end
 
@@ -250,6 +277,13 @@ describe Namo::Collection do
     it "exposes the summary's columns in dimensions immediately after as_summary" do
       collection.as_summary(:weight)
       _(collection.dimensions.sort).must_equal [:member, :weight].sort
+    end
+
+    it "as_summary with a block sets the data to the block summary and returns self" do
+      result = collection.as_summary(by: :assembly){|member| {count: member.values(:weight).size}}
+      _(result).must_be_same_as collection
+      _(collection.values(:assembly)).must_equal [:powertrain, :chassis, :body]
+      _(collection.values(:count)).must_equal [2, 1, 1]
     end
   end
 

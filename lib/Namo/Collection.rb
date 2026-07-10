@@ -23,10 +23,14 @@ class Namo
       @members.find{|member| member.name == name} unless name.nil?
     end
 
-    def summary(dimension, by: :member, reducer: :sum)
-      rows = @members.map do |member|
-        {by => member.name, dimension => member.values(dimension).send(reducer)}
-      end
+    def summary(dimension = nil, by: :member, reducer: :sum, &block)
+      raise ArgumentError, "summary needs a dimension or a block" unless dimension || block
+      rows =
+        if block
+          @members.map{|member| block.call(member).merge(by => member.name)}
+        else
+          @members.map{|member| {by => member.name, dimension => member.values(dimension).send(reducer)}}
+        end
       Namo.new(rows)
     end
 
@@ -37,8 +41,8 @@ class Namo
       Namo.new(rows)
     end
 
-    def as_summary(dimension, by: :member, reducer: :sum)
-      @data = summary(dimension, by: by, reducer: reducer).data
+    def as_summary(dimension = nil, by: :member, reducer: :sum, &block)
+      @data = summary(dimension, by: by, reducer: reducer, &block).data
       self
     end
 

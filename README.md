@@ -1046,7 +1046,15 @@ gt.detail.values(:weight).sum              # total weight by summing every line 
 # => 490
 ```
 
-`Car` overrides `summary`/`detail` only to set `by: :assembly` as the per-class default and then calls `super`. A bare `Namo::Collection.new` works equally well, defaulting `by:` to `:member` and taking it at the call site.
+`Car` overrides `summary`/`detail` only to set `by: :assembly` as the per-class default and then calls `super`. A bare `Namo::Collection.new` works equally well, defaulting `by:` to `:member` and taking it at the call site:
+
+```ruby
+parts = Namo::Collection.new
+parts << [powertrain, chassis, body]
+
+parts.summary(:weight).values(:member)                    # default label => [:powertrain, :chassis, :body]
+parts.summary(:weight, by: :assembly).values(:assembly)   # call-site by:  => [:powertrain, :chassis, :body]
+```
 
 #### Lazy detail, behaving as its line items
 
@@ -1066,8 +1074,8 @@ Detail is the lazy view because a Collection's rows simply *are* its members' ro
 
 The views come in a non-mutating pair and a mutating pair:
 
-- `summary(dimension, by:, reducer:)` and `detail(by:)` are **non-mutating** — each returns a fresh `Namo` derived from the members, leaving the Collection untouched. Use these when you want a view to keep: assign the result to a variable and operate on it independently.
-- `as_summary(dimension, by:, reducer:)` and `as_detail(by)` are **mutating** — each sets the Collection's data to the chosen view and returns `self`, for a fluent step. (`as_detail` carries no `dimension`, so its label argument is positional: `as_detail(:assembly)`.)
+- `summary(dimension = nil, by:, reducer:, &block)` and `detail(by:)` are **non-mutating** — each returns a fresh `Namo` derived from the members, leaving the Collection untouched. Use these when you want a view to keep: assign the result to a variable and operate on it independently.
+- `as_summary(dimension = nil, by:, reducer:, &block)` and `as_detail(by)` are **mutating** — each sets the Collection's data to the chosen view and returns `self`, for a fluent step. (`as_detail` carries no `dimension`, so its label argument is positional: `as_detail(:assembly)`.)
 
 ```ruby
 gt.summary(:cost, reducer: :mean)          # a fresh Namo; gt is unchanged
@@ -1076,6 +1084,23 @@ gt.as_detail(:assembly)                    # gt's data becomes the detail; retur
 ```
 
 `reducer:` is any method the member's column responds to — `:sum` (the default) and `:mean` are typical (`:mean` via a statistics gem that adds `Array#mean`).
+
+#### A block for per-member reductions
+
+The single-`dimension`, single-`reducer` form reduces one column with one named method. Per-member work that wants several columns at once, or a reduction that isn't a single-column `send` — notably a *pick-by-extremum* ("the component of the heaviest part", an argmax that reduces no one column) — is supplied by an optional block. The block receives each member and returns the hash for that member's summary row; `summary` labels it with the member name and collects one row per member:
+
+```ruby
+gt.summary(by: :assembly) do |assembly|
+  heaviest = assembly.max_by{|part| part[:weight]}
+  {
+    part_count:    assembly.values(:weight).size,
+    heaviest_part: heaviest[:component],
+    total_cost:    assembly.values(:cost).sum,
+  }
+end
+```
+
+The contract is one row per member: `summary` maps members to rows, where `detail` flat-maps them to line items — the two views have opposite cardinality. The member label merges last, so a block returning a hash that carries the `by` key cannot override the group's identity — `by` is `summary`'s to set, not the block's. `as_summary` takes the same block and persists its result, delegating to `summary`. A `summary` given neither a `dimension` nor a block raises an `ArgumentError`.
 
 #### Inject-iff-absent
 

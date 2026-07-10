@@ -2,6 +2,15 @@
 
 ## 20260710
 
+0.27.0: ~ Namo::Collection#summary/#as_summary: + an optional block for a per-member reduction beyond a single named reducer.
+
+1. ~ Namo::Collection#summary(dimension = nil, by:, reducer:, &block): dimension goes optional; with a block, maps each member through block.call(member).merge(by => member.name), the member label merged last so it wins; given neither a dimension nor a block, raises ArgumentError; the no-block path is byte-identical. as_summary forwards &block to summary and persists the result, so the block form lives in one place.
+2. ~ test/Namo/Collection_test.rb: + block-form summary returns one row per member merged with the member label; the member label wins over a by key the block returns; the neither-arg ArgumentError; the map/flat_map cardinality pin (summary one row per member, detail all rows per member); as_summary with a block sets the data and delegates. ~ the non-block custom-by test also pins the reduced value carried alongside the relabelled column.
+3. ~ README.md: + an "A block for per-member reductions" note under the Collection view methods (the one-row-per-member contract, the member-label-wins merge, an argmax example, the neither-arg raise); + a bare-collection call-site by: example beside the class-default prose; the summary/as_summary signatures gain (dimension = nil, ..., &block).
+4. ~ ROADMAP.md: + the 0.27.0 release entry (the block warrant from 0.14.0, summarise considered-and-refused, the pinned decisions, the transient-block serialisation-independence, the deferred group-scoped formula); current-state bumped to 0.27.0; the block form folded into the Summary vocabulary and the 1.0.0 feature list.
+5. ~ docs/: regenerate the print-ready PDFs.
+6. ~ Namo::VERSION: /0.26.1/0.27.0/
+
 0.26.1: Refactor Namo::Formulae#attach through a private #bind, and document mutability and the corrected collision-resolution idioms.
 
 1. ~ lib/Namo/Formulae.rb — attach binds each of a formulary's public method names through a new private bind(name, modul): marker guard, host.extend(modul), then self[name] = modul.instance_method(name).bind(host). attach and detach share one private raise_unless_formulary marker guard. bind stays private — attach is its only caller.
