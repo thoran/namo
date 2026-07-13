@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.27.0
+## Current state: 0.28.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -925,7 +925,7 @@ A Collection's substance is `members`; the inherited `@data` is a derived view o
 Two points the design left mechanically under-determined against the shipped source were settled here:
 
 - **Materialisation model — rebuild-on-`<<`, not recompute-per-access.** The inherited row-operations read the `@data` ivar directly, so there is no transparent per-access seam without rerouting every shipped operator through the `data` accessor. Rather than touch the 0.2.0–0.17.0 internals for a refactor whose only gain was literal wording, `<<` (the sole `members` mutator) rebuilds `@data = detail.data`. Because it is the only mutator, this is observationally identical to per-access recomputation across the documented surface — and it lets a mutating `as_*` view mean what it reads like. The consequence, diverging from the originally-drafted "pure-live per-access / transient `as_*`" wording: an `as_summary`/`as_detail` view **persists until the next `<<`** (which re-materialises detail), rather than being discarded by the next row-operation. `as_summary(:weight).values(:weight)` therefore reads the summary, as intended. Freeze-gated memoisation remains a 2.x optimisation, now attached to a settled rebuild-on-mutation view.
-- **`find` shadows `Enumerable#find` on Collections.** `find(name)` is member lookup; a Collection's natural elements are its members, and the call reads well (`gt.find(:powertrain)`). It shadows the inherited `Enumerable#find` (alias `detect`) on Collections only — `detect` survives for predicate search, and `find` with a block fails loudly on arity rather than misbehaving. `as_detail`'s label argument is positional (`as_detail(:assembly)`), as it carries no `dimension`; `summary`/`detail`/`as_summary` keep `by:` as a keyword alongside their other arguments.
+- **`find` shadows `Enumerable#find` on Collections.** `find(name)` is member lookup; a Collection's natural elements are its members, and the call reads well (`gt.find(:powertrain)`). It shadows the inherited `Enumerable#find` (alias `detect`) on Collections only — `detect` survives for predicate search, and `find` with a block fails loudly on arity rather than misbehaving. `as_detail`'s label argument is positional (`as_detail(:assembly)`), as it carries no `dimension`; `summary`/`detail`/`as_summary` keep `by:` as a keyword alongside their other arguments. (Superseded at 0.28.0: `detail` and `as_detail` both take the label positionally or by keyword, per the constructor precedent — "no dimension" didn't distinguish the twins.)
 
 ### 0.19.0 (2026-06-14): Row-multiset equality
 
@@ -1190,6 +1190,16 @@ The pinned decisions:
 The block is transient — never stored, never serialised — so the feature is serialisation-independent. It is the intermediate step toward a stored *group-scoped formula* (a per-group reduction as a named, reusable derived dimension, a third scope beside row- and collection-scoped), which is deferred: it needs a new formula scope, entangles with serialisation, and wants the 2.x freeze-gated caching to be affordable. Design it alongside those, not before.
 
 Tests: `Collection_test` gains the block form returning one row per member merged with the member label; the member label winning over a `by` key the block returns; the neither-arg `ArgumentError`; the `map`/`flat_map` cardinality pin; and `as_summary` with a block setting the data and delegating. The no-block path is byte-identical, so the existing `summary`/`as_summary` tests are unchanged.
+
+### 0.28.0 (2026-07-11): Positional-or-keyword label on `detail` / `as_detail`
+
+`detail` took its origin label by keyword (`detail(by:)`), `as_detail` positionally (`as_detail(by = :member)`) — twin views of the same Collection with divergent calling conventions. The 0.18.0 rationale for the split, "`as_detail` carries no `dimension`, so its label is positional," doesn't hold: `detail` carries no `dimension` either, so "no dimension" never distinguished the two. The real driver was only that `as_detail(:assembly)` reads well as the `group_by` inverse, `group_by(:symbol).as_detail(:symbol)`.
+
+The resolution is the constructor's own precedent. `initialize(positional_data = nil, data: [], …)` takes the same value positionally *or* by keyword, positional winning, rather than forcing a choice. Both `detail` and `as_detail` now take `(positional_by = nil, by: :member)` and resolve `by = positional_by || by`, so `as_detail(:assembly)` and `as_detail(by: :assembly)` are one call and the asymmetry dissolves.
+
+Scope is `detail`/`as_detail` only — the methods whose label is the sole positional. `summary`/`as_summary` keep `by:` a keyword beside their `dimension` positional, mirroring the constructor exactly: the primary value (`data`) is the dual one, the modifiers (`formulae:`, `name:`) stay keyword. Here the primary value is the label.
+
+It adds accepted call forms without changing any existing call's result — a minor, classed like the constructor widening that first introduced this convention: nothing was wrong before, downstream code can now depend on the keyword form, and the convention it conforms to was itself a minor.
 
 ### Summary
 

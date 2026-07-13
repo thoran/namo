@@ -1075,7 +1075,7 @@ Detail is the lazy view because a Collection's rows simply *are* its members' ro
 The views come in a non-mutating pair and a mutating pair:
 
 - `summary(dimension = nil, by:, reducer:, &block)` and `detail(by:)` are **non-mutating** — each returns a fresh `Namo` derived from the members, leaving the Collection untouched. Use these when you want a view to keep: assign the result to a variable and operate on it independently.
-- `as_summary(dimension = nil, by:, reducer:, &block)` and `as_detail(by)` are **mutating** — each sets the Collection's data to the chosen view and returns `self`, for a fluent step. (`as_detail` carries no `dimension`, so its label argument is positional: `as_detail(:assembly)`.)
+- `as_summary(dimension = nil, by:, reducer:, &block)` and `as_detail(by = :member)` are **mutating** — each sets the Collection's data to the chosen view and returns `self`, for a fluent step. (`detail` and `as_detail` take the origin label either positionally or by the `by:` keyword, positional winning — the same shape the constructor gives `data` — so `as_detail(:assembly)` and `as_detail(by: :assembly)` are one call. `summary`/`as_summary` keep `by:` a keyword beside their `dimension` positional.)
 
 ```ruby
 gt.summary(:cost, reducer: :mean)          # a fresh Namo; gt is unchanged

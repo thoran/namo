@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 20260711
+
+0.28.0: ~ Namo::Collection#detail/#as_detail: Accept the by label positionally or by keyword.
+
+Accept the by label positionally or by keyword (positional winning), per the constructor precedent — resolving the detail/as_detail calling-convention asymmetry.
+
+1. ~ Namo::Collection#detail(positional_by = nil, by: :member), #as_detail(positional_by = nil, by: :member): resolve by = positional_by || by, mirroring the constructor's @data = positional_data || data; positional wins. summary/as_summary unchanged — dimension stays their positional, by: the keyword modifier.
+2. ~ test/Namo/Collection_test.rb: + detail and as_detail each take the by label positionally or by keyword, positional winning over a conflicting keyword.
+3. ~ README.md: ~ the view-methods note — detail/as_detail take the label positionally or by keyword (the constructor's shape); replaces the "carries no dimension, so positional" rationale.
+4. ~ ROADMAP.md: + the 0.28.0 entry (twin asymmetry, constructor precedent, primary-dual/modifier-keyword scope); current-state bumped to 0.28.0; a forward-reference on the 0.18.0 note superseding its positional rationale.
+5. ~ docs/: regenerate the print-ready PDFs.
+6. ~ Namo::VERSION: /0.27.0/0.28.0/
+
 ## 20260710
 
 0.27.0: ~ Namo::Collection#summary/#as_summary: + an optional block for a per-member reduction beyond a single named reducer.

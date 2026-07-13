@@ -34,7 +34,8 @@ class Namo
       Namo.new(rows)
     end
 
-    def detail(by: :member)
+    def detail(positional_by = nil, by: :member)
+      by = positional_by || by
       rows = @members.flat_map do |member|
         member.data.map{|row| row.key?(by) ? row : row.merge(by => member.name)}
       end
@@ -46,8 +47,9 @@ class Namo
       self
     end
 
-    def as_detail(by = :member)
-      @data = detail(by: by).data
+    def as_detail(positional_by = nil, by: :member)
+      by = positional_by || by
+      @data = detail(by).data
       self
     end
 

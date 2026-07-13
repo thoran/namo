@@ -245,6 +245,12 @@ describe Namo::Collection do
       collection.detail(by: :assembly)
       _(collection.dimensions).wont_include :assembly
     end
+
+    it "takes the by label positionally or by keyword, positional winning" do
+      _(collection.detail(:assembly).values(:assembly)).must_equal [:powertrain, :powertrain, :chassis, :body]
+      _(collection.detail(by: :assembly).values(:assembly)).must_equal [:powertrain, :powertrain, :chassis, :body]
+      _(collection.detail(:assembly, by: :ignored).values(:assembly)).must_equal [:powertrain, :powertrain, :chassis, :body]
+    end
   end
 
   describe "live recomputation (no memoisation in 1.x)" do
@@ -284,6 +290,14 @@ describe Namo::Collection do
       _(result).must_be_same_as collection
       _(collection.values(:assembly)).must_equal [:powertrain, :chassis, :body]
       _(collection.values(:count)).must_equal [2, 1, 1]
+    end
+
+    it "as_detail takes the by label positionally or by keyword, positional winning" do
+      positional = Namo::Collection.new.tap{|c| c << [powertrain, chassis]}.as_detail(:assembly)
+      keyword    = Namo::Collection.new.tap{|c| c << [powertrain, chassis]}.as_detail(by: :assembly)
+      _(positional.values(:assembly)).must_equal [:powertrain, :powertrain, :chassis]
+      _(keyword.values(:assembly)).must_equal positional.values(:assembly)
+      _(Namo::Collection.new.tap{|c| c << powertrain}.as_detail(:assembly, by: :ignored).values(:assembly)).must_equal [:powertrain, :powertrain]
     end
   end
 
