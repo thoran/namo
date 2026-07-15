@@ -3198,5 +3198,27 @@ describe Namo do
         _(collection.detail.values(:close)).must_equal [42.5, 43.0, 118.3, 100.0]
       end
     end
+
+    context "single-pass assembly" do
+      # Collection#<< rebuilds @data = detail.data over all members-so-far on every
+      # append, so appending one member per group re-materialised the data g times
+      # (O(rows·groups)). group_by now hands all members to a single <<: one
+      # materialisation whatever the number of groups.
+      def detail_calls_assembling(namo, dimension)
+        calls = 0
+        tracer = TracePoint.new(:call) do |tp|
+          calls += 1 if tp.method_id == :detail && tp.defined_class == Namo::Collection
+        end
+        tracer.enable{namo.group_by(dimension)}
+        calls
+      end
+
+      it "materialises the assembled data once, whatever the number of groups" do
+        few = Namo.new((1..3).map{|i| {symbol: "S#{i}", close: i.to_f}})
+        many = Namo.new((1..30).map{|i| {symbol: "S#{i}", close: i.to_f}})
+        _(detail_calls_assembling(few, :symbol)).must_equal 1
+        _(detail_calls_assembling(many, :symbol)).must_equal 1
+      end
+    end
   end
 end

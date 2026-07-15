@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.29.0
+## Current state: 0.30.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1191,7 +1191,7 @@ The block is transient — never stored, never serialised — so the feature is 
 
 Tests: `Collection_test` gains the block form returning one row per member merged with the member label; the member label winning over a `by` key the block returns; the neither-arg `ArgumentError`; the `map`/`flat_map` cardinality pin; and `as_summary` with a block setting the data and delegating. The no-block path is byte-identical, so the existing `summary`/`as_summary` tests are unchanged.
 
-### 0.28.0 (2026-07-11): Positional-or-keyword label on `detail` / `as_detail`
+### 0.28.0 (2026-07-13): Positional-or-keyword label on `detail` / `as_detail`
 
 `detail` took its origin label by keyword (`detail(by:)`), `as_detail` positionally (`as_detail(by = :member)`) — twin views of the same Collection with divergent calling conventions. The 0.18.0 rationale for the split, "`as_detail` carries no `dimension`, so its label is positional," doesn't hold: `detail` carries no `dimension` either, so "no dimension" never distinguished the two. The real driver was only that `as_detail(:assembly)` reads well as the `group_by` inverse, `group_by(:symbol).as_detail(:symbol)`.
 
@@ -1210,6 +1210,12 @@ This refines the 1.x discipline rather than breaking it. The pure-live rule was 
 Scope is the `values` path only — `values`, `coordinates`, `to_h`. Iteration through `Namo::Enumerable` (`each`, `select`, `map`, `group_by`) builds Rows straight off `@data` and does not open the scope, so a parent-scanning formula consumed by iteration is not yet covered. Bringing it under the scope is the same one-line wrap at each traversal entry, deferred here pending an iteration-heavy real workload: a `return`→`sma`→`signal` microbenchmark confirms the `values`-path scope restores O(n), but the `Enumerable` churn stays out until a workload that consumes derived columns through iteration shows it insufficient. The residual intra-access cost it would not touch — a formula genuinely rescanning a window per row — is not redundancy, and no scope removes it; that needs sorted/indexed windowed access, a separate primitive.
 
 It adds no observable behaviour — same results, same liveness, faster — so it is a minor, and contract-neutral: the scope materialises whole columns however a formula is expressed, opaque procs exactly as they are.
+
+### 0.30.0 (2026-07-15): Single-pass group_by assembly
+
+`group_by` assembled its `Collection` one member at a time, and `Collection#<<` rebuilds `@data = detail.data` over all members-so-far on every append (0.18.0's rebuild-on-`<<` model). Partitioning into g groups therefore re-materialised the detail g times — O(rows·groups), the same quadratic shape as 0.29.0's parent-scanning formula but in the assembly path rather than the `values` path. At the group counts an end-of-day equities set reaches — thousands of securities — it is the dominant cost. `group_by` now maps the groups to members and hands them to a single `<<`, so the detail materialises once whatever the number of groups; the assembly is O(rows).
+
+It stays inside 0.18.0's resolved model rather than reopening it: `<<` still rebuilds `@data` eagerly, the snapshot is still taken at append, and an `as_summary`/`as_detail` view still persists until the next `<<`. What changes is only *how many* appends `group_by` makes — one, not g. It adds no observable behaviour and is contract-neutral, a minor. The case 0.18.0's "`<<` is the only mutator" premise does not cover — mutating a member *after* it is added, which the eager `@data` would not reflect — is untouched here; reconciling it with the per-access intent (a truly lazy `@data`, or a member→Collection propagation) remains the live-composition question, deferred.
 
 ### Summary
 

@@ -72,10 +72,12 @@ class Namo
     def group_by(dimension)
       collection = Collection.new
       source = derived_dimensions.include?(dimension) ? self[*data_dimensions, dimension] : self
-      source.data.group_by{|row_data| row_data[dimension]}.each do |value, rows|
-        collection << self.class.new(rows, formulae: source.formulae.dup, name: value)
-      end
-      collection
+      members = (
+        source.data.group_by{|row_data| row_data[dimension]}.map do |value, rows|
+          self.class.new(rows, formulae: source.formulae.dup, name: value)
+        end
+      )
+      collection << members
     end
   end
 end

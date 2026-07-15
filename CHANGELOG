@@ -2,6 +2,18 @@
 
 ## 20260715
 
+0.30.0: Assemble Collection objects in a single pass when doing Namo::Enumerable#group_by.
+
+Appending one member per group re-materialised Collection#<<'s @data = detail.data over all members-so-far g times; group_by now appends all the members in one << operation and materialises once, causing it be performed in O(rows) instead of O(rows·groups).
+
+1. ~ Namo::Enumerable#group_by: map the groups to members, then append them all in one collection << members, rather than << per group — each of which rebuilt @data over every member-so-far.
+2. ~ test/namo_test.rb: + a single-pass assembly pin under #group_by — the assembly materialises the detail once whatever the number of groups (not once per group).
+3. ~ ROADMAP.md: + the 0.30.0 entry; current-state bumped to 0.30.0.
+4. ~ docs/: regenerate the print-ready PDFs.
+5. ~ Namo::VERSION: /0.29.0/0.30.0/
+
+## 20260715
+
 0.29.0: Per access indexed materialisation.
 
 Materialise each column once per top-level access, collapsing an O(n²) parent-scanning formula to O(n), with no value retained across accesses.
