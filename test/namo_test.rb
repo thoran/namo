@@ -287,6 +287,44 @@ describe Namo do
     end
   end
 
+  describe "access-scoped materialisation" do
+    it "materialises a referenced column once per access, not once per referencing row" do
+      calls = Hash.new(0)
+      namo = Namo.new([{n: 1}, {n: 2}, {n: 3}])
+      namo[:base] = proc{|row| calls[:base] += 1; row[:n] * 10}
+      namo[:sum_base] = proc{|row, namo| namo.values(:base).sum}
+      _(namo.values(:sum_base)).must_equal [60, 60, 60]
+      _(calls[:base]).must_equal 3
+    end
+
+    it "retains nothing across accesses — a later access recomputes from current state" do
+      namo = Namo.new([{n: 1}, {n: 2}])
+      namo[:total] = proc{|row, namo| namo.values(:n).sum}
+      _(namo.values(:total)).must_equal [3, 3]
+      namo.data << {n: 4}
+      _(namo.values(:total)).must_equal [7, 7, 7]
+    end
+
+    it "clears the access scope when materialisation raises, leaving later accesses working" do
+      namo = Namo.new([{n: 1}])
+      namo[:boom] = proc{|row| raise 'materialisation blew up'}
+      _(->{namo.values(:boom)}).must_raise RuntimeError
+      namo[:ok] = proc{|row| row[:n]}
+      _(namo.values(:ok)).must_equal [1]
+    end
+
+    it "keeps one scope when a formula's nested values call runs during a multi-dimension access" do
+      calls = 0
+      namo = Namo.new([{x: 1}, {x: 2}, {x: 3}])
+      namo[:base] = proc{|row| calls += 1; row[:x] * 2}
+      namo[:agg] = proc{|row, namo| namo.values(:base).first}
+      # :agg's formula calls values(:base) mid-materialisation; that nested call must
+      # reuse the open scope, not reset it, so the :x column that follows still builds.
+      _(namo.values(:agg, :x)).must_equal(agg: [2, 2, 2], x: [1, 2, 3])
+      _(calls).must_equal 3
+    end
+  end
+
   describe "#to_h" do
     it "returns the full values Hash" do
       _(sales.to_h).must_equal sales.values

@@ -688,7 +688,7 @@ prices.values(:sma)
 # => [10.0, 15.0, 20.0]
 ```
 
-`namo` is the Namo that yielded the row, live — so the window always reflects the current state of the object you ask through. A filtered Namo's rows window over the filtered rows; an operator result's rows window over the result. Appending a row changes every cross-row value on the next access, with no caching.
+`namo` is the Namo that yielded the row, live — so the window always reflects the current state of the object you ask through. A filtered Namo's rows window over the filtered rows; an operator result's rows window over the result. Appending a row changes every cross-row value on the next access, with no caching across accesses.
 
 One-arity formulae are unchanged, and the two forms mix freely — a one-arity formula can reference a two-arity one, and a two-arity formula can reference a one-arity one, by name.
 

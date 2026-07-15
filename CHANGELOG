@@ -1,6 +1,21 @@
 # CHANGELOG
 
-## 20260711
+## 20260715
+
+0.29.0: Per access indexed materialisation.
+
+Materialise each column once per top-level access, collapsing an O(n²) parent-scanning formula to O(n), with no value retained across accesses.
+
+1. ~ Namo#values: wrap the body in a private materialising scope.
+2. ~ Namo#values_for: memoise its column build into @materialised[dim] ||= (the data/derived branch that was its body).
+3. + Namo#materialising (a per-access scope that sets @materialised, yields, and clears it in an ensure; a nested values call reuses the open scope rather than starting another). A formula that scans its parent asks for the same column once per row it visits; the scope materialises that column once and reuses it for the rest of the access, then discards it — so every access still recomputes from current state and nothing can go stale. Enumerable is untouched: iteration paths (each/select/map/group_by) do not yet open the scope.
+4. ~ test/namo_test.rb: + an "access-scoped materialisation" describe — a referenced column materialises once per access, not once per referencing row; nothing is retained across accesses (a later access recomputes from current state); the scope clears on a raising materialisation, leaving later accesses working.
+5. ~ README.md: ~ the cross-row liveness note — "with no caching" becomes "with no caching across accesses", the within-access materialisation being a loop-invariant hoist, not a cache.
+6. ~ ROADMAP.md: + the 0.29.0 entry; current-state bumped to 0.29.0; the 1.x pure-live passages refined from "no memoisation anywhere" to the invariant "no derived value outlives the access that produced it"; the Live-data-and-cache-invalidation open question gains the access-scoped resolution; + forward notes on streaming performance vs incremental maintenance (a commercial-tier candidate) and on formula opacity as the shared wall behind ===, dependency-aware projection, serialisation, and incremental streaming.
+7. ~ docs/: regenerate the print-ready PDFs.
+8. ~ Namo::VERSION: /0.28.0/0.29.0/
+
+## 20260713
 
 0.28.0: ~ Namo::Collection#detail/#as_detail: Accept the by label positionally or by keyword.
 

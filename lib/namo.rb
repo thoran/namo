@@ -30,12 +30,14 @@ class Namo
   end
 
   def values(*dims)
-    if dims.empty?
-      materialisable_dimensions.each_with_object({}){|dim, hash| hash[dim] = values_for(dim)}
-    elsif dims.length == 1
-      values_for(dims.first)
-    else
-      dims.each_with_object({}){|dim, hash| hash[dim] = values_for(dim)}
+    materialising do
+      if dims.empty?
+        materialisable_dimensions.each_with_object({}){|dim, hash| hash[dim] = values_for(dim)}
+      elsif dims.length == 1
+        values_for(dims.first)
+      else
+        dims.each_with_object({}){|dim, hash| hash[dim] = values_for(dim)}
+      end
     end
   end
 
@@ -290,12 +292,24 @@ class Namo
     end
   end
 
-  def values_for(dim)
-    if data_dimensions.include?(dim)
-      @data.map{|row_data| row_data[dim]}
-    else
-      @data.map{|row_data| Row.new(row_data, @formulae, self)[dim]}
+  def materialising
+    return yield if @materialised
+    @materialised = {}
+    begin
+      yield
+    ensure
+      @materialised = nil
     end
+  end
+
+  def values_for(dim)
+    @materialised[dim] ||= (
+      if data_dimensions.include?(dim)
+        @data.map{|row_data| row_data[dim]}
+      else
+        @data.map{|row_data| Row.new(row_data, @formulae, self)[dim]}
+      end
+    )
   end
 
   def materialisable_dimensions
