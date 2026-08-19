@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 20260819
+
+0.30.1: ~ namo.gemspec: spec.files reordered, the globs first.
+
+1. ~ namo.gemspec: spec.files reordered, the two Dir globs first and the loose files alphabetically after them, as moby and measurand have it. The globs are what the gem is and the rest is paperwork, so adding a file to the paperwork now never disturbs them. This gemspec had been pinned first with the globs last, which http shared and impuri left at its 0.12.1. The same 21 files ship, in the same gem; only the order in the source changes.
+2. ~ Namo::VERSION: /0.30.0/0.30.1/
+
+
 ## 20260715
 
 0.30.0: Assemble Collection objects in a single pass when doing Namo::Enumerable#group_by.
