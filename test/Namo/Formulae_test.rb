@@ -440,4 +440,19 @@ describe Namo::Formulae do
       end
     end
   end
+
+  describe "#inspect" do
+    it "renders the formula names" do
+      formulae = Namo::Formulae.new
+      formulae[:revenue] = proc{|row| row[:price]}
+      _(formulae.inspect).must_equal "#<Namo::Formulae [:revenue]>"
+    end
+
+    it "does not render the callables" do
+      formulae = Namo::Formulae.new
+      formulae[:revenue] = proc{|row| row[:price]}
+      _(formulae.inspect).wont_match(/Proc/)
+    end
+  end
+
 end

@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 20260822
+
+0.31.0: + Namo#inspect, Namo::Collection#inspect, Namo::Row#inspect, and Namo::Formulae#inspect.
+
+1. + Namo#inspect: the class, the name where there is one, the stored rows, and the derived dimension names — the form the README has shown since 0.0.0 and the code has never produced. Rows beyond Namo::INSPECTED_ROWS are elided with a count of what is left, so the output no longer grows with the data.
+2. + Namo::Row#inspect: the row and its formula names. It had been rendering @namo, so asking a 1,000-row Namo for one row emitted more output than inspecting the whole Namo.
+3. + Namo::Collection#inspect: the member names and the row count, the members being the substance and the data view derived from them.
+4. + Namo::Formulae#inspect: the formula names, never the callables.
+5. + README.md: an Inspection output section, covering the rendered form, the naming of derived dimensions, and the row cap.
+6. ~ README.md: the inspect-output blocks requoted from single to double quotes, as Hash#inspect emits, and the two projections that carry formulae given their derived: suffix. The blocks had been hand-written before there was an inspect to copy from.
+7. ~ Namo::VERSION: /0.30.1/0.31.0/
+
+
 ## 20260819
 
 0.30.1: ~ namo.gemspec: spec.files reordered, the globs first.

@@ -129,7 +129,7 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
 
-## Current state: 0.30.0
+## Current state: 0.31.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1216,6 +1216,16 @@ It adds no observable behaviour — same results, same liveness, faster — so i
 `group_by` assembled its `Collection` one member at a time, and `Collection#<<` rebuilds `@data = detail.data` over all members-so-far on every append (0.18.0's rebuild-on-`<<` model). Partitioning into g groups therefore re-materialised the detail g times — O(rows·groups), the same quadratic shape as 0.29.0's parent-scanning formula but in the assembly path rather than the `values` path. At the group counts an end-of-day equities set reaches — thousands of securities — it is the dominant cost. `group_by` now maps the groups to members and hands them to a single `<<`, so the detail materialises once whatever the number of groups; the assembly is O(rows).
 
 It stays inside 0.18.0's resolved model rather than reopening it: `<<` still rebuilds `@data` eagerly, the snapshot is still taken at append, and an `as_summary`/`as_detail` view still persists until the next `<<`. What changes is only *how many* appends `group_by` makes — one, not g. It adds no observable behaviour and is contract-neutral, a minor. The case 0.18.0's "`<<` is the only mutator" premise does not cover — mutating a member *after* it is added, which the eager `@data` would not reflect — is untouched here; reconciling it with the per-access intent (a truly lazy `@data`, or a member→Collection propagation) remains the live-composition question, deferred.
+
+### 0.31.0 (2026-08-22): `inspect`
+
+The README has printed `#<Namo [ ... ]>` since 0.0.0 in twenty-nine examples and the code has never produced it: `inspect` was Ruby's default throughout, so a console printed the ivars — `@data`, `@formulae` as a `Namo::Formulae` wrapping a `@store` of `Proc` objects, and object addresses. `Row` was the worse case, because it holds `@namo`: asking a thousand-row Namo for one row emitted 46,375 characters against the whole Namo's 46,192, the formula store appearing twice. The output grew with the dataset rather than with the thing asked for, which is the wrong way round for the method a console calls on every result.
+
+`inspect` now renders the class, the name where there is one, the stored rows, and the names of any derived dimensions; `Row` renders its row and its formula names and never the Namo it came from; `Collection` renders its member names and its row count, the members being its substance and the data view derived from them; `Formulae` renders its names and never its callables. `INSPECTED_ROWS` caps the rows shown at ten and the remainder is elided with a count, so the output is bounded whatever the data.
+
+**Formulae are named, not evaluated.** The alternative — showing derived values alongside data, which would read better — was rejected on three grounds, each sufficient. A console calls `inspect` on every result, so evaluating would cost a pass over the data per access on an object whose whole model is live recomputation. A formula that raises would make the console unusable rather than merely wrong. And a parameterised formula cannot be materialised without arguments at all, so the rendering would have to omit it and be inconsistent with the rest. Naming the derived dimensions keeps `inspect` honest about the queryable namespace while leaving materialisation to `values`, `coordinates`, and projection, where the caller has asked for it.
+
+It is a minor rather than a patch because it is behaviour a caller can depend upon, not a docs correction: the rendered form is now part of what the library does. `to_s` is deliberately untouched, so string interpolation is unchanged.
 
 ### Summary
 

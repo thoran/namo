@@ -3221,4 +3221,49 @@ describe Namo do
       end
     end
   end
+
+  describe "#inspect" do
+    it "renders the class and the rows" do
+      _(Namo.new([{a: 1}]).inspect).must_equal "#<Namo [\n  {a: 1}\n]>"
+    end
+
+    it "renders an empty Namo without a row block" do
+      _(Namo.new([]).inspect).must_equal "#<Namo []>"
+    end
+
+    it "names derived dimensions without evaluating them" do
+      namo = Namo.new([{a: 1}])
+      namo[:b] = proc{|row| raise 'never called'}
+      _(namo.inspect).must_equal "#<Namo [\n  {a: 1}\n] derived: [:b]>"
+    end
+
+    it "includes the name when there is one" do
+      _(Namo.new([{a: 1}], name: :sales).inspect).must_match(/\A#<Namo :sales \[/)
+    end
+
+    it "omits the name when there is none" do
+      _(Namo.new([{a: 1}]).inspect).must_match(/\A#<Namo \[/)
+    end
+
+    it "truncates beyond INSPECTED_ROWS and says how many are left" do
+      namo = Namo.new((1..25).map{|i| {a: i}})
+      _(namo.inspect.scan(/\{a: \d+\}/).length).must_equal Namo::INSPECTED_ROWS
+      _(namo.inspect).must_match(/\.\.\. 15 more rows/)
+    end
+
+    it "does not truncate at exactly INSPECTED_ROWS" do
+      namo = Namo.new((1..Namo::INSPECTED_ROWS).map{|i| {a: i}})
+      _(namo.inspect).wont_match(/more rows/)
+    end
+
+    it "reports the subclass rather than Namo" do
+      Object.const_set(:InspectedSubAssembly, Class.new(Namo)) unless defined?(InspectedSubAssembly)
+      _(InspectedSubAssembly.new([{a: 1}]).inspect).must_match(/\A#<InspectedSubAssembly \[/)
+    end
+
+    it "does not grow with the data beyond the truncation point" do
+      _(Namo.new((1..10_000).map{|i| {a: i}}).inspect.length).must_be :<, 500
+    end
+  end
+
 end

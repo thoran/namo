@@ -53,6 +53,10 @@ class Namo
       self
     end
 
+    def inspect
+      "#<#{self.class}#{inspected_name} members: #{@members.map(&:name).inspect}, #{@data.length} rows#{inspected_derived}>"
+    end
+
     private
 
     def initialize(positional_data = nil, data: [], formulae: {}, name: nil)

@@ -66,42 +66,42 @@ Select by named dimension using keyword arguments:
 # Single value
 sales[product: 'Widget']
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
-#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+#   {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100},
+#   {product: "Widget", quarter: "Q2", price: 10.0, quantity: 150}
 # ]>
 
 # Multiple dimensions
 sales[product: 'Widget', quarter: 'Q1']
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100}
+#   {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100}
 # ]>
 
 # Range
 sales[price: 10.0..20.0]
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
-#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+#   {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100},
+#   {product: "Widget", quarter: "Q2", price: 10.0, quantity: 150}
 # ]>
 
 # Array of values
 sales[quarter: ['Q1']]
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
-#   {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40}
+#   {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100},
+#   {product: "Gadget", quarter: "Q1", price: 25.0, quantity: 40}
 # ]>
 
 # Proc predicate
 sales[price: ->(v){v < 20.0}]
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
-#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+#   {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100},
+#   {product: "Widget", quarter: "Q2", price: 10.0, quantity: 150}
 # ]>
 
 # Regex predicate
 sales[product: /^W/]
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
-#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+#   {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100},
+#   {product: "Widget", quarter: "Q2", price: 10.0, quantity: 150}
 # ]>
 ```
 
@@ -110,7 +110,7 @@ Procs receive the dimension value and select the row when they return truthy. Th
 ```ruby
 sales[price: ->(v){v < 20.0}, quantity: ->(v){v > 100}]
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+#   {product: "Widget", quarter: "Q2", price: 10.0, quantity: 150}
 # ]>
 ```
 
@@ -131,10 +131,10 @@ Project to specific dimensions:
 ```ruby
 sales[:product, :price]
 # => #<Namo [
-#   {product: 'Widget', price: 10.0},
-#   {product: 'Widget', price: 10.0},
-#   {product: 'Gadget', price: 25.0},
-#   {product: 'Gadget', price: 25.0}
+#   {product: "Widget", price: 10.0},
+#   {product: "Widget", price: 10.0},
+#   {product: "Gadget", price: 25.0},
+#   {product: "Gadget", price: 25.0}
 # ]>
 ```
 
@@ -143,8 +143,8 @@ Selection and projection can be chained:
 ```ruby
 sales[product: 'Widget'][:quarter, :price]
 # => #<Namo [
-#   {quarter: 'Q1', price: 10.0},
-#   {quarter: 'Q2', price: 10.0}
+#   {quarter: "Q1", price: 10.0},
+#   {quarter: "Q2", price: 10.0}
 # ]>
 ```
 
@@ -153,8 +153,8 @@ Or combined in a single call (names before selectors):
 ```ruby
 sales[:quarter, :price, product: 'Widget']
 # => #<Namo [
-#   {quarter: 'Q1', price: 10.0},
-#   {quarter: 'Q2', price: 10.0}
+#   {quarter: "Q1", price: 10.0},
+#   {quarter: "Q2", price: 10.0}
 # ]>
 ```
 
@@ -165,10 +165,10 @@ Contraction is the complement of projection. Projection says "keep these dimensi
 ```ruby
 sales[-:price, -:quantity]
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1'},
-#   {product: 'Widget', quarter: 'Q2'},
-#   {product: 'Gadget', quarter: 'Q1'},
-#   {product: 'Gadget', quarter: 'Q2'}
+#   {product: "Widget", quarter: "Q1"},
+#   {product: "Widget", quarter: "Q2"},
+#   {product: "Gadget", quarter: "Q1"},
+#   {product: "Gadget", quarter: "Q2"}
 # ]>
 ```
 
@@ -183,8 +183,8 @@ Selection and contraction can be chained:
 ```ruby
 sales[product: 'Widget'][-:price, -:quantity]
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1'},
-#   {product: 'Widget', quarter: 'Q2'}
+#   {product: "Widget", quarter: "Q1"},
+#   {product: "Widget", quarter: "Q2"}
 # ]>
 ```
 
@@ -193,8 +193,8 @@ Or combined in a single call (names before selectors):
 ```ruby
 sales[-:price, -:quantity, product: 'Widget']
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1'},
-#   {product: 'Widget', quarter: 'Q2'}
+#   {product: "Widget", quarter: "Q1"},
+#   {product: "Widget", quarter: "Q2"}
 # ]>
 ```
 
@@ -219,10 +219,10 @@ q2_sales = Namo.new([
 
 all_sales = q1_sales + q2_sales
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
-#   {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
-#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
-#   {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+#   {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100},
+#   {product: "Gadget", quarter: "Q1", price: 25.0, quantity: 40},
+#   {product: "Widget", quarter: "Q2", price: 10.0, quantity: 150},
+#   {product: "Gadget", quarter: "Q2", price: 25.0, quantity: 60}
 # ]>
 ```
 
@@ -247,8 +247,8 @@ discontinued = Namo.new([
 
 sales - discontinued
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
-#   {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150}
+#   {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100},
+#   {product: "Widget", quarter: "Q2", price: 10.0, quantity: 150}
 # ]>
 ```
 
@@ -273,8 +273,8 @@ confirmed = Namo.new([
 
 sales & confirmed
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
-#   {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+#   {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100},
+#   {product: "Gadget", quarter: "Q2", price: 25.0, quantity: 60}
 # ]>
 ```
 
@@ -297,9 +297,9 @@ all_sales = Namo.new([
 
 q1_sales | all_sales
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
-#   {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
-#   {product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}
+#   {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100},
+#   {product: "Gadget", quarter: "Q1", price: 25.0, quantity: 40},
+#   {product: "Thingo", quarter: "Q3", price: 5.0, quantity: 10}
 # ]>
 ```
 
@@ -322,8 +322,8 @@ set_b = Namo.new([
 
 set_a ^ set_b
 # => #<Namo [
-#   {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 40},
-#   {product: 'Thingo', quarter: 'Q3', price: 5.0, quantity: 10}
+#   {product: "Gadget", quarter: "Q1", price: 25.0, quantity: 40},
+#   {product: "Thingo", quarter: "Q3", price: 5.0, quantity: 10}
 # ]>
 ```
 
@@ -346,8 +346,8 @@ fundamentals = Namo.new([
 
 ohlcv * fundamentals
 # => #<Namo [
-#   {symbol: 'BHP', date: '2025-01-01', close: 42.5, pe: 14.5},
-#   {symbol: 'RIO', date: '2025-01-01', close: 118.3, pe: 9.2}
+#   {symbol: "BHP", date: "2025-01-01", close: 42.5, pe: 14.5},
+#   {symbol: "RIO", date: "2025-01-01", close: 118.3, pe: 9.2}
 # ]>
 ```
 
@@ -376,8 +376,8 @@ prices.*(quarterly) do |row, candidates|
   candidates[quarter_end: ->(qe){qe <= row[:date]}].sort_by{|f| f[:quarter_end]}.last(1)
 end
 # => #<Namo [
-#   {symbol: 'BHP', date: '2025-02-15', close: 42.5, quarter_end: '2024-12-31', eps: 1.0},
-#   {symbol: 'BHP', date: '2025-05-20', close: 44.0, quarter_end: '2025-03-31', eps: 1.2}
+#   {symbol: "BHP", date: "2025-02-15", close: 42.5, quarter_end: "2024-12-31", eps: 1.0},
+#   {symbol: "BHP", date: "2025-05-20", close: 44.0, quarter_end: "2025-03-31", eps: 1.2}
 # ]>
 ```
 
@@ -395,10 +395,10 @@ quarters = Namo.new([{quarter: 'Q1'}, {quarter: 'Q2'}])
 
 products ** quarters
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1'},
-#   {product: 'Widget', quarter: 'Q2'},
-#   {product: 'Gadget', quarter: 'Q1'},
-#   {product: 'Gadget', quarter: 'Q2'}
+#   {product: "Widget", quarter: "Q1"},
+#   {product: "Widget", quarter: "Q2"},
+#   {product: "Gadget", quarter: "Q1"},
+#   {product: "Gadget", quarter: "Q2"}
 # ]>
 ```
 
@@ -429,9 +429,9 @@ orders.**(tiers) do |row, candidates|
   candidates[max_weight: ->(w){w >= row[:weight]}]
 end
 # => #<Namo [
-#   {order: 'A', weight: 5, tier: 'light', max_weight: 10},
-#   {order: 'A', weight: 5, tier: 'heavy', max_weight: 20},
-#   {order: 'B', weight: 15, tier: 'heavy', max_weight: 20}
+#   {order: "A", weight: 5, tier: "light", max_weight: 10},
+#   {order: "A", weight: 5, tier: "heavy", max_weight: 20},
+#   {order: "B", weight: 15, tier: "heavy", max_weight: 20}
 # ]>
 ```
 
@@ -454,8 +454,8 @@ fundamentals = Namo.new([
 
 combined / fundamentals
 # => #<Namo [
-#   {date: '2025-01-01', close: 42.5},
-#   {date: '2025-01-01', close: 118.3}
+#   {date: "2025-01-01", close: 42.5},
+#   {date: "2025-01-01", close: 118.3}
 # ]>
 ```
 
@@ -616,10 +616,10 @@ sales[:revenue] = proc{|row| row[:price] * row[:quantity]}
 
 sales[:product, :quarter, :revenue]
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1', revenue: 1000.0},
-#   {product: 'Widget', quarter: 'Q2', revenue: 1500.0},
-#   {product: 'Gadget', quarter: 'Q1', revenue: 1000.0},
-#   {product: 'Gadget', quarter: 'Q2', revenue: 1500.0}
+#   {product: "Widget", quarter: "Q1", revenue: 1000.0},
+#   {product: "Widget", quarter: "Q2", revenue: 1500.0},
+#   {product: "Gadget", quarter: "Q1", revenue: 1000.0},
+#   {product: "Gadget", quarter: "Q2", revenue: 1500.0}
 # ]>
 ```
 
@@ -633,11 +633,11 @@ sales[:profit] = proc{|row| row[:revenue] - row[:cost]}
 
 sales[:product, :quarter, :profit]
 # => #<Namo [
-#   {product: 'Widget', quarter: 'Q1', profit: 600.0},
-#   {product: 'Widget', quarter: 'Q2', profit: 900.0},
-#   {product: 'Gadget', quarter: 'Q1', profit: 840.0},
-#   {product: 'Gadget', quarter: 'Q2', profit: 1260.0}
-# ]>
+#   {product: "Widget", quarter: "Q1", profit: 600.0},
+#   {product: "Widget", quarter: "Q2", profit: 900.0},
+#   {product: "Gadget", quarter: "Q1", profit: 840.0},
+#   {product: "Gadget", quarter: "Q2", profit: 1260.0}
+# ] derived: [:revenue, :cost]>
 ```
 
 Formulae work with selection and projection:
@@ -645,9 +645,9 @@ Formulae work with selection and projection:
 ```ruby
 sales[product: 'Widget'][:revenue, :quarter]
 # => #<Namo [
-#   {revenue: 1000.0, quarter: 'Q1'},
-#   {revenue: 1500.0, quarter: 'Q2'}
-# ]>
+#   {revenue: 1000.0, quarter: "Q1"},
+#   {revenue: 1500.0, quarter: "Q2"}
+# ] derived: [:cost, :profit]>
 ```
 
 Formulae carry through selection — a filtered Namo instance remembers its formulae.
@@ -968,6 +968,36 @@ sales[:product, :quarter, :revenue].to_h
 #   quarter: ['Q1', 'Q2', 'Q1', 'Q2'],
 #   revenue: [1000.0, 1500.0, 1000.0, 1500.0]
 # }
+```
+
+### Inspection output
+
+`inspect` renders the class, the stored rows, and the names of any derived dimensions:
+
+```ruby
+sales.inspect
+# => #<Namo [
+#   {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100},
+#   {product: "Widget", quarter: "Q2", price: 10.0, quantity: 150},
+#   {product: "Gadget", quarter: "Q1", price: 25.0, quantity: 40},
+#   {product: "Gadget", quarter: "Q2", price: 25.0, quantity: 60}
+# ] derived: [:revenue]>
+```
+
+A name, where the Namo carries one, follows the class: `#<Namo :sales [`. A subclass reports its own name in place of `Namo`.
+
+Derived dimensions are *named*, not evaluated. A console calls `inspect` on every result, so evaluating there would cost a pass over the data on each one, would raise whatever a formula raises, and could not render a parameterised formula at all. Ask through `values`, `coordinates`, or a projection when you want the values.
+
+Rows beyond `Namo::INSPECTED_ROWS` — ten — are elided with a count of the remainder, so the output stays bounded however large the data: a thousand-row Namo renders its first ten rows and then `... 990 more rows`.
+
+A `Row` renders itself and its formula names, never the Namo it came from. A `Collection` renders its member names and its row count, the members being its substance and the data view derived from them.
+
+```ruby
+sales.first
+# => #<Namo::Row {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100} derived: [:revenue]>
+
+sales.group_by(:quarter)
+# => #<Namo::Collection members: ["Q1", "Q2"], 4 rows>
 ```
 
 ### Named Namos

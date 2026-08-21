@@ -97,6 +97,10 @@ class Namo
       keys.sort.hash
     end
 
+    def inspect
+      "#<#{self.class} #{@store.keys.inspect}>"
+    end
+
     private
 
     def initialize(store = {})

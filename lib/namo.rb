@@ -17,6 +17,8 @@ class Namo
   attr_accessor :formulae
   attr_accessor :name
 
+  INSPECTED_ROWS = 10
+
   def dimensions
     data_dimensions + derived_dimensions
   end
@@ -247,6 +249,10 @@ class Namo
     end
   end
 
+  def inspect
+    "#<#{self.class}#{inspected_name}#{inspected_rows}#{inspected_derived}>"
+  end
+
   protected
 
   def row_multiset
@@ -264,6 +270,24 @@ class Namo
   end
 
   private
+
+  def inspected_name
+    @name.nil? ? '' : " #{@name.inspect}"
+  end
+
+  # The rows as they are stored, never the derived values: inspect is called
+  # for every result in a console, and evaluating a formula there would cost a
+  # pass over the data per access and raise whatever the formula raises.
+  def inspected_rows
+    return ' []' if @data.empty?
+    shown = @data.first(INSPECTED_ROWS).map{|row| "  #{row.inspect}"}.join(",\n")
+    shown += "\n  ... #{@data.length - INSPECTED_ROWS} more rows" if @data.length > INSPECTED_ROWS
+    " [\n#{shown}\n]"
+  end
+
+  def inspected_derived
+    derived_dimensions.empty? ? '' : " derived: #{derived_dimensions.inspect}"
+  end
 
   def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
     @data = positional_data || data

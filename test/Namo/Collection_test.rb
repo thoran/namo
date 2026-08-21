@@ -346,4 +346,17 @@ describe Namo::Collection do
       _(car.detail.values(:assembly)).must_equal [:powertrain, :powertrain, :chassis, :body]
     end
   end
+
+  describe "#inspect" do
+    it "renders the member names and the row count" do
+      collection = Namo::Collection.new
+      collection << Namo.new([{a: 1}], name: :first) << Namo.new([{a: 2}], name: :second)
+      _(collection.inspect).must_equal "#<Namo::Collection members: [:first, :second], 2 rows>"
+    end
+
+    it "renders an empty Collection" do
+      _(Namo::Collection.new.inspect).must_equal "#<Namo::Collection members: [], 0 rows>"
+    end
+  end
+
 end

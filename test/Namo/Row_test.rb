@@ -459,4 +459,23 @@ describe Namo::Row do
       _([a, b, duplicate_of_a].uniq.length).must_equal 2
     end
   end
+
+  describe "#inspect" do
+    it "renders the row data" do
+      _(Namo::Row.new({a: 1}, Namo::Formulae.new).inspect).must_equal "#<Namo::Row {a: 1}>"
+    end
+
+    it "names derived dimensions without evaluating them" do
+      formulae = Namo::Formulae.new
+      formulae[:b] = proc{|row| raise 'never called'}
+      _(Namo::Row.new({a: 1}, formulae).inspect).must_equal "#<Namo::Row {a: 1} derived: [:b]>"
+    end
+
+    it "does not render the Namo the row came from" do
+      namo = Namo.new((1..1000).map{|i| {a: i}})
+      _(namo.first.inspect).wont_match(/\{a: 2\}/)
+      _(namo.first.inspect.length).must_be :<, 100
+    end
+  end
+
 end

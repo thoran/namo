@@ -43,7 +43,15 @@ class Namo
       @row
     end
 
+    def inspect
+      "#<#{self.class} #{@row.inspect}#{inspected_derived}>"
+    end
+
     private
+
+    def inspected_derived
+      @formulae.keys.empty? ? '' : " derived: #{@formulae.keys.inspect}"
+    end
 
     def initialize(row, formulae, namo = nil)
       @row = row
