@@ -128,6 +128,28 @@ This isn't yet a shipped feature — serialisation lands later in 1.x — but th
 
 A Namo is a small, complete, self-describing analytical object. Pandas DataFrame plus the script that produced its computed columns. Excel workbook plus the ability to be queried programmatically. Jupyter notebook minus the bullshit.
 
+#### The shape of it, as far as it is settled
+
+The artefact is a `.namo` file and the call is `Namo.load`:
+
+```ruby
+require 'namo'
+namo = Namo.load('colleague.namo')
+namo[symbol: 'BHP']
+```
+
+Three things are decided.
+
+**`load` returns an ordinary Namo.** Not a mode, not a sealed object, not frozen. Every operation in the algebra applies to it, `attach` and `detach` and `[]=` among them. This is what makes the next point free rather than permitted.
+
+**A `.namo` need carry no formulae at all**, and one which doesn't is plain data a formulary can be attached to afterwards, exactly as any Namo can. Nothing about having been loaded prohibits it.
+
+**Precedence needs no new rule.** Where a file carries formulae and the receiver wants its own, it attaches them and the existing last-write-wins rule of `attach` decides, as it does for any two formularies. There is no installed-versus-embedded policy to invent, because the question resolves at the Namo rather than at the file.
+
+The formulae travel with the file. The earlier design carried names alone — the receiver resolving `(owner, name)` pairs against its own registrations, with rerun-the-script as the canonical satisfier — which works but leaves the recipient to arrange the code themselves, and that is the wrong shape for an artefact whose whole claim is that everything needed arrives together. Carrying whole formulary files verbatim is the mechanism: `Method#owner`, `source_location`, and the file read entire, with no slicing and no parsing. It suggests the convention that a formulary file holds its module and nothing else, since a file with side effects contributes them on load.
+
+**The open question is whether `load` may define constants in the receiving process.** A carried formulary file says `module OrderFlow`, and if the receiver already has an `OrderFlow` then evaluating that file reopens it and merges the definitions in — Ruby's own semantics, happening before any Namo exists, and capable of altering a module the receiving program uses elsewhere. That is the concrete form of a broader question: `Namo.load` would be running code a colleague sent, which is Marshal-tier trust. Whether the consent is implicit in calling `load`, or explicit in a `load!` which evaluates where plain `load` takes data and names alone, is unsettled and is the thing to settle first.
+
 
 ## Current state: 0.31.0
 
