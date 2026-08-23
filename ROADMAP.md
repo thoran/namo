@@ -1253,6 +1253,88 @@ It is a minor rather than a patch because it is behaviour a caller can depend up
 
 The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped, two-arity collection-scoped, and parameterised receiving arguments at access time, mixing freely), polymorphic assignment via `[]=` (a callable — proc, lambda, or `Method` — registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, a constructor that takes data positionally or by keyword and carries an optional `name:`, `Namo::Collection` — a hierarchical aggregate of named member Namos, assembled with `<<` and queried through `summary`/`detail` views with lazy detail materialisation, `summary`/`as_summary` taking an optional block for a per-member reduction beyond a single named reducer — and `group_by`, the partition-side constructor that splits a Namo into a `Collection` (the mirror of assembling one), formularies (`Namo::Formulary`) — reusable modules of derived dimensions attached to a Namo at runtime through `attach`/`<<` (or `attach!`, the forceful sibling that evicts a colliding data column rather than raising) or mixed into a subclass through `include`, and removed by `detach` — the mutating family is `attach`/`attach!`/`detach` — resolving as first-class derived dimensions — and the polymorphic `<<` operator that appends the constituent appropriate to its receiver (a formulary or a data row to a base Namo, guarding a row against a data/formula name collision; a member to a `Collection`), give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, combining or decomposing datasets with different dimensions, composing named datasets into a queryable whole, partitioning one back into named pieces, and drawing on reusable libraries of derived dimensions, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase is the 1.0.0 stable release.
 
+## Measured, at 0.31.0
+
+One comparison run by hand on 20260823, ahead of any suite and not to its
+standards, recorded because the figures are otherwise a recollection. Against
+fully vectorised NumPy — `lexsort`, `unique`, boolean masking, no Python in the
+loop — over 344,697 rows of daily prices for 2,641 securities, grouping by security
+and taking the first and last close of the year. Both sides returned identical
+results.
+
+| phase | Ruby / Namo | Python / NumPy |
+| --- | --- | --- |
+| sqlite3 query | 930 ms | 1075 ms |
+| rows into the library's form | 56 ms | 47 ms |
+| compute | 801 ms | 114 ms |
+| total | 1788 ms | 1236 ms |
+
+The three rows matter more than the total. The query is the largest term on either
+side and compares database drivers rather than libraries — Ruby's `sqlite3` gem
+against Python's stdlib module, with neither Namo nor NumPy in it — and it is the
+least stable figure, a cold run having measured 3.1 s. Namo's own ingest is 25
+microseconds, since it holds the array of hashes it is given rather than converting
+it, where `np.array` builds a structured array for its 47 ms.
+
+### How these were taken
+
+The data is a sqlite table of daily prices, queried as `SELECT security, date,
+close FROM prices WHERE exchange = 'AU' AND date BETWEEN '2025-01-01' AND
+'2025-12-31'`. The computation is: group by security, take the close at the
+earliest and at the latest date within each group, and keep the securities whose
+last close exceeds their first.
+
+Timings are `Monotonic::Timer` on the Ruby side and `time.perf_counter` on the
+Python side, medians of five to seven runs with a cold first discarded — the query
+moves by a factor of three between cold and warm and nothing else moves much.
+Allocation counts are the difference in `GC.stat[:total_allocated_objects]` across
+the phase, GC time the difference in `GC.stat[:time]`, and the GC-disabled row is
+the same phase run between `GC.disable` and `GC.enable`.
+
+The two implementations' outputs were compared directly rather than by eye: each
+writes its sorted list of securities, and the lists are identical at 1,622 entries.
+That is the check the scripts producing these figures did not themselves make, and
+three attempts to make it by hand agreed with themselves instead — once by scraping
+Namo's `inspect`, which truncates at `INSPECTED_ROWS`, and once by grepping the
+Python output with a pattern that silently dropped a ticker containing an
+underscore.
+
+### Where Namo's compute time goes
+
+Not on arithmetic. The same algorithm written by hand — group the hashes, `min_by`
+and `max_by` on date, compare, filter, build the same summary rows — runs in a
+fraction of it:
+
+| | time | objects allocated | GC |
+| --- | --- | --- | --- |
+| the algorithm by hand | 58 ms | 21,182 | 0 ms |
+| through Namo | 739 ms | 3,214,368 | 168 ms |
+| through Namo, GC disabled | 589 ms | 3,214,243 | — |
+
+**152 times the allocations**, 9.3 per row against 0.06, and garbage collection is
+a symptom rather than the cause: turning it off leaves 589 ms, still ten times the
+hand-written floor. So 681 of the 739 ms is machinery — `Row` objects, member
+Namos, intermediate collections — and 58 ms is the work.
+
+Three Ruby formulations were tried and the straightforward one was fastest: sorting
+first costs 135 ms, and a single pass maintaining first-and-last hashes costs 82 ms.
+So 58 ms is a fair floor rather than a lucky one.
+
+This is the finding that survives whatever the other libraries do, and the one a
+profiling suite should track: Namo is an order of magnitude above what the same
+algorithm costs in plain Ruby, and the distance is objects rather than sums.
+
+### Why the NumPy figure is not the interesting one
+
+Hand-written Ruby beating vectorised NumPy, 58 ms against 114, looks surprising
+until NumPy's side is broken down: 85 of its 114 ms is `lexsort`, and the float
+comparison the program exists to perform is 0.1 ms. Its `U32` column pads every
+security to 128 bytes whether the ticker is three characters or thirty, making the
+array 61 MB to drag through that sort — and NumPy has no hash-based group-by, so
+the idiomatic route is to sort the whole array and find the boundaries.
+
+So that comparison says more about NumPy's string dtype than about either library.
+
 ## 1.0.0: Stable release
 
 The 1.0 release includes everything through 0.27.0:
@@ -1301,6 +1383,13 @@ Each benchmark at multiple scales — 100, 1,000, 10,000, 100,000, 1,000,000 row
 Use `benchmark-ips` for iterations-per-second measurements. Results should be recorded and versioned so regressions are visible across releases.
 
 The 1.1 numbers become the baseline for 2.x comparisons.
+
+Two things the one measurement taken so far says the suite should do. Count
+allocated objects alongside elapsed time, since on the workload measured under
+*Measured, at 0.31.0* the whole of Namo's distance from hand-written Ruby is
+objects rather than arithmetic. And where an implementation is compared against
+another, assert that the two return the same answer before comparing their
+timings.
 
 ## 1.2: Loaders
 
