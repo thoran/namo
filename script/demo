@@ -296,9 +296,9 @@ end
 def whats_next
   section "What's next", 'Three directions, none of them built. The last two follow from the same property.'
   point 'Acceleration — columnar storage first, and C where it earns it',
-    'Against fully vectorised NumPy: seven times slower on the computation, and',
-    'about one and a half end to end, the database dominating both. The gap is',
-    'allocation rather than arithmetic, which says where the effort should go.'
+    'The same computation: 19 ms in pandas, 58 in plain Ruby, 740 in Namo. The',
+    'middle number is the language; the last one is mine, and it is allocation',
+    'rather than arithmetic — 152 times as many objects for the same answer.'
   point '.namo — the portable analytical artefact',
     'Data, derived dimensions and structure travel together, so what you hand a',
     'colleague is an analysis they can query and extend, not a spreadsheet.'
