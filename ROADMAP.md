@@ -1335,6 +1335,39 @@ the idiomatic route is to sort the whole array and find the boundaries.
 
 So that comparison says more about NumPy's string dtype than about either library.
 
+### Against pandas, which is built for it
+
+Pandas groups in C and stores its strings without padding them. At its best it is
+the fastest of the four:
+
+| compute phase | |
+| --- | --- |
+| pandas, sorted then `groupby(...).agg(['first', 'last'])` | 19 ms |
+| Ruby, the algorithm by hand | 58 ms |
+| NumPy, sort-based | 114 ms |
+| Namo | 739 ms |
+
+Three times faster than hand-written Ruby, and roughly forty times faster than
+Namo. Which settles a conclusion the NumPy figure invites and does not support:
+that because plain Ruby beat vectorised C, a compiled extension would be chasing a
+target Ruby already reaches. It would not. Columnar storage and C, which is what
+pandas is, gets well below the Ruby floor — an argument for the 3.x plan rather
+than against it.
+
+Formulation cost more than expected on the pandas side, and the first attempt here
+was not its best: `groupby(...).idxmin()`/`idxmax()` then `.loc` costs 67 ms, three
+and a half times the sorted-then-aggregated route. The Arrow string backend makes
+no difference either way, 66 ms against 67, so pandas is neither flattered nor
+handicapped by its string storage here.
+
+None of which moves the finding above. Namo is an order of magnitude above plain
+Ruby on the same algorithm at 152 times the allocations, and that distance is
+Namo's own machinery. The others set the target; the allocations say what has to
+change to approach it.
+
+Medians of warm runs on one machine: ruby 4.0.5, numpy 2.5.2, pandas 3.0.5,
+pyarrow 25.0.1, Namo 0.31.0.
+
 ## 1.0.0: Stable release
 
 The 1.0 release includes everything through 0.27.0:
