@@ -119,7 +119,7 @@ def point(title, *lines)
 end
 
 def ensure_readings
-  eval("readings = Namo.new(#{Fixtures.readings})", context) unless context.local_variable_defined?(:readings)
+  eval("readings = Namo.new(#{Fixtures.readings})", context)
 end
 
 def ensure_anomaly
@@ -190,19 +190,17 @@ def uncertainty
     puts
     return
   end
-  setup "sold = [
-    {instrument: 'caliper', price: 10.0, quantity: 100},
-    {instrument: 'micrometer', price: 25.0, quantity: 40}]"
-  setup 'plain = Namo.new(sold.map(&:dup))'
-  setup 'plain[:revenue] = proc{|row| row[:price] * row[:quantity]}'
-  show 'plain.values(:revenue)'
-  remark 'the same prices, now carrying what the instrument could actually resolve'
-  setup 'measured = Namo.new(sold.map{|row| row.merge(price: Measurand.new(row[:price], 0.05))})'
+  setup "specimens = #{Fixtures.specimens}"
+  setup 'plain = Namo.new(specimens.map(&:dup))'
+  setup 'plain[:area] = proc{|row| row[:length] * row[:width]}'
+  show 'plain.values(:area)'
+  remark 'the same lengths, now carrying what the caliper could actually resolve'
+  setup 'measured = Namo.new(specimens.map{|row| row.merge(length: Measurand.new(row[:length], 0.05))})'
   remark 'the formula is the one above, retyped unchanged'
-  setup 'measured[:revenue] = proc{|row| row[:price] * row[:quantity]}'
-  show 'measured.values(:revenue)'
-  remark 'equal revenue, unequal confidence — which the Float column had discarded'
-  show 'measured[:instrument, :revenue]'
+  setup 'measured[:area] = proc{|row| row[:length] * row[:width]}'
+  show 'measured.values(:area)'
+  remark 'equal area, unequal confidence — which the Float column had discarded'
+  show 'measured[:specimen, :area]'
 end
 
 def parameterised
@@ -247,17 +245,13 @@ end
 
 def conditional_join
   section "Joins you don't have a function for", 'The block takes a Namo and returns a Namo, so the pairing rule is written in the same language as the pipeline.'
-  setup "orders = Namo.new([{order: 'A', weight: 5}, {order: 'B', weight: 15}])"
-  setup "tiers = Namo.new([{tier: 'light', max_weight: 10}, {tier: 'heavy', max_weight: 20}])"
-  show 'orders.**(tiers){|row, candidates| candidates[max_weight: ->(w){w >= row[:weight]}]}'
-  setup "daily = Namo.new([
-    {symbol: 'BHP', date: '2025-02-15', close: 42.5},
-    {symbol: 'BHP', date: '2025-05-20', close: 44.0}])"
-  setup "reports = Namo.new([
-    {symbol: 'BHP', quarter_end: '2024-12-31', eps: 1.0},
-    {symbol: 'BHP', quarter_end: '2025-03-31', eps: 1.2}])"
-  remark 'each day matched to the most recent report dated on or before it'
-  show 'daily.*(reports){|row, candidates| candidates[quarter_end: ->(qe){qe <= row[:date]}].sort_by{|r| r[:quarter_end]}.last(1)}'
+  ensure_readings
+  setup "tolerances = Namo.new(#{Fixtures.tolerances})"
+  remark 'each reading paired with every sensor whose range covers it'
+  show 'readings[:station, :temp].**(tolerances){|row, candidates| candidates[max_range: ->(r){r >= row[:temp]}]}'
+  setup "calibrations = Namo.new(#{Fixtures.calibrations})"
+  remark 'and each reading matched to the most recent calibration dated on or before it'
+  show 'readings[:station, :month, :temp].*(calibrations){|row, candidates| candidates[calibrated: ->(c){c <= row[:month]}].sort_by{|r| r[:calibrated]}.last(1)}'
 end
 
 def collections
