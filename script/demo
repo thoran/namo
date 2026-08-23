@@ -6,6 +6,7 @@
 
 require_relative '../lib/namo'
 require 'date'
+require_relative 'fixtures'
 
 module Indicators
   include Namo::Formulary
@@ -106,27 +107,19 @@ def point(title, *lines)
   puts
 end
 
-def sales_rows
-  "[
-    {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
-    {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
-    {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 90},
-    {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 80}]"
-end
-
 def ensure_sales
-  eval("sales = Namo.new(#{sales_rows})", context) unless context.local_variable_defined?(:sales)
+  eval("sales = Namo.new(#{Fixtures.sales})", context) unless context.local_variable_defined?(:sales)
 end
 
 def ensure_revenue
   ensure_sales
   return if eval('sales.derived_dimensions.include?(:revenue)', context)
-  eval('sales[:revenue] = proc{|row| row[:price] * row[:quantity]}', context)
+  eval("sales[:revenue] = #{Fixtures.revenue}", context)
 end
 
 def ingestion
   section 'Data in, nothing declared', 'Hash keys become dimensions, values become coordinates, and no dimension is privileged.'
-  setup "sales = Namo.new(#{sales_rows})"
+  setup "sales = Namo.new(#{Fixtures.sales})"
   show 'sales.dimensions'
   remark 'the same call selects on a label and on a measure'
   show "sales[product: 'Widget']"
@@ -146,7 +139,7 @@ end
 def formulae
   ensure_sales
   section 'Formulae are dimensions', 'A computed value is queryable exactly like a stored one — and it stays live.'
-  setup 'sales[:revenue] = proc{|row| row[:price] * row[:quantity]}'
+  setup "sales[:revenue] = #{Fixtures.revenue}"
   show 'sales.data_dimensions'
   show 'sales.derived_dimensions'
   show 'sales[revenue: 1000.0..1600.0]'
@@ -235,8 +228,8 @@ end
 
 def algebra
   section 'The operators are an algebra', 'Namo in, Namo out — and the laws hold, so you can run them rather than assert them.'
-  setup "symbols = Namo.new([{symbol: 'BHP'}, {symbol: 'RIO'}])"
-  setup "quarters = Namo.new([{quarter: 'Q1'}, {quarter: 'Q2'}])"
+  setup "symbols = Namo.new(#{Fixtures.symbols})"
+  setup "quarters = Namo.new(#{Fixtures.quarters})"
   show 'symbols ** quarters'
   show '(symbols ** quarters) / quarters == symbols'
 end

@@ -1,0 +1,37 @@
+#!/usr/bin/env ruby
+# console
+
+# 20260823
+# 0.0.0
+
+# An irb session with the demo's data already built, for answering a question
+# without rebuilding it first.  The names are the ones script/demo puts on the
+# screen, and the fixtures come from the same file, so what is asked here and
+# what was shown there cannot disagree.
+#
+#   sales                 the four rows, with a :revenue formula attached
+#   symbols, quarters     the two operands of the algebra section
+#
+# It is a separate process from the demo, so nothing done here disturbs a run in
+# progress, and nothing done there is visible from here.
+
+require_relative '../lib/namo'
+require_relative 'fixtures'
+require 'date'
+require 'irb'
+
+begin
+  require 'measurand'
+rescue LoadError
+  warn '  (measurand is not installed, so Measurand is unavailable here)'
+end
+
+sales = Namo.new(eval(Fixtures.sales))
+sales[:revenue] = eval(Fixtures.revenue)
+symbols = Namo.new(eval(Fixtures.symbols))
+quarters = Namo.new(eval(Fixtures.quarters))
+
+puts
+puts '  namo console — sales, symbols, quarters are defined; sales has :revenue'
+puts
+binding.irb(show_code: false)
