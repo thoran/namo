@@ -23,12 +23,13 @@ end
 def usage
   puts "demo - Run through the Namo demonstration."
   puts
-  puts "Usage: script/demo [SECTION ...]"
+  puts "Usage: script/demo [SECTION ... | talk]"
   puts
   puts "With no arguments, runs every section, pausing between them when attached to a terminal."
-  puts "Named sections run in the listed order:"
+  puts "`talk` runs the fifteen-minute cut, marked * below. Named sections run in the listed"
+  puts "order rather than the order given:"
   puts
-  all_sections.each{|section| puts "  #{section}"}
+  all_sections.each{|section| puts "  #{talk_sections.include?(section) ? '*' : ' '} #{section}"}
 end
 
 def all_sections
@@ -39,8 +40,18 @@ def all_sections
   ]
 end
 
+# The cut which fits the slot: the six arguments in order, and the closer.  Named
+# here rather than remembered at the podium, where seven names is six too many.
+def talk_sections
+  [:ingestion, :formulae, :non_numeric, :uncertainty, :algebra, :collections, :whats_next]
+end
+
 def sections
-  @sections ||= ARGV.empty? ? all_sections : all_sections.select{|section| ARGV.include?(section.to_s)}
+  @sections ||=
+    if ARGV.empty? then all_sections
+    elsif ARGV.include?('talk') then talk_sections
+    else all_sections.select{|section| ARGV.include?(section.to_s)}
+    end
 end
 
 def validate_args

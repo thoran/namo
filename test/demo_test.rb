@@ -22,7 +22,7 @@ describe 'script/demo' do
   end
 
   def sections
-    @sections ||= demo('--help').scan(/^  ([a-z_]+)$/).flatten
+    @sections ||= demo('--help').scan(/^  [* ] ([a-z_]+)$/).flatten
   end
 
   it "lists its sections" do
@@ -36,6 +36,17 @@ describe 'script/demo' do
       $?.success?
     end
     _(failed).must_be_empty
+  end
+
+  it "has a talk cut, and it is a subset of the sections" do
+    cut = demo('--help').scan(/^  \* ([a-z_]+)$/).flatten
+    _(cut).wont_be_empty
+    _(cut - sections).must_be_empty
+  end
+
+  it "runs the talk cut" do
+    demo('talk')
+    _($?.success?).must_equal true
   end
 
   it "runs the whole script" do
