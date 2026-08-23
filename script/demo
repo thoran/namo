@@ -1,0 +1,326 @@
+#!/usr/bin/env ruby
+# demo
+
+# 20260821
+# 0.0.0
+
+require_relative '../lib/namo'
+require 'date'
+
+module Indicators
+  include Namo::Formulary
+
+  def signed_volume(row)
+    row[:buys] - row[:sells]
+  end
+
+  def cum_delta(row, namo)
+    namo[date: ..row[:date]].values(:signed_volume).sum
+  end
+end
+
+def usage
+  puts "demo - Run through the Namo demonstration."
+  puts
+  puts "Usage: script/demo [SECTION ...]"
+  puts
+  puts "With no arguments, runs every section, pausing between them when attached to a terminal."
+  puts "Named sections run in the listed order:"
+  puts
+  all_sections.each{|section| puts "  #{section}"}
+end
+
+def all_sections
+  [
+    :ingestion, :one_bracket, :formulae, :non_numeric, :parameterised, :formulary,
+    :uncertainty, :algebra, :conditional_join, :collections, :summary_block, :shape_dispatch, :just_ruby,
+    :whats_next
+  ]
+end
+
+def sections
+  @sections ||= ARGV.empty? ? all_sections : all_sections.select{|section| ARGV.include?(section.to_s)}
+end
+
+def validate_args
+  return unless ARGV.include?('-h') || ARGV.include?('--help') || sections.empty?
+  usage
+  exit(ARGV.empty? || ARGV.include?('-h') || ARGV.include?('--help') ? 0 : 1)
+end
+
+# One binding for the whole run, so a name bound in an early section is still
+# bound in a later one.  Locals in a top-level method would not survive the
+# call, which is what the instance variables were working around.
+def context
+  @context ||= binding
+end
+
+def pause
+  return unless $stdin.tty?
+  $stdin.gets
+end
+
+def section(title, framing)
+  puts
+  puts "── #{title}"
+  puts "   #{framing}"
+  puts
+end
+
+def render_namo(namo)
+  columns = namo.to_h
+  return '(no dimensions)' if columns.empty?
+  widths = columns.map{|dimension, values| [dimension.to_s.size, *values.map{|value| value.to_s.size}].max}
+  rows = [columns.keys] + columns.values.first.size.times.map{|index| columns.values.map{|values| values[index]}}
+  rows.map{|row| row.each_with_index.map{|cell, index| cell.to_s.ljust(widths[index])}.join('  ').rstrip}.join("\n")
+end
+
+def render(value)
+  value.is_a?(Namo) ? render_namo(value) : value.inspect
+end
+
+def indent(rendered)
+  rendered.lines.map{|line| "      #{line}"}.join
+end
+
+def show(expression)
+  rendered = render(eval(expression, context))
+  puts "  #{expression}"
+  puts(rendered.include?("\n") ? indent(rendered) : "  => #{rendered}")
+  puts
+end
+
+def setup(expression)
+  puts "  #{expression}"
+  eval(expression, context)
+  puts
+end
+
+def remark(text)
+  puts "  # #{text}"
+end
+
+def point(title, *lines)
+  puts "  #{title}"
+  lines.each{|line| puts "    #{line}"}
+  puts
+end
+
+def sales_rows
+  "[
+    {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
+    {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
+    {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 90},
+    {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 80}]"
+end
+
+def ensure_sales
+  eval("sales = Namo.new(#{sales_rows})", context) unless context.local_variable_defined?(:sales)
+end
+
+def ensure_revenue
+  ensure_sales
+  return if eval('sales.derived_dimensions.include?(:revenue)', context)
+  eval('sales[:revenue] = proc{|row| row[:price] * row[:quantity]}', context)
+end
+
+def ingestion
+  section 'Data in, nothing declared', 'Hash keys become dimensions, values become coordinates, and no dimension is privileged.'
+  setup "sales = Namo.new(#{sales_rows})"
+  show 'sales.dimensions'
+  remark 'the same call selects on a label and on a measure'
+  show "sales[product: 'Widget']"
+  show 'sales[price: 25.0]'
+end
+
+def one_bracket
+  ensure_sales
+  section 'One bracket does the lot', 'Selection, projection and contraction in one call — exact, array, range, proc and regex, mixed freely.'
+  show 'sales[:product, :price]'
+  show 'sales[-:price, -:quantity]'
+  show 'sales[product: /^W/]'
+  show 'sales[price: ->(v){v < 20.0}, quantity: ->(v){v > 100}]'
+  show "sales[:quarter, :price, product: /^W/, quarter: ['Q1', 'Q2']]"
+end
+
+def formulae
+  ensure_sales
+  section 'Formulae are dimensions', 'A computed value is queryable exactly like a stored one — and it stays live.'
+  setup 'sales[:revenue] = proc{|row| row[:price] * row[:quantity]}'
+  show 'sales.data_dimensions'
+  show 'sales.derived_dimensions'
+  show 'sales[revenue: 1000.0..1600.0]'
+  show 'sales.coordinates(:revenue)'
+  remark 'change the source data and the derived dimension follows'
+  setup 'sales.data[0][:price] = 12.0'
+  show 'sales.values(:revenue)'
+  setup 'sales.data[0][:price] = 10.0'
+end
+
+def non_numeric
+  section 'Not just numbers', 'The formula mechanism is type-agnostic: derive a String from a Date, then select and group by it.'
+  setup "people = Namo.new([
+    {first: 'Ada', last: 'Lovelace', born: Date.new(1815, 12, 10)},
+    {first: 'Grace', last: 'Hopper', born: Date.new(1906, 12, 9)},
+    {first: 'Karen', last: 'Spärck Jones', born: Date.new(1935, 8, 26)}])"
+  setup 'people[:full] = proc{|row| "#{row[:first]} #{row[:last]}"}'
+  setup 'people[:century] = proc{|row| "C#{row[:born].year / 100 + 1}"}'
+  show 'people[:full, :century]'
+  show 'people[full: /^A/]'
+  show 'people.coordinates(:century)'
+end
+
+# Requires measurand only when this section runs, so the script still works
+# without it installed.
+def measurand?
+  require 'measurand'
+  true
+rescue LoadError
+  false
+end
+
+def uncertainty
+  section 'The formula never knew what it was multiplying', 'Same rows, same formula. One column changes type, and nothing in Namo is told.'
+  unless measurand?
+    puts '  (measurand is not installed, so this section is skipped)'
+    puts
+    return
+  end
+  setup "sold = [
+    {instrument: 'caliper', price: 10.0, quantity: 100},
+    {instrument: 'micrometer', price: 25.0, quantity: 40}]"
+  setup 'plain = Namo.new(sold.map(&:dup))'
+  setup 'plain[:revenue] = proc{|row| row[:price] * row[:quantity]}'
+  show 'plain.values(:revenue)'
+  remark 'the same prices, now carrying what the instrument could actually resolve'
+  setup 'measured = Namo.new(sold.map{|row| row.merge(price: Measurand.new(row[:price], 0.05))})'
+  remark 'the formula is the one above, retyped unchanged'
+  setup 'measured[:revenue] = proc{|row| row[:price] * row[:quantity]}'
+  show 'measured.values(:revenue)'
+  remark 'equal revenue, unequal confidence — which the Float column had discarded'
+  show 'measured[:instrument, :revenue]'
+end
+
+def parameterised
+  section 'One formula, every parameterisation', 'Arguments arrive at access time, so one definition serves every column and every window.'
+  setup "prices = Namo.new((1..5).map{|i| {symbol: 'AAA', date: i, close: i * 10.0, volume: i * 100}})"
+  setup 'prices[:ma] = proc do |row, namo, field, period|
+    window = namo[symbol: row[:symbol], date: ->(d){d <= row[:date]}].last(period)
+    window.values(field).sum / window.count.to_f
+  end'
+  show 'prices.last[:ma, :close, 3]'
+  show 'prices.last[:ma, :volume, 2]'
+  remark 'a cross-row formula windows over the live collection, so an append moves it'
+  setup "prices << {symbol: 'AAA', date: 6, close: 100.0, volume: 600}"
+  show 'prices.last[:ma, :close, 3]'
+end
+
+def formulary
+  section 'A library of derivations is a module', 'Public methods are the derivations, private ones are helpers. Attach at runtime, detach again.'
+  setup 'flows = Namo.new([
+    {date: 1, buys: 60, sells: 40},
+    {date: 2, buys: 80, sells: 120},
+    {date: 3, buys: 75, sells: 75}])'
+  setup 'flows << Indicators'
+  show 'flows.derived_dimensions'
+  show 'flows[:date, :signed_volume, :cum_delta]'
+  remark 'and the store keeps where each one came from'
+  show 'flows.formulae[:signed_volume].owner'
+  setup 'flows.detach(Indicators)'
+  show 'flows.derived_dimensions'
+  remark 'a proc written at the call site has no such handle'
+  setup 'flows[:net] = proc{|row| row[:buys] + row[:sells]}'
+  show 'flows.formulae[:net].class'
+end
+
+def algebra
+  section 'The operators are an algebra', 'Namo in, Namo out — and the laws hold, so you can run them rather than assert them.'
+  setup "symbols = Namo.new([{symbol: 'BHP'}, {symbol: 'RIO'}])"
+  setup "quarters = Namo.new([{quarter: 'Q1'}, {quarter: 'Q2'}])"
+  show 'symbols ** quarters'
+  show '(symbols ** quarters) / quarters == symbols'
+end
+
+def conditional_join
+  section "Joins you don't have a function for", 'The block takes a Namo and returns a Namo, so the pairing rule is written in the same language as the pipeline.'
+  setup "orders = Namo.new([{order: 'A', weight: 5}, {order: 'B', weight: 15}])"
+  setup "tiers = Namo.new([{tier: 'light', max_weight: 10}, {tier: 'heavy', max_weight: 20}])"
+  show 'orders.**(tiers){|row, candidates| candidates[max_weight: ->(w){w >= row[:weight]}]}'
+  setup "daily = Namo.new([
+    {symbol: 'BHP', date: '2025-02-15', close: 42.5},
+    {symbol: 'BHP', date: '2025-05-20', close: 44.0}])"
+  setup "reports = Namo.new([
+    {symbol: 'BHP', quarter_end: '2024-12-31', eps: 1.0},
+    {symbol: 'BHP', quarter_end: '2025-03-31', eps: 1.2}])"
+  remark 'each day matched to the most recent report dated on or before it'
+  show 'daily.*(reports){|row, candidates| candidates[quarter_end: ->(qe){qe <= row[:date]}].sort_by{|r| r[:quarter_end]}.last(1)}'
+end
+
+def collections
+  ensure_revenue
+  section 'Collections are Namos', 'Partition into a Collection, analyse at either level with the same tools, and reassemble exactly.'
+  setup 'grouped = sales.group_by(:quarter)'
+  show 'grouped.members.map(&:name)'
+  show 'grouped.is_a?(Namo)'
+  remark 'so every row operation still applies, reading the detail view'
+  show "grouped[product: 'Widget'][:quarter, :price, :quantity]"
+  show 'grouped.summary(:revenue, by: :quarter)'
+  remark 'reducer: is any method the column responds to, so :max needs nothing of Namo'
+  show 'grouped.summary(:revenue, by: :quarter, reducer: :max)'
+  remark 'and the partition inverts exactly'
+  show 'grouped.as_detail(:quarter) == sales'
+end
+
+def summary_block
+  ensure_revenue
+  section 'A block for per-member work', 'One reducer names one column. A block returns the whole row, so several come at once.'
+  show 'sales.group_by(:product).summary(by: :line) do |member|
+    {items: member.count, best: member.max_by{|row| row[:revenue]}[:quarter], revenue: member.values(:revenue).sum}
+  end'
+end
+
+def shape_dispatch
+  ensure_revenue
+  section 'Shape is a pattern', "A Namo can stand in a case statement's `when`, so dispatch on an incoming feed runs through Ruby's own machinery."
+  setup "shape = Namo.new([{product: '', quarter: '', price: 0.0, quantity: 0}])"
+  setup 'shape[:revenue] = proc{|row| row[:price] * row[:quantity]}'
+  remark 'same dimensions and formula names, different rows'
+  show 'shape === sales'
+  show 'shape == sales'
+  show "shape === Namo.new([{symbol: 'BHP', close: 42.5}])"
+  show '(case sales when shape then :sales_feed else :unknown end)'
+end
+
+def just_ruby
+  ensure_revenue
+  section "It's just Ruby", 'No expression DSL, no string queries. Enumerable works, and the subset-returning methods hand back Namos.'
+  show 'sales.map{|row| row[:product]}'
+  show 'sales.reduce(0){|total, row| total + row[:revenue]}'
+  show 'sales.select{|row| row[:revenue] > 1000}[:product, :revenue]'
+  show 'sales.sort_by{|row| -row[:revenue]}.first[:product]'
+end
+
+def whats_next
+  section "What's next", 'Three directions, none of them built. The last two follow from the same property.'
+  point 'Acceleration — columnar storage first, and C where it earns it',
+    'Against fully vectorised NumPy: seven times slower on the computation, and',
+    'about one and a half end to end, the database dominating both. The gap is',
+    'allocation rather than arithmetic, which says where the effort should go.'
+  point '.namo — the portable analytical artefact',
+    'Data, derived dimensions and structure travel together, so what you hand a',
+    'colleague is an analysis they can query and extend, not a spreadsheet.'
+  point 'Automatic parallelisation — a separate gem, and currently an idea',
+    'Elsewhere you mark what may run in parallel. Here there is nothing to mark:',
+    'a one-arity formula is already a pure function of its row, and freeze already',
+    'says the shape is settled — neither of them written with parallelism in mind.'
+  point 'The property underneath both',
+    'A formula that is self-contained and nameable can travel: down a wire, or',
+    'across a core. Serialisation and parallelisation want the same thing of it.'
+end
+
+def main
+  validate_args
+  sections.each{|section| send(section); pause}
+end
+
+main
