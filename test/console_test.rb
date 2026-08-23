@@ -23,17 +23,17 @@ describe 'script/console' do
   end
 
   it "defines the names it says it does" do
-    output = console('[sales, symbols, quarters].map{|n| n.class}.inspect')
+    output = console('[readings, stations, months].map{|n| n.class}.inspect')
     _(output).must_match(/\[Namo, Namo, Namo\]/)
   end
 
   it "gives sales the revenue formula" do
-    _(console('sales.derived_dimensions.inspect')).must_match(/\[:revenue\]/)
+    _(console('readings.derived_dimensions.inspect')).must_match(/\[:anomaly\]/)
   end
 
   it "holds what the fixtures hold, so it cannot drift from the demo" do
-    expected = eval(Fixtures.sales)
-    _(console('sales.to_a == ' + expected.inspect)).must_match(/true/)
+    expected = eval(Fixtures.readings)
+    _(console('readings.to_a == ' + expected.inspect)).must_match(/true/)
   end
 
   it "starts without echoing its own source" do

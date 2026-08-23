@@ -9,27 +9,32 @@
 # demo prints these lines before evaluating them, so what the audience reads and
 # what runs are necessarily the same string, and the console evaluates the same
 # string to arrive at the same names.
+#
+# Two stations over two months, a measured temperature against its historical
+# mean, and rainfall.  The numbers are chosen so that the beats which turn upon
+# them still work: the anomalies are exact binary fractions and so sum without
+# drift, the two reducers disagree, and each station peaks in a different month.
 
 module Fixtures
   module_function
 
-  def sales
+  def readings
     "[
-    {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100},
-    {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
-    {product: 'Gadget', quarter: 'Q1', price: 25.0, quantity: 90},
-    {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 80}]"
+    {station: 'Melbourne', month: '2025-01', temp: 26.4, mean_temp: 25.9, rainfall: 48.2},
+    {station: 'Melbourne', month: '2025-02', temp: 25.6, mean_temp: 24.1, rainfall: 52.1},
+    {station: 'Perth', month: '2025-01', temp: 32.0, mean_temp: 30.0, rainfall: 8.4},
+    {station: 'Perth', month: '2025-02', temp: 29.5, mean_temp: 30.0, rainfall: 12.0}]"
   end
 
-  def revenue
-    'proc{|row| row[:price] * row[:quantity]}'
+  def anomaly
+    'proc{|row| (row[:temp] - row[:mean_temp]).round(1)}'
   end
 
-  def symbols
-    "[{symbol: 'BHP'}, {symbol: 'RIO'}]"
+  def stations
+    "[{station: 'Melbourne'}, {station: 'Perth'}]"
   end
 
-  def quarters
-    "[{quarter: 'Q1'}, {quarter: 'Q2'}]"
+  def months
+    "[{month: '2025-01'}, {month: '2025-02'}]"
   end
 end

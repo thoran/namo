@@ -118,47 +118,47 @@ def point(title, *lines)
   puts
 end
 
-def ensure_sales
-  eval("sales = Namo.new(#{Fixtures.sales})", context) unless context.local_variable_defined?(:sales)
+def ensure_readings
+  eval("readings = Namo.new(#{Fixtures.readings})", context) unless context.local_variable_defined?(:readings)
 end
 
-def ensure_revenue
-  ensure_sales
-  return if eval('sales.derived_dimensions.include?(:revenue)', context)
-  eval("sales[:revenue] = #{Fixtures.revenue}", context)
+def ensure_anomaly
+  ensure_readings
+  return if eval('readings.derived_dimensions.include?(:anomaly)', context)
+  eval("readings[:anomaly] = #{Fixtures.anomaly}", context)
 end
 
 def ingestion
   section 'Data in, nothing declared', 'Hash keys become dimensions, values become coordinates, and no dimension is privileged.'
-  setup "sales = Namo.new(#{Fixtures.sales})"
-  show 'sales.dimensions'
+  setup "readings = Namo.new(#{Fixtures.readings})"
+  show 'readings.dimensions'
   remark 'the same call selects on a label and on a measure'
-  show "sales[product: 'Widget']"
-  show 'sales[price: 25.0]'
+  show "readings[station: 'Melbourne']"
+  show 'readings[mean_temp: 30.0]'
 end
 
 def one_bracket
-  ensure_sales
+  ensure_readings
   section 'One bracket does the lot', 'Selection, projection and contraction in one call — exact, array, range, proc and regex, mixed freely.'
-  show 'sales[:product, :price]'
-  show 'sales[-:price, -:quantity]'
-  show 'sales[product: /^W/]'
-  show 'sales[price: ->(v){v < 20.0}, quantity: ->(v){v > 100}]'
-  show "sales[:quarter, :price, product: /^W/, quarter: ['Q1', 'Q2']]"
+  show 'readings[:station, :temp]'
+  show 'readings[-:mean_temp, -:rainfall]'
+  show 'readings[station: /^M/]'
+  show 'readings[rainfall: ->(v){v > 50.0}, temp: ->(v){v < 27.0}]'
+  show "readings[:month, :temp, station: /^M/, month: ['2025-01', '2025-02']]"
 end
 
 def formulae
-  ensure_sales
+  ensure_readings
   section 'Formulae are dimensions', 'A computed value is queryable exactly like a stored one — and it stays live.'
-  setup "sales[:revenue] = #{Fixtures.revenue}"
-  show 'sales.data_dimensions'
-  show 'sales.derived_dimensions'
-  show 'sales[revenue: 1000.0..1600.0]'
-  show 'sales.coordinates(:revenue)'
+  setup "readings[:anomaly] = #{Fixtures.anomaly}"
+  show 'readings.data_dimensions'
+  show 'readings.derived_dimensions'
+  show 'readings[anomaly: 1.0..2.0]'
+  show 'readings.coordinates(:anomaly)'
   remark 'change the source data and the derived dimension follows'
-  setup 'sales.data[0][:price] = 12.0'
-  show 'sales.values(:revenue)'
-  setup 'sales.data[0][:price] = 10.0'
+  setup 'readings.data[0][:temp] = 28.9'
+  show 'readings.values(:anomaly)'
+  setup 'readings.data[0][:temp] = 26.4'
 end
 
 def non_numeric
@@ -239,10 +239,10 @@ end
 
 def algebra
   section 'The operators are an algebra', 'Namo in, Namo out — and the laws hold, so you can run them rather than assert them.'
-  setup "symbols = Namo.new(#{Fixtures.symbols})"
-  setup "quarters = Namo.new(#{Fixtures.quarters})"
-  show 'symbols ** quarters'
-  show '(symbols ** quarters) / quarters == symbols'
+  setup "stations = Namo.new(#{Fixtures.stations})"
+  setup "months = Namo.new(#{Fixtures.months})"
+  show 'stations ** months'
+  show '(stations ** months) / months == stations'
 end
 
 def conditional_join
@@ -261,47 +261,47 @@ def conditional_join
 end
 
 def collections
-  ensure_revenue
+  ensure_anomaly
   section 'Collections are Namos', 'Partition into a Collection, analyse at either level with the same tools, and reassemble exactly.'
-  setup 'grouped = sales.group_by(:quarter)'
+  setup 'grouped = readings.group_by(:month)'
   show 'grouped.members.map(&:name)'
   show 'grouped.is_a?(Namo)'
   remark 'so every row operation still applies, reading the detail view'
-  show "grouped[product: 'Widget'][:quarter, :price, :quantity]"
-  show 'grouped.summary(:revenue, by: :quarter)'
+  show "grouped[station: 'Melbourne'][:month, :temp, :rainfall]"
+  show 'grouped.summary(:anomaly, by: :month)'
   remark 'reducer: is any method the column responds to, so :max needs nothing of Namo'
-  show 'grouped.summary(:revenue, by: :quarter, reducer: :max)'
+  show 'grouped.summary(:anomaly, by: :month, reducer: :max)'
   remark 'and the partition inverts exactly'
-  show 'grouped.as_detail(:quarter) == sales'
+  show 'grouped.as_detail(:month) == readings'
 end
 
 def summary_block
-  ensure_revenue
+  ensure_anomaly
   section 'A block for per-member work', 'One reducer names one column. A block returns the whole row, so several come at once.'
-  show 'sales.group_by(:product).summary(by: :line) do |member|
-    {items: member.count, best: member.max_by{|row| row[:revenue]}[:quarter], revenue: member.values(:revenue).sum}
+  show 'readings.group_by(:station).summary(by: :site) do |member|
+    {months: member.count, warmest: member.max_by{|row| row[:anomaly]}[:month], anomaly: member.values(:anomaly).sum}
   end'
 end
 
 def shape_dispatch
-  ensure_revenue
+  ensure_anomaly
   section 'Shape is a pattern', "A Namo can stand in a case statement's `when`, so dispatch on an incoming feed runs through Ruby's own machinery."
-  setup "shape = Namo.new([{product: '', quarter: '', price: 0.0, quantity: 0}])"
-  setup 'shape[:revenue] = proc{|row| row[:price] * row[:quantity]}'
+  setup "shape = Namo.new([{station: '', month: '', temp: 0.0, mean_temp: 0.0, rainfall: 0.0}])"
+  setup "shape[:anomaly] = #{Fixtures.anomaly}"
   remark 'same dimensions and formula names, different rows'
-  show 'shape === sales'
-  show 'shape == sales'
-  show "shape === Namo.new([{symbol: 'BHP', close: 42.5}])"
-  show '(case sales when shape then :sales_feed else :unknown end)'
+  show 'shape === readings'
+  show 'shape == readings'
+  show "shape === Namo.new([{site: 'Davis', ice_metres: 1.8}])"
+  show '(case readings when shape then :weather_feed else :unknown end)'
 end
 
 def just_ruby
-  ensure_revenue
+  ensure_anomaly
   section "It's just Ruby", 'No expression DSL, no string queries. Enumerable works, and the subset-returning methods hand back Namos.'
-  show 'sales.map{|row| row[:product]}'
-  show 'sales.reduce(0){|total, row| total + row[:revenue]}'
-  show 'sales.select{|row| row[:revenue] > 1000}[:product, :revenue]'
-  show 'sales.sort_by{|row| -row[:revenue]}.first[:product]'
+  show 'readings.map{|row| row[:station]}'
+  show 'readings.reduce(0){|total, row| total + row[:anomaly]}'
+  show 'readings.select{|row| row[:anomaly] > 0.5}[:station, :anomaly]'
+  show 'readings.sort_by{|row| -row[:anomaly]}.first[:station]'
 end
 
 def whats_next

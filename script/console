@@ -9,8 +9,8 @@
 # screen, and the fixtures come from the same file, so what is asked here and
 # what was shown there cannot disagree.
 #
-#   sales                 the four rows, with a :revenue formula attached
-#   symbols, quarters     the two operands of the algebra section
+#   readings              the four rows, with an :anomaly formula attached
+#   stations, months      the two operands of the algebra section
 #
 # It is a separate process from the demo, so nothing done here disturbs a run in
 # progress, and nothing done there is visible from here.
@@ -26,12 +26,12 @@ rescue LoadError
   warn '  (measurand is not installed, so Measurand is unavailable here)'
 end
 
-sales = Namo.new(eval(Fixtures.sales))
-sales[:revenue] = eval(Fixtures.revenue)
-symbols = Namo.new(eval(Fixtures.symbols))
-quarters = Namo.new(eval(Fixtures.quarters))
+readings = Namo.new(eval(Fixtures.readings))
+readings[:anomaly] = eval(Fixtures.anomaly)
+stations = Namo.new(eval(Fixtures.stations))
+months = Namo.new(eval(Fixtures.months))
 
 puts
-puts '  namo console — sales, symbols, quarters are defined; sales has :revenue'
+puts '  namo console — readings, stations, months are defined; readings has :anomaly'
 puts
 binding.irb(show_code: false)
