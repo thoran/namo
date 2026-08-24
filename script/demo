@@ -64,7 +64,7 @@ def pause(body)
     case keypress
     when *BACK then return -1
     when *FORWARD then return 1
-    when *QUIT then exit
+    when *QUIT then quit
     when 'i' then interact(body); return 1
     end
   end
@@ -104,6 +104,18 @@ end
 
 def release
   print("\e[r")
+end
+
+# The terminal as cmd-k would leave it: the region released, and the screen and
+# its scrollback both cleared, so that none of the talk is left sitting behind
+# the prompt.  Running off the last section does not come through here, since
+# that section is the one worth leaving on the screen.
+def quit
+  if $stdout.tty?
+    release
+    print("\e[H\e[2J\e[3J")
+  end
+  exit
 end
 
 # Sections vary in length, which walks the title up and down the screen between
@@ -468,6 +480,11 @@ def main
     display(body)
     index = [index + pause(body), 0].max
   end
+rescue Interrupt
+  # Ctrl-C anywhere but the raw read, where it arrives as an exception rather
+  # than as a byte.  Quitting is what was asked for, so there is nothing to say
+  # about it.
+  quit
 end
 
 main
