@@ -17,12 +17,23 @@ rather than only the total.
 
 import os
 import sqlite3
+import statistics
 import sys
 import time
 
 import numpy as np
 
 DATABASE = os.environ.get('MARKET_DATA_DB', '~/data/market_data.db')
+RUNS = 5
+
+
+def compute(data):
+    order = np.lexsort((data['date'], data['security']))
+    data = data[order]
+    securities, starts = np.unique(data['security'], return_index=True)
+    ends = np.append(starts[1:], len(data)) - 1
+    higher = data['close'][ends] > data['close'][starts]
+    return securities[higher]
 
 
 def main():
@@ -40,17 +51,16 @@ def main():
         rows, dtype=[('security', 'U32'), ('date', 'U10'), ('close', 'f8')])
     construct = time.perf_counter() - started
 
-    started = time.perf_counter()
-    order = np.lexsort((data['date'], data['security']))
-    data = data[order]
-    securities, starts = np.unique(data['security'], return_index=True)
-    ends = np.append(starts[1:], len(data)) - 1
-    higher = data['close'][ends] > data['close'][starts]
-    result = securities[higher]
-    compute = time.perf_counter() - started
+    # Medians, as the published figures are. compute() does not mutate what it is
+    # given, so each run starts from the same unsorted array.
+    timings = []
+    for _ in range(RUNS):
+        started = time.perf_counter()
+        result = compute(data)
+        timings.append((time.perf_counter() - started) * 1000)
 
     print(f'query={query * 1000:.0f}ms construct={construct * 1000:.0f}ms '
-          f'compute={compute * 1000:.0f}ms rows={len(result)}')
+          f'compute={statistics.median(timings):.0f}ms rows={len(result)}')
     print('\n'.join(sorted(result)), file=sys.stderr)
 
 

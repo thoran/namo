@@ -1322,6 +1322,15 @@ Allocation counts are the difference in `GC.stat[:total_allocated_objects]` acro
 the phase, GC time the difference in `GC.stat[:time]`, and the GC-disabled row is
 the same phase run between `GC.disable` and `GC.enable`.
 
+Namo's compute phase is the unsteady one, moving by around fifteen percent between
+runs where NumPy's and the hand-written Ruby's hold within five. That is the same
+finding as the allocation table below, seen from the side: what varies is when the
+collector runs. It is also why this document quotes 801 ms for that phase in the
+table above and 739 ms in the two tables below — the same measurement on different
+occasions, not two different things measured. Neither should be read to more than
+its first digit, and re-running `comparison/namo.rb` will produce a third figure in
+that range.
+
 The two implementations' outputs were compared directly rather than by eye: each
 writes its sorted list of securities, and the lists are identical at 1,622 entries.
 That is the check the scripts producing these figures did not themselves make, and

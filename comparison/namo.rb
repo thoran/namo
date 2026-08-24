@@ -39,8 +39,24 @@ class PriceData < Namo
   end
 end
 
+RUNS = 5
+
 def milliseconds(&block)
   Monotonic::Timer.time(&block).nanoseconds / 1e6
+end
+
+def median(numbers)
+  sorted = numbers.sort
+  sorted[sorted.length / 2]
+end
+
+# The whole of the compute phase: the summary, the formula which compares the two
+# prices, and the projection which selects on it.  ROADMAP.md's three-phase table
+# reports this.
+def compute(namo)
+  summary = namo.summary
+  summary[:higher] = proc{|row| row[:finishing_price] > row[:starting_price]}
+  summary[:security, :higher, higher: true]
 end
 
 def main
@@ -57,14 +73,15 @@ def main
   end
   to_hashes = milliseconds{price_data = rows.map{|security, date, close| {security: security, date: date, close: close}}}
   construct = milliseconds{namo = PriceData.new(price_data)}
-  compute = milliseconds do
-    summary = namo.summary
-    summary[:higher] = proc{|row| row[:finishing_price] > row[:starting_price]}
-    result = summary[:security, :higher, higher: true]
-  end
+  # Medians, as the published figures are: the query moves by a factor of four
+  # between cold and warm, and compute by a fifth run to run.  summary_only is
+  # reported beside compute because ROADMAP.md's allocation and pandas tables quote
+  # the summary alone where its three-phase table quotes the whole phase.
+  compute = median(RUNS.times.map{milliseconds{result = compute(namo)}})
+  summary_only = median(RUNS.times.map{milliseconds{namo.summary}})
 
-  puts format('query=%.0fms to_hashes=%.0fms construct=%.0fms compute=%.0fms rows=%d',
-    query, to_hashes, construct, compute, result.count)
+  puts format('query=%.0fms to_hashes=%.0fms construct=%.0fms compute=%.0fms summary_only=%.0fms rows=%d',
+    query, to_hashes, construct, compute, summary_only, result.count)
   $stderr.puts result.values(:security).sort.join("\n")
 end
 

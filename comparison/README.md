@@ -63,7 +63,10 @@ existing.
 
 ## Caveats
 
-Medians where a script takes them, single runs where it does not. The query is by
+Medians of five, except the query, which is measured once because it is the phase
+you cannot repeat honestly — the second run reads a warm cache. Namo's compute
+moves by around fifteen percent run to run where NumPy's and the by-hand figures
+hold within five, so its figures should be read to one significant digit. The query is by
 far the largest term and the least stable — a cold run has measured over four
 seconds against a warm one's second — and it compares database drivers rather than
 libraries. Figures move with library versions: the pandas numbers in the ROADMAP
