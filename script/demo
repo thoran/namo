@@ -111,8 +111,7 @@ end
 
 def section(title, framing)
   puts
-  puts "── #{title}"
-  puts "   #{framing}"
+  puts "# #{title} — #{framing}"
   puts
 end
 
@@ -126,6 +125,7 @@ end
 
 def render(value)
   value.is_a?(Namo) ? render_namo(value) : value.inspect
+  # value.inspect
 end
 
 def indent(rendered)
@@ -134,23 +134,23 @@ end
 
 def show(expression)
   rendered = render(eval(expression, context))
-  puts "  #{expression}"
+  puts "#{expression}"
   puts(rendered.include?("\n") ? indent(rendered) : "  => #{rendered}")
   puts
 end
 
 def setup(expression)
-  puts "  #{expression}"
+  puts "#{expression}"
   eval(expression, context)
   puts
 end
 
 def remark(text)
-  puts "  # #{text}"
+  puts "# #{text}"
 end
 
 def point(title, *lines)
-  puts "  #{title}"
+  puts "#{title}"
   lines.each{|line| puts "    #{line}"}
   puts
 end
@@ -166,9 +166,10 @@ def ensure_anomaly
 end
 
 def ingestion
-  section 'Data in, nothing declared', 'Hash keys become dimensions, values become coordinates, and no dimension is privileged.'
+  section 'Nothing declared on ingestion', 'Hash keys become dimensions, values become coordinates, and no dimension is privileged.'
   setup "readings = Namo.new(#{Fixtures.readings})"
   show 'readings.dimensions'
+  show 'readings.coordinates'
   remark 'the same call selects on a label and on a measure'
   show "readings[station: 'Melbourne']"
   show 'readings[mean_temp: 30.0]'
