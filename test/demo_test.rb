@@ -49,6 +49,16 @@ describe 'script/demo' do
     _($?.success?).must_equal true
   end
 
+  # The padding is what holds a section title in one place on the screen, and it
+  # can only pad down to the constant.  A section grown past it would silently
+  # start pushing the next one about.
+  it "has no section taller than the slide height" do
+    height = File.read(File.join(File.expand_path('..', __dir__), 'script', 'demo'))[/^SLIDE_HEIGHT = (\d+)$/, 1].to_i
+    _(height).must_be :>, 0
+    overlong = sections.select{|section| demo(section).lines.size > height}
+    _(overlong).must_be_empty
+  end
+
   it "runs the whole script" do
     demo
     _($?.success?).must_equal true

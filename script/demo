@@ -6,6 +6,7 @@
 
 require_relative '../lib/namo'
 require 'date'
+require 'stringio'
 require_relative 'fixtures'
 
 module Indicators
@@ -70,6 +71,26 @@ end
 def pause
   return unless $stdin.tty?
   $stdin.gets
+end
+
+# Sections vary from eleven lines to thirty-five, which walks the title up and
+# down the screen between one and the next.  Padding every section to the height
+# of the tallest holds each of them in the same place.
+SLIDE_HEIGHT = 35
+
+def slide(section)
+  previous, $stdout = $stdout, StringIO.new
+  begin
+    send(section)
+    $stdout.string
+  ensure
+    $stdout = previous
+  end
+end
+
+def pad(body)
+  return unless $stdout.tty?
+  (SLIDE_HEIGHT - body.lines.size).times{puts}
 end
 
 def section(title, framing)
@@ -318,7 +339,7 @@ end
 
 def main
   validate_args
-  sections.each{|section| send(section); pause}
+  sections.each{|section| slide(section).tap{|body| print(body); pad(body)}; pause}
 end
 
 main
