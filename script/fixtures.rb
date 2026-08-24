@@ -1,8 +1,8 @@
 # script/fixtures.rb
 # Fixtures
 
-# 20260823
-# 0.0.0
+# 20260824
+# 0.0.1
 
 # The data script/demo shows and script/console hands you, in one place so the
 # two cannot drift.  They are held as source text rather than as objects: the
@@ -20,15 +20,20 @@ module Fixtures
 
   def readings
     "[
-      {station: 'Melbourne', month: '2025-01', temp: 26.4, mean_temp: 25.9, rainfall: 48.2},
-      {station: 'Melbourne', month: '2025-02', temp: 25.6, mean_temp: 24.1, rainfall: 52.1},
-      {station: 'Perth', month: '2025-01', temp: 32.0, mean_temp: 30.0, rainfall: 8.4},
-      {station: 'Perth', month: '2025-02', temp: 29.5, mean_temp: 30.0, rainfall: 12.0}
+      {station: 'Melbourne', month: '2025-01', high_temp: 26.4, mean_temp: 25.9, rainfall: 48.2},
+      {station: 'Melbourne', month: '2025-02', high_temp: 25.6, mean_temp: 24.1, rainfall: 52.1},
+      {station: 'Melbourne', month: '2025-03', high_temp: 23.6, mean_temp: 23.1, rainfall: 53.3},
+      {station: 'Sydney', month: '2025-01', high_temp: 28.4, mean_temp: 26.9, rainfall: 58.2},
+      {station: 'Sydney', month: '2025-02', high_temp: 27.6, mean_temp: 25.1, rainfall: 62.1},
+      {station: 'Sydney', month: '2025-03', high_temp: 26.6, mean_temp: 24.1, rainfall: 42.3},
+      {station: 'Perth', month: '2025-01', high_temp: 32.0, mean_temp: 30.0, rainfall: 8.4},
+      {station: 'Perth', month: '2025-02', high_temp: 29.5, mean_temp: 30.0, rainfall: 12.0},
+      {station: 'Perth', month: '2025-03', high_temp: 28.5, mean_temp: 29.0, rainfall: 11.0},
     ]"
   end
 
   def anomaly
-    'proc{|row| (row[:temp] - row[:mean_temp]).round(1)}'
+    'proc{|row| (row[:high_temp] - row[:mean_temp]).round(1)}'
   end
 
   def stations

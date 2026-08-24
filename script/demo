@@ -120,14 +120,19 @@ def release
 end
 
 # The terminal as cmd-k would leave it: the region released, and the screen and
-# its scrollback both cleared, so that none of the talk is left sitting behind
-# the prompt.  Running off the last section does not come through here, since
-# that section is the one worth leaving on the screen.
+# its scrollback both cleared.  Before the first section so that the talk does
+# not open with the shell's leavings sitting above it, and on the way out so that
+# none of the talk is left sitting behind the prompt.
+def wipe
+  return unless $stdout.tty?
+  release
+  print("\e[H\e[2J\e[3J")
+end
+
+# Running off the last section does not come through here, since that section is
+# the one worth leaving on the screen.
 def quit
-  if $stdout.tty?
-    release
-    print("\e[H\e[2J\e[3J")
-  end
+  wipe
   exit
 end
 
@@ -240,7 +245,7 @@ def setup(expression)
 end
 
 def remark(text)
-  puts "# #{text}"
+  puts "## #{text}"
 end
 
 def point(title, *lines)
@@ -271,15 +276,19 @@ end
 
 def bracket_notation
   ensure_readings
-  section 'The Bracket Notation', 'Use a single call for matching with exact matches, array, range, proc and regex.'
+  section 'The Bracket Notation', 'Use a single call for matching exactly, by array, regex, range, and proc.'
   remark 'Projection'
-  show 'readings[:station, :temp]'
+  show 'readings[:station, :high_temp]'
   remark "Contraction"
   show 'readings[-:mean_temp, -:rainfall]'
-  remark "Selection"
+  remark "Selection by array"
+  show "readings[month: ['2025-01', '2025-02']]"
+  remark "Selection by regex"
   show 'readings[station: /^M/]'
-  show 'readings[rainfall: ->(v){v > 50.0}, temp: ->(v){v < 27.0}]'
-  show "readings[:month, :temp, station: /^M/, month: ['2025-01', '2025-02']]"
+  remark "Selection by regex"
+  show 'readings[rainfall: ->(v){v > 50.0}, high_temp: ->(v){v < 27.0}]'
+  remark "Projection and selection together"
+  show "readings[:month, :high_temp, station: /^M/, month: ['2025-01', '2025-02']]"
 end
 
 def formulae
@@ -291,9 +300,9 @@ def formulae
   show 'readings[anomaly: 1.0..2.0]'
   show 'readings.coordinates(:anomaly)'
   remark 'change the source data and the derived dimension follows'
-  setup 'readings.data[0][:temp] = 28.9'
+  setup 'readings.data[0][:high_temp] = 28.9'
   show 'readings.values(:anomaly)'
-  setup 'readings.data[0][:temp] = 26.4'
+  setup 'readings.data[0][:high_temp] = 26.4'
 end
 
 def non_numeric
@@ -308,7 +317,6 @@ def non_numeric
   show 'people[:full_name, :century]'
   show 'people[full_name: /^A/]'
   show 'people.coordinates(:century)'
-  show 'people.coordinates[:century]'
 end
 
 # Requires measurand only when this section runs, so the script still works
@@ -385,10 +393,10 @@ def conditional_join
   ensure_readings
   setup "tolerances = Namo.new(#{Fixtures.tolerances})"
   remark 'each reading paired with every sensor whose range covers it'
-  show 'readings[:station, :temp].**(tolerances){|row, candidates| candidates[max_range: ->(r){r >= row[:temp]}]}'
+  show 'readings[:station, :high_temp].**(tolerances){|row, candidates| candidates[max_range: ->(r){r >= row[:high_temp]}]}'
   setup "calibrations = Namo.new(#{Fixtures.calibrations})"
   remark 'and each reading matched to the most recent calibration dated on or before it'
-  show 'readings[:station, :month, :temp].*(calibrations){|row, candidates| candidates[calibrated: ->(c){c <= row[:month]}].sort_by{|r| r[:calibrated]}.last(1)}'
+  show 'readings[:station, :month, :high_temp].*(calibrations){|row, candidates| candidates[calibrated: ->(c){c <= row[:month]}].sort_by{|r| r[:calibrated]}.last(1)}'
 end
 
 def collections
@@ -398,7 +406,7 @@ def collections
   show 'grouped.members.map(&:name)'
   show 'grouped.is_a?(Namo)'
   remark 'so every row operation still applies, reading the detail view'
-  show "grouped[station: 'Melbourne'][:month, :temp, :rainfall]"
+  show "grouped[station: 'Melbourne'][:month, :high_temp, :rainfall]"
   show 'grouped.summary(:anomaly, by: :month)'
   remark 'reducer: is any method the column responds to, so :max needs nothing of Namo'
   show 'grouped.summary(:anomaly, by: :month, reducer: :max)'
@@ -489,6 +497,7 @@ end
 
 def main
   validate_args
+  wipe
   index = 0
   while index < sections.size
     body = slide(sections[index])
