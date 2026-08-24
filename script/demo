@@ -28,6 +28,7 @@ def usage
   puts "Usage: script/demo [SECTION ... | talk]"
   puts
   puts "With no arguments, runs every section, pausing between them when attached to a terminal."
+  puts "At a pause, return moves on and `i` opens irb on the section's own binding."
   puts "`talk` runs the fifteen-minute cut, marked * below. Named sections run in the listed"
   puts "order rather than the order given:"
   puts
@@ -47,9 +48,18 @@ def context
   @context ||= binding
 end
 
-def pause
+# Return moves to the next section.  Anything starting with an i opens irb on the
+# same binding the sections have been using, so every name the transcript above
+# put on the screen is still bound, and leaving irb comes back to this pause
+# rather than skipping ahead, with the section put back on the screen irb had
+# scrolled away.  It is the console without the second window.
+def pause(body)
   return unless $stdin.tty?
-  $stdin.gets
+  while (answer = $stdin.gets)
+    return unless answer.strip.start_with?('i')
+    context.irb(show_code: false)
+    display(body)
+  end
 end
 
 # Sections vary in length, which walks the title up and down the screen between
@@ -390,8 +400,9 @@ end
 def main
   validate_args
   sections.each do |section|
-    display(slide(section))
-    pause
+    body = slide(section)
+    display(body)
+    pause(body)
   end
 end
 
