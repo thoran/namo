@@ -6,6 +6,7 @@
 
 require_relative '../lib/namo'
 require 'date'
+require 'io/console'
 require 'stringio'
 require_relative 'fixtures'
 
@@ -74,8 +75,10 @@ def pause
 end
 
 # Sections vary from eleven lines to thirty-five, which walks the title up and
-# down the screen between one and the next.  Padding every section to the height
-# of the tallest holds each of them in the same place.
+# down the screen between one and the next.  Clearing puts the title on the first
+# row; the padding after it covers whatever the shorter sections would otherwise
+# leave showing underneath.  The constant is the fallback, and the bound the
+# suite holds sections to.
 SLIDE_HEIGHT = 35
 
 def slide(section)
@@ -88,9 +91,22 @@ def slide(section)
   end
 end
 
-def pad(body)
-  return unless $stdout.tty?
-  (SLIDE_HEIGHT - body.lines.size).times{puts}
+# Zero comes back from a pty without a controlling terminal, and is no more a
+# height than the exception is.
+def window_height
+  height = $stdout.winsize.first
+  height > 0 ? height : SLIDE_HEIGHT + 1
+rescue SystemCallError, NoMethodError
+  SLIDE_HEIGHT + 1
+end
+
+def display(body)
+  return print(body) unless $stdout.tty?
+  print("\e[H\e[2J")
+  print(body)
+  # One short of the window: the newline ending the last padded line would
+  # otherwise scroll the title off the row the clear had just put it on.
+  (window_height - 1 - body.lines.size).times{puts}
 end
 
 def section(title, framing)
@@ -339,7 +355,7 @@ end
 
 def main
   validate_args
-  sections.each{|section| slide(section).tap{|body| print(body); pad(body)}; pause}
+  sections.each{|section| display(slide(section)); pause}
 end
 
 main
