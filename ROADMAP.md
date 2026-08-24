@@ -1302,11 +1302,12 @@ it, where `np.array` builds a structured array for its 47 ms.
 
 ### How these were taken
 
-The sizing figures below come from `script/sizing`, which is in the repository and
-needs no data but its own. The comparison above needs a sqlite table of daily
-prices which is not, so its scripts are the weaker case of the same argument —
-without them a reader cannot see whether the two sides were cut fairly, only that
-this text says they were.
+The scripts are in `comparison/`, and the sizing figures below come from
+`script/sizing`. Neither directory is decoration: without the code a reader cannot
+see whether the two sides were cut fairly, only that this text says they were — and
+an earlier generation of those scripts was not cut fairly, which is how that came to
+be known. `comparison/` needs a sqlite table of daily prices which is not in this
+repository; `script/sizing` needs nothing but itself.
 
 The data is a sqlite table of daily prices, queried as `SELECT security, date,
 close FROM prices WHERE exchange = 'AU' AND date BETWEEN '2025-01-01' AND
@@ -1367,12 +1368,12 @@ So that comparison says more about NumPy's string dtype than about either librar
 
 ### Against pandas, which is built for it
 
-Pandas groups in C and stores its strings without padding them. At its best it is
+pandas groups in C and stores its strings without padding them. At its best it is
 the fastest of the four:
 
 | compute phase | |
 | --- | --- |
-| pandas, sorted then `groupby(...).agg(['first', 'last'])` | 19 ms |
+| pandas, `sort_values(['security', 'date'])` then `groupby(...).agg(['first', 'last'])` | 19 ms |
 | Ruby, the algorithm by hand | 58 ms |
 | NumPy, sort-based | 114 ms |
 | Namo | 739 ms |
