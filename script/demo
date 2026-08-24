@@ -72,14 +72,27 @@ ensure
   release if $stdout.tty?
 end
 
-# One keypress, or the whole of an arrow's escape sequence.  The two bytes after
-# the escape arrive with it, so a bare escape reads as itself rather than waiting
-# on a sequence which is not coming.
+# One keypress, or the whole of an escape sequence.  The rest of a sequence
+# arrives with the escape, so a bare escape reads as itself rather than waiting
+# on one which is not coming.
 def keypress
   $stdin.raw do |stdin|
     pressed = stdin.getc
     next pressed unless pressed == "\e"
-    pressed + (stdin.read_nonblock(2) rescue '')
+    pressed + sequence(stdin)
+  end
+end
+
+# Up to and including the byte which ends the sequence, rather than a fixed two:
+# an arrow ends after three bytes and a clicker's page keys after four, and
+# counting on the arrow would leave the tilde behind to be read as a keypress of
+# its own.
+def sequence(stdin)
+  (+'').tap do |rest|
+    while (byte = (stdin.read_nonblock(1) rescue nil))
+      rest << byte
+      break if rest.size > 1 && byte.match?(/[\x40-\x7e]/)
+    end
   end
 end
 
@@ -134,8 +147,10 @@ IRB_ROWS = 8
 
 # What a pause answers to.  Arrows arrive as three bytes, which is why it reads
 # raw rather than by the line.
-FORWARD = ["\e[C", "\e[B", "\r", "\n", ' ']
-BACK = ["\e[D", "\e[A"]
+# The O forms are the same arrows in application cursor mode, and the tilde forms
+# are the page keys a presentation clicker sends in place of them.
+FORWARD = ["\e[C", "\e[B", "\eOC", "\eOB", "\e[6~", "\r", "\n", ' ']
+BACK = ["\e[D", "\e[A", "\eOD", "\eOA", "\e[5~"]
 QUIT = ['q', "\u0003"]
 
 def slide(section)
