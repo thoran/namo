@@ -488,8 +488,8 @@ describe Namo do
         sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
         result = sales[revenue: ->(v){v >= 1500.0}]
         _(result.to_a).must_equal [
-          {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
-          {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+          {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150, revenue: 1500.0},
+          {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60, revenue: 1500.0}
         ]
       end
     end
@@ -571,8 +571,8 @@ describe Namo do
         sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
         result = sales[revenue: 1200.0..]
         _(result.to_a).must_equal [
-          {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
-          {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+          {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150, revenue: 1500.0},
+          {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60, revenue: 1500.0}
         ]
       end
     end
@@ -602,7 +602,7 @@ describe Namo do
       sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
       sales[:cost] = proc{|r| r[:quantity] * 4.0}
       sales[:profit] = proc{|r| r[:revenue] - r[:cost]}
-      _(sales[:product, :quarter, :profit].to_a).must_equal [
+      _(sales[:product, :quarter, :profit].data).must_equal [
         {product: "Widget", quarter: "Q1", profit: 600.0},
         {product: "Widget", quarter: "Q2", profit: 900.0},
         {product: "Gadget", quarter: "Q1", profit: 840.0},
@@ -1657,8 +1657,8 @@ describe Namo do
       sales[:revenue] = proc{|r| r[:price] * r[:quantity]}
       result = sales.select{|row| row[:revenue] >= 1500.0}
       _(result.to_a).must_equal [
-        {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150},
-        {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60}
+        {product: 'Widget', quarter: 'Q2', price: 10.0, quantity: 150, revenue: 1500.0},
+        {product: 'Gadget', quarter: 'Q2', price: 25.0, quantity: 60, revenue: 1500.0}
       ]
     end
 
@@ -2458,7 +2458,7 @@ describe Namo do
         dated[:cutoff] = proc{|r| r[:date]}
         result = dated.*(quarterly){|row, candidates| candidates[quarter_end: ->(qe){qe <= row[:cutoff]}].sort_by{|f| f[:quarter_end]}.last(1)}
         _(result.to_a).must_equal [
-          {symbol: 'BHP', date: '2025-05-20', close: 44.0, quarter_end: '2025-03-31', eps: 1.2}
+          {symbol: 'BHP', date: '2025-05-20', close: 44.0, quarter_end: '2025-03-31', eps: 1.2, cutoff: '2025-05-20'}
         ]
       end
 
@@ -2638,8 +2638,8 @@ describe Namo do
         weighted_tiers[:premium] = proc{|t| t[:max_weight] > 15}
         result = orders.**(weighted_tiers){|row, candidates| candidates[premium: ->(v){v}]}
         _(result.to_a).must_equal [
-          {order: 'A', weight: 5, tier: 'heavy', max_weight: 20},
-          {order: 'B', weight: 15, tier: 'heavy', max_weight: 20}
+          {order: 'A', weight: 5, tier: 'heavy', max_weight: 20, premium: true},
+          {order: 'B', weight: 15, tier: 'heavy', max_weight: 20, premium: true}
         ]
       end
 
@@ -3066,6 +3066,41 @@ describe Namo do
   describe "#to_a" do
     it "returns the data as an array of hashes" do
       _(sales.to_a).must_equal sample_data
+    end
+
+    it "carries a derived dimension alongside the stored ones" do
+      sales[:revenue] = proc{|row| row[:price] * row[:quantity]}
+      _(sales.to_a.first).must_equal(
+        {product: 'Widget', quarter: 'Q1', price: 10.0, quantity: 100, revenue: 1000.0})
+    end
+
+    it "agrees with to_h about which dimensions there are" do
+      sales[:revenue] = proc{|row| row[:price] * row[:quantity]}
+      _(sales.to_a.first.keys).must_equal sales.to_h.keys
+      _(sales.to_a.first.keys).must_equal sales.dimensions
+    end
+
+    it "omits a formula which cannot be materialised without its arguments" do
+      sales[:revenue] = proc{|row| row[:price] * row[:quantity]}
+      sales[:scaled] = proc{|row, namo, factor| row[:price] * factor}
+      _(sales.to_a.first.keys).wont_include :scaled
+      _(sales.to_a.first.keys).must_include :revenue
+      _(sales.derived_dimensions).must_include :scaled
+    end
+
+    it "raises where a carried formula's inputs were projected away, as 0.16.0 settled" do
+      sales[:revenue] = proc{|row| row[:price] * row[:quantity]}
+      _(->{sales[:product, :quarter].to_a}).must_raise NoMethodError
+    end
+
+    it "leaves data as the stored rows" do
+      sales[:revenue] = proc{|row| row[:price] * row[:quantity]}
+      _(sales.data).must_equal sample_data
+      _(sales.data.first.keys).wont_include :revenue
+    end
+
+    it "returns fresh rows rather than the stored ones" do
+      _(sales.to_a.first).wont_be_same_as sales.data.first
     end
   end
 

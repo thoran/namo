@@ -2,6 +2,16 @@
 
 ## 20260824
 
+0.31.3: ~ Namo#to_a: derived dimensions are carried alongside the stored ones.
+
+1. ~ Namo#to_a: each row carries the derived dimensions which can be materialised without arguments, in among its stored keys, so to_a agrees with to_h and with dimensions about what the Namo holds. A formula wanting arguments is omitted, the rule values, coordinates and to_h already follow. Namo#data is unchanged and remains the stored rows; Namo::Row#to_h is unchanged, Row#==, Row#eql? and Namo#<< all reading through it.
+2. ~ README.md: the Extracting data section, and the parameterised-formula rule which now names to_a.
+3. ~ ROADMAP.md: + 0.31.3; the open question on which conversions materialise closes for to_a and stays open for Namo::Row.
+4. ~ Namo::VERSION: /0.31.2/0.31.3/
+
+Rebuilding a Namo from to_a now carries the derived dimensions in as stored data. Namo.new(other.to_a) followed by attaching the formulary which produced them raises, the 0.24.1 collision guard refusing the name twice over; []= accepts it, evicting the data. Where the stored rows are what is meant, data is the accessor for them. A formula whose inputs a projection has cut raises through to_a as it has always raised through to_h and values, which 0.16.0 settled as the caller's own choice.
+
+
 0.31.2: ~ Namo#inspect: the derived: suffix names only what the rows do not carry.
 
 1. ~ Namo#inspect: the derived: suffix names only the derived dimensions the rendered rows do not already carry, and is omitted where they all do. A formula which raises, a parameterised one which cannot be materialised without its arguments, and any formula on a Namo with no rows to render, are named as before, being nowhere else in the output. Namo::Collection renders no rows and so names every one of its own. Namo::Row is unchanged, naming its formulae in every case.

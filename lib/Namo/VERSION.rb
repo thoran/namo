@@ -2,5 +2,5 @@
 # Namo::VERSION
 
 class Namo
-  VERSION = '0.31.2'
+  VERSION = '0.31.3'
 end

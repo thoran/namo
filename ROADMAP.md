@@ -151,7 +151,7 @@ The formulae travel with the file. The earlier design carried names alone — th
 **The open question is whether `load` may define constants in the receiving process.** A carried formulary file says `module OrderFlow`, and if the receiver already has an `OrderFlow` then evaluating that file reopens it and merges the definitions in — Ruby's own semantics, happening before any Namo exists, and capable of altering a module the receiving program uses elsewhere. That is the concrete form of a broader question: `Namo.load` would be running code a colleague sent, which is Marshal-tier trust. Whether the consent is implicit in calling `load`, or explicit in a `load!` which evaluates where plain `load` takes data and names alone, is unsettled and is the thing to settle first.
 
 
-## Current state: 0.31.2
+## Current state: 0.31.3
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1263,6 +1263,16 @@ A patch rather than a minor: 0.31.0 shipped the rendering wrong, and this is the
 
 What this gives up is telling a computed dimension from a stored one at a glance. That is the claim rather than the loss: a derived dimension is queryable exactly as a stored one is, and rendering it the same way says so, with `derived_dimensions` naming the distinction on demand. `Namo::Row` keeps its suffix in every case, having no `derived_dimensions` of its own to be asked; whether it should gain one, along with `dimensions` and `data_dimensions`, is open.
 
+### 0.31.3 (2026-08-24): `to_a` carries derived dimensions
+
+`to_a` returned the stored rows while `to_h`, `values`, `coordinates`, selection, projection and the subset Enumerable methods all answered with formulae included, and `dimensions` listed them. One object gave two answers about its own contents depending on whether it was asked row-shaped or column-shaped, and the row-shaped one is what gets handed to a CSV writer or a JSON dump.
+
+`to_a` now carries the derived dimensions which can be materialised without arguments, in among each row's own stored keys. The rule is the one already in force for the no-argument `values`, `coordinates` and `to_h` — return everything which can be materialised, omit what cannot — rather than a new policy. `data` is untouched and remains the accessor for the stored rows, so the distinction between what a Namo stores and what it can answer is now named rather than implied by which conversion you happen to call.
+
+A patch rather than a minor: the disagreement was not a position anyone would defend, and this sits in the same run as 0.31.0 through 0.31.2 — how a Namo represents itself, in a console and on the way out to other code. Breaking changes are permitted throughout 0.x in any case, so the number carries the story rather than a compatibility promise.
+
+Two consequences worth stating plainly. Rebuilding through `Namo.new(other.to_a)` now brings the derived dimensions in as stored data, so attaching the formulary which produced them raises on the 0.24.1 collision guard, while `[]=` accepts and evicts the data; `data` is the accessor where the stored rows are what is meant. And a formula whose inputs a projection has cut raises through `to_a` as it has always raised through `to_h` and `values` — 0.16.0 settled that as the caller's explicit choice, so `to_a` inherits the rule rather than acquiring a fault.
+
 ### Summary
 
 The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped, two-arity collection-scoped, and parameterised receiving arguments at access time, mixing freely), polymorphic assignment via `[]=` (a callable — proc, lambda, or `Method` — registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, a constructor that takes data positionally or by keyword and carries an optional `name:`, `Namo::Collection` — a hierarchical aggregate of named member Namos, assembled with `<<` and queried through `summary`/`detail` views with lazy detail materialisation, `summary`/`as_summary` taking an optional block for a per-member reduction beyond a single named reducer — and `group_by`, the partition-side constructor that splits a Namo into a `Collection` (the mirror of assembling one), formularies (`Namo::Formulary`) — reusable modules of derived dimensions attached to a Namo at runtime through `attach`/`<<` (or `attach!`, the forceful sibling that evicts a colliding data column rather than raising) or mixed into a subclass through `include`, and removed by `detach` — the mutating family is `attach`/`attach!`/`detach` — resolving as first-class derived dimensions — and the polymorphic `<<` operator that appends the constituent appropriate to its receiver (a formulary or a data row to a base Namo, guarding a row against a data/formula name collision; a member to a `Collection`), give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, combining or decomposing datasets with different dimensions, composing named datasets into a queryable whole, partitioning one back into named pieces, and drawing on reusable libraries of derived dimensions, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase is the 1.0.0 stable release.
@@ -2104,33 +2114,26 @@ When `TradingAnalysis * Namo` is evaluated, what class is the result? `TradingAn
 0.6.0 settles part of this question for equality: `eql?` cares about class match (`TradingAnalysis.new(data).eql?(Namo.new(data))` returns false even if the data matches), `==` does not. 0.12.0's subclass guard pattern (`if name` in `initialize`, introduced with the `name:` attribute) addresses the side-effects-on-operator-results question — operator-derived instances are name-less and skip side effects. The class of operator results currently defaults to the receiver's class, which works for same-class composition. Cross-class composition (`TradingAnalysis * SectorMetrics`) still raises the question of which subclass's modules carry through.
 
 
-### Which conversions materialise formulae
+### What a Row can be asked
 
-The conversions disagree about whether a derived dimension is part of the data. On one Namo carrying a single one-arity formula:
+Settled for the conversions at 0.31.3 and still open for `Namo::Row`.
+
+The conversions used to disagree about whether a derived dimension is part of the data: `to_h` materialised and `to_a` did not, so the row-shaped and column-shaped views of one object reported different contents, and `dimensions` agreed with neither. 0.31.3 made `to_a` materialise on the same rule the others follow — everything which can be had without arguments — leaving `data` as the accessor for the stored rows. `inspect` had crossed to the same side at 0.31.1.
 
 ```ruby
-namo.to_h        # => {a: [1, 2], g: ["x", "y"], b: [2, 3]}      materialised
-namo.to_a        # => [{a: 1, g: "x"}, {a: 2, g: "y"}]           not
-namo.data        # => [{a: 1, g: "x"}, {a: 2, g: "y"}]           not
-namo.first.to_h  # => {a: 1, g: "x"}                             not
-namo.inspect     # => #<Namo [ {a: 1, g: "x", b: 2}, ... ]>      materialised
+namo.dimensions  # => [:a, :g, :b]
+namo.to_a        # => [{a: 1, g: "x", b: 2}, ...]   materialised
+namo.to_h        # => {a: [1, 2], g: [...], b: [...]}   materialised
+namo.inspect     # => #<Namo [ {a: 1, g: "x", b: 2}, ... ]>   materialised
+namo.data        # => [{a: 1, g: "x"}, ...]   the stored rows
+namo.first.to_h  # => {a: 1, g: "x"}   the stored row
 ```
 
-`to_h` is the columnar `values` hash and has materialised for as long as it has existed. `to_a` and `data` return the stored rows. `Row#to_h` returns the row the Row was built from. `inspect` crossed to the materialising side in 0.31.1, and that is what made the split worth writing down: the two which materialise are now the two most likely to be read by a person rather than consumed by code, so the disagreement shows up in a console rather than in a test.
+`Row#to_h` was deliberately left out of that, and not on taste: `Row#==` and `Row#eql?` compare a stored `@row` against `other.to_h`, and `Namo#<<` appends a Row through it. Materialising there would stop a Row carrying formulae from equalling itself, and would have `<<` store derived values as data for the 0.24.1 collision guard to then reject against the formula which produced them.
 
-The question underneath is not which method to change but what a Namo means by its data, and the answer decides several things at once — what `.namo` writes to a file, what a frozen Namo freezes, and what `to_a` costs when the formulae attached to it are collection-scoped.
+So a Row cannot presently be asked what it holds. It has no `dimensions`, `data_dimensions` or `derived_dimensions`, and `to_h` answers for the stored half only, which leaves reading `inspect` as the way to learn a Row carries formulae at all — the reason `Row#inspect` keeps naming them in its suffix where `Namo#inspect` stopped at 0.31.2.
 
-- **The stored rows.** `to_h` stops materialising, which breaks its documented equivalence to the full `values` hash and leaves no row-and-column pair of conversions that agree.
-- **Everything queryable.** `to_a` and `Row#to_h` materialise. `data` stays stored, since it is the accessor for what the Namo was constructed from, which gives `data` and `to_a` different answers and makes that difference the thing to document. The cost of `to_a` then varies with the formulae attached rather than with the rows.
-- **Name the split.** `data` means stored, the `to_` conversions mean queryable, and `Row` gains `dimensions`, `data_dimensions` and `derived_dimensions` so the same question can be asked of it. This is the position the 0.31.2 note leaves open for `Row`.
-
-The second and third are the same change to `to_a` and differ over whether `Row` is brought along with it.
-
-The second is the one to take. Everything else a Namo can be asked already materialises — `dimensions`, `values`, `coordinates`, selection on a derived dimension, projection of one, the subset-returning Enumerable methods, `to_h`, and since 0.31.1 `inspect`. `to_a` is the single exception, and it is the row-shaped sibling of the columnar `to_h`, so the two views of one object presently disagree about what that object holds: `dimensions` reports three and `to_a` hands over rows carrying two. The rule for what to do about a formula which cannot be materialised without its arguments exists already and is documented — `values`, `coordinates` and `to_h` omit it and return the rest — so `to_a` needs no new policy, only the same one. `data` is unchanged and remains the accessor for the stored rows, which is the thing to reach for when the stored rows are what is meant.
-
-The cost is that `to_a` becomes proportional to rows times formulae, and a collection-scoped formula makes each row a pass over the Namo. That is the bill `to_h` already pays rather than a new kind of expense.
-
-`Row#to_h` should not follow, and not on taste: `Row#==` and `Row#eql?` compare a stored `@row` against `other.to_h`, and `Namo#<<` appends a Row through it. Materialising there would stop a Row carrying formulae from equalling itself, and would have `<<` store derived values as data for the 0.24.1 collision guard to then reject against the formula which produced them. A Row wanting a materialised view wants a new method, as it wants its own `derived_dimensions` rather than one inferred from what `inspect` prints.
+The shape that resolves it is `Row` gaining the three dimension methods its Namo has, and a separate conversion for the materialised row rather than a change to `to_h`. That is a minor: new methods, nothing moved. It would also let `Row#inspect` drop its suffix on the same terms `Namo#inspect` did, which is the only reason the two currently render differently.
 
 ## Presentation examples
 

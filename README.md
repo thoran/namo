@@ -717,7 +717,7 @@ prices.last[:sma]            # ArgumentError: wrong number of arguments for :sma
 prices.last[:close, 20]      # ArgumentError: wrong number of arguments for :close (given 1, expected 0)
 ```
 
-A formula that requires arguments can't be materialised without them. `values(:sma)`, `coordinates(:sma)`, naming `:sma` in a projection, and selecting on it all raise the same `ArgumentError`; the no-argument `values`, `coordinates`, and `to_h` omit the dimension, returning everything that can be materialised. `dimensions` and `derived_dimensions` still list it — it is queryable, with arguments. To materialise particular values, bind the arguments in a one-arity wrapper and ask for that:
+A formula that requires arguments can't be materialised without them. `values(:sma)`, `coordinates(:sma)`, naming `:sma` in a projection, and selecting on it all raise the same `ArgumentError`; the no-argument `values`, `coordinates`, `to_h` and `to_a` omit the dimension, returning everything that can be materialised. `dimensions` and `derived_dimensions` still list it — it is queryable, with arguments. To materialise particular values, bind the arguments in a one-arity wrapper and ask for that:
 
 ```ruby
 prices[:sma_close_20] = proc{|row| row[:sma, :close, 20]}
@@ -947,7 +947,7 @@ The transforming and reducing methods are deliberately left as Enumerable's defa
 
 ### Extracting data
 
-`to_a` returns an array of hashes — the row-oriented form:
+`to_a` returns an array of hashes — the row-oriented form, carrying derived dimensions alongside the stored ones, so it agrees with `to_h` and with `dimensions` about what the Namo holds:
 
 ```ruby
 sales[:product, :quarter, :revenue].to_a
@@ -958,6 +958,8 @@ sales[:product, :quarter, :revenue].to_a
 #   {product: 'Gadget', quarter: 'Q2', revenue: 1500.0}
 # ]
 ```
+
+`data` is the stored rows, without derived dimensions and without copying — it is the accessor for what the Namo was built from, where `to_a` is the conversion of what it can answer. A formula whose inputs a projection has cut raises through `to_a` as it does through `to_h` and `values`, which is [the caller's own choice](#projection-of-derived-dimensions) rather than a failure of the conversion.
 
 `to_h` returns a hash of arrays — the columnar form (see [Coordinates and values](#coordinates-and-values) above):
 

@@ -33,7 +33,7 @@ describe 'script/console' do
 
   it "holds what the fixtures hold, so it cannot drift from the demo" do
     expected = eval(Fixtures.readings)
-    _(console('readings.to_a == ' + expected.inspect)).must_match(/true/)
+    _(console('readings.data == ' + expected.inspect)).must_match(/true/)
   end
 
   it "starts without echoing its own source" do

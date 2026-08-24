@@ -241,10 +241,16 @@ class Namo
     other.subset_of_rows?(self)
   end
 
+  # Each row's own keys, in their own order, and then the derived dimensions which
+  # can be materialised without arguments — the rule values, coordinates and to_h
+  # already follow.  data is the stored rows, and stays so.
   def to_a
-    @data.map do |row|
-      row.keys.each_with_object({}) do |key, hash|
-        hash[key] = row[key]
+    materialising do
+      derived = materialisable_dimensions - data_dimensions
+      @data.map do |row|
+        subject = Row.new(row, @formulae, self)
+        stored = row.keys.each_with_object({}){|key, hash| hash[key] = row[key]}
+        derived.each_with_object(stored){|dimension, hash| hash[dimension] = subject[dimension]}
       end
     end
   end
