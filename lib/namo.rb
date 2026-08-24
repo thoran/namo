@@ -280,9 +280,26 @@ class Namo
   # pass over the data per access and raise whatever the formula raises.
   def inspected_rows
     return ' []' if @data.empty?
-    shown = @data.first(INSPECTED_ROWS).map{|row| "  #{row.inspect}"}.join(",\n")
+    shown = @data.first(INSPECTED_ROWS).map{|row| "  #{inspected_row(row)}"}.join(",\n")
     shown += "\n  ... #{@data.length - INSPECTED_ROWS} more rows" if @data.length > INSPECTED_ROWS
     " [\n#{shown}\n]"
+  end
+
+  def inspected_row(row)
+    row.merge(inspected_derivations(row)).inspect
+  end
+
+  # A derived dimension is shown with its value, in among the stored ones.  A
+  # formula wanting arguments has no value to show without them, and one which
+  # raises has none to show either; the derived list still names both.
+  def inspected_derivations(row)
+    subject = Row.new(row, @formulae, self)
+    derived_dimensions.each_with_object({}) do |dimension, derived|
+      next if @formulae.required_parameter_count(dimension) > 2
+      derived[dimension] = subject[dimension]
+    rescue StandardError
+      next
+    end
   end
 
   def inspected_derived

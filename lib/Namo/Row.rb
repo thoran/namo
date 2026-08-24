@@ -44,10 +44,25 @@ class Namo
     end
 
     def inspect
-      "#<#{self.class} #{@row.inspect}#{inspected_derived}>"
+      "#<#{self.class} #{inspected_row}#{inspected_derived}>"
     end
 
     private
+
+    def inspected_row
+      @row.merge(inspected_derivations).inspect
+    end
+
+    # As Namo#inspected_derivations: the value where there is one to show, and
+    # the derived list to name it either way.
+    def inspected_derivations
+      @formulae.keys.each_with_object({}) do |dimension, derived|
+        next if @formulae.required_parameter_count(dimension) > 2
+        derived[dimension] = self[dimension]
+      rescue StandardError
+        next
+      end
+    end
 
     def inspected_derived
       @formulae.keys.empty? ? '' : " derived: #{@formulae.keys.inspect}"

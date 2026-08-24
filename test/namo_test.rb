@@ -3231,9 +3231,27 @@ describe Namo do
       _(Namo.new([]).inspect).must_equal "#<Namo []>"
     end
 
-    it "names derived dimensions without evaluating them" do
+    it "shows a derived dimension with its value, in among the stored ones" do
       namo = Namo.new([{a: 1}])
-      namo[:b] = proc{|row| raise 'never called'}
+      namo[:b] = proc{|row| row[:a] + 1}
+      _(namo.inspect).must_equal "#<Namo [\n  {a: 1, b: 2}\n] derived: [:b]>"
+    end
+
+    it "shows a collection-scoped derived value" do
+      namo = Namo.new([{a: 1}, {a: 2}])
+      namo[:total] = proc{|row, namo| namo.values(:a).sum}
+      _(namo.inspect).must_equal "#<Namo [\n  {a: 1, total: 3},\n  {a: 2, total: 3}\n] derived: [:total]>"
+    end
+
+    it "names a derived dimension whose formula raises, without a value" do
+      namo = Namo.new([{a: 1}])
+      namo[:b] = proc{|row| raise 'no value to show'}
+      _(namo.inspect).must_equal "#<Namo [\n  {a: 1}\n] derived: [:b]>"
+    end
+
+    it "names a derived dimension whose formula wants arguments, without a value" do
+      namo = Namo.new([{a: 1}])
+      namo[:b] = proc{|row, namo, factor| row[:a] * factor}
       _(namo.inspect).must_equal "#<Namo [\n  {a: 1}\n] derived: [:b]>"
     end
 

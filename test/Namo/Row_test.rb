@@ -465,9 +465,15 @@ describe Namo::Row do
       _(Namo::Row.new({a: 1}, Namo::Formulae.new).inspect).must_equal "#<Namo::Row {a: 1}>"
     end
 
-    it "names derived dimensions without evaluating them" do
+    it "shows a derived dimension with its value, in among the stored ones" do
       formulae = Namo::Formulae.new
-      formulae[:b] = proc{|row| raise 'never called'}
+      formulae[:b] = proc{|row| row[:a] + 1}
+      _(Namo::Row.new({a: 1}, formulae).inspect).must_equal "#<Namo::Row {a: 1, b: 2} derived: [:b]>"
+    end
+
+    it "names a derived dimension whose formula raises, without a value" do
+      formulae = Namo::Formulae.new
+      formulae[:b] = proc{|row| raise 'no value to show'}
       _(Namo::Row.new({a: 1}, formulae).inspect).must_equal "#<Namo::Row {a: 1} derived: [:b]>"
     end
 

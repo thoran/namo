@@ -151,7 +151,7 @@ The formulae travel with the file. The earlier design carried names alone — th
 **The open question is whether `load` may define constants in the receiving process.** A carried formulary file says `module OrderFlow`, and if the receiver already has an `OrderFlow` then evaluating that file reopens it and merges the definitions in — Ruby's own semantics, happening before any Namo exists, and capable of altering a module the receiving program uses elsewhere. That is the concrete form of a broader question: `Namo.load` would be running code a colleague sent, which is Marshal-tier trust. Whether the consent is implicit in calling `load`, or explicit in a `load!` which evaluates where plain `load` takes data and names alone, is unsettled and is the thing to settle first.
 
 
-## Current state: 0.31.0
+## Current state: 0.31.1
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1248,6 +1248,14 @@ The README has printed `#<Namo [ ... ]>` since 0.0.0 in twenty-nine examples and
 **Formulae are named, not evaluated.** The alternative — showing derived values alongside data, which would read better — was rejected on three grounds, each sufficient. A console calls `inspect` on every result, so evaluating would cost a pass over the data per access on an object whose whole model is live recomputation. A formula that raises would make the console unusable rather than merely wrong. And a parameterised formula cannot be materialised without arguments at all, so the rendering would have to omit it and be inconsistent with the rest. Naming the derived dimensions keeps `inspect` honest about the queryable namespace while leaving materialisation to `values`, `coordinates`, and projection, where the caller has asked for it.
 
 It is a minor rather than a patch because it is behaviour a caller can depend upon, not a docs correction: the rendered form is now part of what the library does. `to_s` is deliberately untouched, so string interpolation is unchanged.
+
+### 0.31.1 (2026-08-24): derived values in `inspect`
+
+0.31.0 named derived dimensions without evaluating them, on three grounds. Two of them are answered by omitting a value rather than failing to render: a formula which raises shows nothing, and a parameterised one, which cannot be materialised without its arguments, shows nothing either, with the `derived:` suffix naming both. The third — the cost of evaluating on every console result — is bounded by `INSPECTED_ROWS` rather than by the data: ten rows are rendered, so ten evaluations per formula, though a collection-scoped formula makes each of those a pass over the Namo.
+
+What the three grounds cost was the thing `inspect` exists for. A Namo carrying formulae rendered exactly as one carrying none, and the suffix a reader had to hold against the rows themselves. Live recomputation is the model, so a console showing the stored half of a row was showing the half Namo is least about.
+
+A patch rather than a minor: 0.31.0 shipped the rendering wrong, and this is the correction rather than a new thing to depend upon.
 
 ### Summary
 

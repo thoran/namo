@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 20260824
+
+0.31.1: ~ Namo#inspect, Namo::Row#inspect: derived dimensions render their values.
+
+1. ~ Namo#inspect: a derived dimension renders with its value, in among the stored ones, rather than being named only. Where there is no value to show it is omitted and the derived: suffix names it alone: a formula which raises, and a parameterised one which cannot be materialised without its arguments.
+2. ~ Namo::Row#inspect: the same.
+3. ~ README.md: the Inspection output section rewritten, and the two blocks whose rendering changes.
+4. ~ ROADMAP.md: + 0.31.1.
+5. ~ Namo::VERSION: /0.31.0/0.31.1/
+
+
 ## 20260822
 
 0.31.0: + Namo#inspect, Namo::Collection#inspect, Namo::Row#inspect, and Namo::Formulae#inspect.
