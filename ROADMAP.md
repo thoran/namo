@@ -1392,6 +1392,42 @@ change to approach it.
 Medians of warm runs on one machine: ruby 4.0.5, numpy 2.5.2, pandas 3.0.5,
 pyarrow 25.0.1, Namo 0.31.0.
 
+### What size it is for
+
+Sized on 20260824 on the same footing as the figures above — by hand, not to a
+suite's standards. Eight columns of daily prices, built as an array of hashes and
+grouped by security.
+
+| rows | group_by |
+| --- | --- |
+| 50,000 | 207 ms |
+| 100,000 | 330 ms |
+| 200,000 | 428 ms |
+| 400,000 | 951 ms |
+
+Roughly linear, at 2.4 microseconds a row, which agrees with the 801 ms of compute
+over 344,697 rows above. A row costs 408 bytes held, measured as the difference in
+`ObjectSpace.memsize_of_all` across construction.
+
+Extrapolated from there, and linearly, which is the optimistic reading — a large
+Ruby heap degrades worse than linearly under GC pressure, and none of this is
+threaded:
+
+| rows | held | group_by |
+| --- | --- | --- |
+| 1,000,000 | 0.4 GB | ~2 s |
+| 10,000,000 | 3.8 GB | ~21 s |
+| 30,000,000 | 11.4 GB | ~64 s |
+
+**The claim: comfortable to about a million rows, workable into the low millions,
+and past that the answer is columnar storage rather than this.** Tens of millions
+does not fail, but it stops being the thing Namo is for. What it offers is a
+question typed and an answer looked at; a minute for a `group_by` is not that, and
+eleven gigabytes before any intermediate result rules out the machine most people
+would try it on. The ceiling is a plan rather than a wall — columnar storage and C
+acceleration are 3.x — but until then the honest range is the one above, and it
+covers the great majority of what a research dataset actually holds.
+
 ## 1.0.0: Stable release
 
 The 1.0 release includes everything through 0.27.0:
