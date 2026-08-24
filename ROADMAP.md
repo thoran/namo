@@ -1302,6 +1302,12 @@ it, where `np.array` builds a structured array for its 47 ms.
 
 ### How these were taken
 
+The sizing figures below come from `script/sizing`, which is in the repository and
+needs no data but its own. The comparison above needs a sqlite table of daily
+prices which is not, so its scripts are the weaker case of the same argument —
+without them a reader cannot see whether the two sides were cut fairly, only that
+this text says they were.
+
 The data is a sqlite table of daily prices, queried as `SELECT security, date,
 close FROM prices WHERE exchange = 'AU' AND date BETWEEN '2025-01-01' AND
 '2025-12-31'`. The computation is: group by security, take the close at the
@@ -1394,18 +1400,24 @@ pyarrow 25.0.1, Namo 0.31.0.
 
 ### What size it is for
 
-Sized on 20260824 on the same footing as the figures above — by hand, not to a
-suite's standards. Eight columns of daily prices, built as an array of hashes and
-grouped by security. `Process.clock_gettime(Process::CLOCK_MONOTONIC)`, medians of
-five, a warm run first. A row costs 408 bytes held, measured as the difference in
-`ObjectSpace.memsize_of_all` across construction.
+Sized on 20260824, and repeatable: `script/sizing` in this repository prints the
+table below. Eight columns of daily prices across 2,641 securities, built as an
+array of hashes and grouped by security.
+`Process.clock_gettime(Process::CLOCK_MONOTONIC)`, medians of five, a warm run
+first. A row costs 408 bytes held, the difference in `ObjectSpace.memsize_of_all`
+across construction.
 
-| rows | group_by | per row |
-| --- | --- | --- |
-| 50,000 | 259 ms | 5.2 us |
-| 100,000 | 348 ms | 3.5 us |
-| 200,000 | 644 ms | 3.2 us |
-| 400,000 | 2,383 ms | 6.0 us |
+| rows | group_by | per row | bytes/row |
+| --- | --- | --- | --- |
+| 50,000 | 328 ms | 6.6 us | 408 |
+| 100,000 | 408 ms | 4.1 us | 408 |
+| 200,000 | 659 ms | 3.3 us | 408 |
+| 400,000 | 1,868 ms | 4.7 us | 408 |
+
+Repeated runs put 400,000 anywhere between 1.9 and 2.7 seconds while 200,000 stays
+within five percent of 620 ms. The variance arrives exactly where the
+superlinearity does, which is corroboration rather than noise: what is moving is
+when the collector runs, not what the algorithm does.
 
 It is not linear. Doubling 200,000 to 400,000 costs nearly four times the work, not
 twice, and the per-row figure turns back upward after 200,000 — the heap is large

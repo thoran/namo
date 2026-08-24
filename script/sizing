@@ -1,0 +1,99 @@
+#!/usr/bin/env ruby
+# sizing
+
+# 20260824
+# 0.0.0
+
+require_relative '../lib/namo'
+require 'objspace'
+
+# The figures in ROADMAP.md's "What size it is for" are this script's output.
+# Prose describing a measurement is the weakest form of its provenance: a reader
+# cannot tell whether the phases were fair, and neither can its author a week
+# later.  Re-run it at any version and update the section from what it prints.
+#
+# Process.clock_gettime rather than Monotonic::Timer, deliberately.  Timer#time
+# returns a Monotonic::Measurement whose arithmetic operators return a rescaled
+# Measurement rather than a number, so converting units before formatting reports
+# a figure two to three times too low — which is how the first version of that
+# section came to be wrong.
+
+ROW_COUNTS = [50_000, 100_000, 200_000, 400_000]
+RUNS = 5
+
+def usage
+  puts "sizing - Measure what Namo costs per row, in time and in memory."
+  puts
+  puts "Usage: script/sizing [ROWS ...]"
+  puts
+  puts "Builds a Namo of daily prices, eight columns wide, and groups it by security."
+  puts "Reports the median of #{RUNS} runs at each size, and the bytes a row costs held."
+  puts "With no arguments, measures #{ROW_COUNTS.join(', ')}."
+end
+
+def row_counts
+  @row_counts ||= ARGV.empty? ? ROW_COUNTS : ARGV.map(&:to_i)
+end
+
+def validate_args
+  return unless ARGV.include?('-h') || ARGV.include?('--help') || row_counts.any?{|count| count < 1}
+  usage
+  exit(ARGV.include?('-h') || ARGV.include?('--help') ? 0 : 1)
+end
+
+# Eight columns, the shape of the daily prices the 0.31.0 comparison used, with
+# 2,641 securities so that group_by has a realistic number of members rather than
+# one member per row or one member for all of them.
+def rows(count)
+  Array.new(count) do |index|
+    {
+      security: "S#{index % 2641}",
+      date: '2025-%02d-%02d' % [(index % 12) + 1, (index % 28) + 1],
+      open: index * 0.11, high: index * 0.13, low: index * 0.09, close: index * 0.12,
+      volume: index * 100, exchange: 'AU'
+    }
+  end
+end
+
+def milliseconds
+  started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  yield
+  (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000
+end
+
+def median(numbers)
+  sorted = numbers.sort
+  sorted[sorted.length / 2]
+end
+
+# memsize_of_all before and after, with the collection settled either side, so the
+# difference is the rows and the Namo holding them rather than whatever else the
+# process was carrying.
+def measure(count)
+  GC.start
+  before = ObjectSpace.memsize_of_all
+  namo = Namo.new(rows(count))
+  GC.start
+  bytes = (ObjectSpace.memsize_of_all - before).to_f / count
+  elapsed = median(RUNS.times.map{milliseconds{namo.group_by(:security)}})
+  [elapsed, bytes]
+end
+
+def report(count, elapsed, bytes)
+  puts format('| %s | %s ms | %.1f us | %.0f |',
+    count.to_s.reverse.scan(/\d{1,3}/).join(',').reverse,
+    elapsed.round.to_s.reverse.scan(/\d{1,3}/).join(',').reverse,
+    elapsed * 1000 / count, bytes)
+end
+
+def main
+  validate_args
+  # A warm run first: the first group_by of a process pays for whatever it is that
+  # a first anything pays for, and it is not the measurement.
+  Namo.new(rows(5_000)).group_by(:security)
+  puts '| rows | group_by | per row | bytes/row |'
+  puts '| --- | --- | --- | --- |'
+  row_counts.each{|count| report(count, *measure(count))}
+end
+
+main
