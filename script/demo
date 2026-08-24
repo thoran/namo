@@ -34,28 +34,6 @@ def usage
   all_sections.each{|section| puts "  #{talk_sections.include?(section) ? '*' : ' '} #{section}"}
 end
 
-def all_sections
-  [
-    :ingestion, :one_bracket, :formulae, :non_numeric, :parameterised, :formulary,
-    :uncertainty, :algebra, :conditional_join, :collections, :summary_block, :shape_dispatch, :just_ruby,
-    :whats_next
-  ]
-end
-
-# The cut which fits the slot: the six arguments in order, and the closer.  Named
-# here rather than remembered at the podium, where seven names is six too many.
-def talk_sections
-  [:ingestion, :formulae, :non_numeric, :uncertainty, :algebra, :collections, :whats_next]
-end
-
-def sections
-  @sections ||=
-    if ARGV.empty? then all_sections
-    elsif ARGV.include?('talk') then talk_sections
-    else all_sections.select{|section| ARGV.include?(section.to_s)}
-    end
-end
-
 def validate_args
   return unless ARGV.include?('-h') || ARGV.include?('--help') || sections.empty?
   usage
@@ -132,19 +110,26 @@ def render_namo(namo)
   rows.map{|row| row.each_with_index.map{|cell, index| cell.to_s.ljust(widths[index])}.join('  ').rstrip}.join("\n")
 end
 
-def render(value)
-  value.is_a?(Namo) ? render_namo(value) : value.inspect
-  # value.inspect
+def render(value, inspect: true)
+  if value.is_a?(Namo) && !inspect
+    render_namo(value)
+  else
+    value.inspect
+  end
 end
 
 def indent(rendered)
   rendered.lines.map{|line| "      #{line}"}.join
 end
 
-def show(expression)
-  rendered = render(eval(expression, context))
+def show(expression, inspect: true)
+  rendered = render(eval(expression, context), inspect: inspect)
   puts "#{expression}"
-  puts(rendered.include?("\n") ? indent(rendered) : "  => #{rendered}")
+  if rendered.include?("\n") && !inspect
+    puts indent(rendered)
+  else
+    puts"  => #{rendered}"
+  end
   puts
 end
 
@@ -175,20 +160,23 @@ def ensure_anomaly
 end
 
 def ingestion
-  section 'Nothing declared on ingestion', 'Hash keys become dimensions, values become coordinates, and no dimension is privileged.'
+  section 'Ingestion', 'Nothing is declared on ingestion. Hash keys become dimensions, values become coordinates. No dimension is privileged.'
   setup "readings = Namo.new(#{Fixtures.readings})"
   show 'readings.dimensions'
   show 'readings.coordinates'
-  remark 'the same call selects on a label and on a measure'
+  remark "The same call selects on a label and on a measure."
   show "readings[station: 'Melbourne']"
   show 'readings[mean_temp: 30.0]'
 end
 
-def one_bracket
+def bracket_notation
   ensure_readings
-  section 'One bracket does the lot', 'Selection, projection and contraction in one call — exact, array, range, proc and regex, mixed freely.'
+  section 'The Bracket Notation', 'Use a single call for matching with exact matches, array, range, proc and regex.'
+  remark 'Projection'
   show 'readings[:station, :temp]'
+  remark "Contraction"
   show 'readings[-:mean_temp, -:rainfall]'
+  remark "Selection"
   show 'readings[station: /^M/]'
   show 'readings[rainfall: ->(v){v > 50.0}, temp: ->(v){v < 27.0}]'
   show "readings[:month, :temp, station: /^M/, month: ['2025-01', '2025-02']]"
@@ -196,7 +184,7 @@ end
 
 def formulae
   ensure_readings
-  section 'Formulae are dimensions', 'A computed value is queryable exactly like a stored one — and it stays live.'
+  section 'Formulae are dimensions', 'A computed value is queryable exactly like a stored one.'
   setup "readings[:anomaly] = #{Fixtures.anomaly}"
   show 'readings.data_dimensions'
   show 'readings.derived_dimensions'
@@ -213,12 +201,14 @@ def non_numeric
   setup "people = Namo.new([
     {first: 'Ada', last: 'Lovelace', born: Date.new(1815, 12, 10)},
     {first: 'Grace', last: 'Hopper', born: Date.new(1906, 12, 9)},
-    {first: 'Karen', last: 'Spärck Jones', born: Date.new(1935, 8, 26)}])"
-  setup 'people[:full] = proc{|row| "#{row[:first]} #{row[:last]}"}'
+    {first: 'Karen', last: 'Spärck Jones', born: Date.new(1935, 8, 26)}
+  ])"
+  setup 'people[:full_name] = proc{|row| "#{row[:first]} #{row[:last]}"}'
   setup 'people[:century] = proc{|row| "C#{row[:born].year / 100 + 1}"}'
-  show 'people[:full, :century]'
-  show 'people[full: /^A/]'
+  show 'people[:full_name, :century]'
+  show 'people[full_name: /^A/]'
   show 'people.coordinates(:century)'
+  show 'people.coordinates[:century]'
 end
 
 # Requires measurand only when this section runs, so the script still works
@@ -264,8 +254,8 @@ def parameterised
   show 'prices.last[:ma, :close, 3]'
 end
 
-def formulary
-  section 'A library of derivations is a module', 'Public methods are the derivations, private ones are helpers. Attach at runtime, detach again.'
+def formularies
+  section 'Formularies', 'Ruby modules as collections of operations, where public methods are the derived dimensions, private ones are helpers. Attach at runtime, detach again.'
   setup 'flows = Namo.new([
     {date: 1, buys: 60, sells: 40},
     {date: 2, buys: 80, sells: 120},
@@ -326,7 +316,7 @@ end
 
 def shape_dispatch
   ensure_anomaly
-  section 'Shape is a pattern', "A Namo can stand in a case statement's `when`, so dispatch on an incoming feed runs through Ruby's own machinery."
+  section "Data 'shape'", "A Namo can be compared with another Namo by its dimensions and so can be used for dispatch on incoming data runs."
   setup "shape = Namo.new([{station: '', month: '', temp: 0.0, mean_temp: 0.0, rainfall: 0.0}])"
   setup "shape[:anomaly] = #{Fixtures.anomaly}"
   remark 'same dimensions and formula names, different rows'
@@ -363,9 +353,46 @@ def whats_next
     'across a core. Serialisation and parallelisation want the same thing of it.'
 end
 
+def all_sections
+  [
+    :ingestion, :bracket_notation, :formulae,
+    :non_numeric, :parameterised, :formularies,
+    :uncertainty, :algebra, :conditional_join,
+    :collections, :summary_block, :shape_dispatch,
+    :just_ruby, :whats_next
+  ]
+end
+
+# The cut which fits the slot: the six arguments in order, and the closer.  Named
+# here rather than remembered at the podium, where seven names is six too many.
+def talk_sections
+  [:ingestion, :formulae, :non_numeric, :uncertainty, :algebra, :collections, :whats_next]
+end
+
+def more_sections
+  all_sections - talk_sections
+end
+
+def sections
+  @sections ||= (
+    if ARGV.empty?
+      all_sections
+    elsif ARGV.include?('talk')
+      talk_sections
+    elsif ARGV.include?('more')
+      more_sections
+    else
+      all_sections.select{|section| ARGV.include?(section.to_s)}
+    end
+  )
+end
+
 def main
   validate_args
-  sections.each{|section| display(slide(section)); pause}
+  sections.each do |section|
+    display(slide(section))
+    pause
+  end
 end
 
 main
