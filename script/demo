@@ -74,12 +74,13 @@ def pause
   $stdin.gets
 end
 
-# Sections vary from eleven lines to thirty-five, which walks the title up and
-# down the screen between one and the next.  Clearing puts the title on the first
-# row; the padding after it covers whatever the shorter sections would otherwise
-# leave showing underneath.  The constant is the fallback, and the bound the
-# suite holds sections to.
-SLIDE_HEIGHT = 35
+# Sections vary in length, which walks the title up and down the screen between
+# one and the next.  Clearing puts the title on the first row; the padding after
+# it covers whatever the shorter sections would otherwise leave showing
+# underneath.  The constant is the fallback, and the bound the suite holds
+# sections to.
+SLIDE_HEIGHT = 40
+SLIDE_WIDTH = 132
 
 def slide(section)
   previous, $stdout = $stdout, StringIO.new
@@ -92,21 +93,29 @@ def slide(section)
 end
 
 # Zero comes back from a pty without a controlling terminal, and is no more a
-# height than the exception is.
-def window_height
-  height = $stdout.winsize.first
-  height > 0 ? height : SLIDE_HEIGHT + 1
+# size than the exception is.
+def window_size
+  height, width = $stdout.winsize
+  height > 0 && width > 0 ? [height, width] : [SLIDE_HEIGHT + 1, SLIDE_WIDTH]
 rescue SystemCallError, NoMethodError
-  SLIDE_HEIGHT + 1
+  [SLIDE_HEIGHT + 1, SLIDE_WIDTH]
+end
+
+# A line wider than the window takes more than one row of it.  Padding which
+# counted lines would leave a wrapped section that much too tall, and scroll the
+# title off the top by the difference.
+def rows(body, width)
+  body.lines.sum{|line| [(line.chomp.size / width.to_f).ceil, 1].max}
 end
 
 def display(body)
   return print(body) unless $stdout.tty?
+  height, width = window_size
   print("\e[H\e[2J")
   print(body)
   # One short of the window: the newline ending the last padded line would
   # otherwise scroll the title off the row the clear had just put it on.
-  (window_height - 1 - body.lines.size).times{puts}
+  (height - 1 - rows(body, width)).times{puts}
 end
 
 def section(title, framing)
