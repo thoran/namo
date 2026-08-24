@@ -20,10 +20,11 @@ module Fixtures
 
   def readings
     "[
-    {station: 'Melbourne', month: '2025-01', temp: 26.4, mean_temp: 25.9, rainfall: 48.2},
-    {station: 'Melbourne', month: '2025-02', temp: 25.6, mean_temp: 24.1, rainfall: 52.1},
-    {station: 'Perth', month: '2025-01', temp: 32.0, mean_temp: 30.0, rainfall: 8.4},
-    {station: 'Perth', month: '2025-02', temp: 29.5, mean_temp: 30.0, rainfall: 12.0}]"
+      {station: 'Melbourne', month: '2025-01', temp: 26.4, mean_temp: 25.9, rainfall: 48.2},
+      {station: 'Melbourne', month: '2025-02', temp: 25.6, mean_temp: 24.1, rainfall: 52.1},
+      {station: 'Perth', month: '2025-01', temp: 32.0, mean_temp: 30.0, rainfall: 8.4},
+      {station: 'Perth', month: '2025-02', temp: 29.5, mean_temp: 30.0, rainfall: 12.0}
+    ]"
   end
 
   def anomaly
@@ -42,17 +43,19 @@ module Fixtures
   # come out equal and the confidences do not, which is the whole of the point.
   def specimens
     "[
-    {specimen: 'A', length: 50.0, width: 20.0},
-    {specimen: 'B', length: 20.0, width: 50.0}]"
+      {specimen: 'A', length: 50.0, width: 20.0},
+      {specimen: 'B', length: 20.0, width: 50.0}
+    ]"
   end
 
   # Sensor calibrations, for the as-of match: each reading takes the most recent
   # calibration dated on or before it.
   def calibrations
     "[
-    {station: 'Melbourne', calibrated: '2024-11-30', offset: 0.2},
-    {station: 'Melbourne', calibrated: '2025-01-15', offset: 0.1},
-    {station: 'Perth', calibrated: '2024-12-20', offset: -0.1}]"
+      {station: 'Melbourne', calibrated: '2024-11-30', offset: 0.2},
+      {station: 'Melbourne', calibrated: '2025-01-15', offset: 0.1},
+      {station: 'Perth', calibrated: '2024-12-20', offset: -0.1}
+    ]"
   end
 
   # Sensor tolerances, for the conditional product: a sensor may stand in for a
