@@ -25,6 +25,10 @@ describe 'script/demo' do
     @sections ||= demo('--help').scan(/^  [* ] ([a-z_]+)$/).flatten
   end
 
+  def cut
+    @cut ||= demo('--help').scan(/^  \* ([a-z_]+)$/).flatten
+  end
+
   it "lists its sections" do
     _(sections).wont_be_empty
     _(sections).must_include 'ingestion'
@@ -39,7 +43,6 @@ describe 'script/demo' do
   end
 
   it "has a talk cut, and it is a subset of the sections" do
-    cut = demo('--help').scan(/^  \* ([a-z_]+)$/).flatten
     _(cut).wont_be_empty
     _(cut - sections).must_be_empty
   end
@@ -53,11 +56,14 @@ describe 'script/demo' do
   # can only pad down to the constants.  A section grown past them would silently
   # start pushing the next one about.  Rows rather than lines, since a line wider
   # than the window costs more than one of them.
-  it "has no section taller than the slide height" do
+  #
+  # The cut rather than every section: those are the ones which have to fit on the
+  # day, and the rest are reference, free to run long and be scrolled.
+  it "has no section in the talk cut taller than the slide height" do
     source = File.read(File.join(File.expand_path('..', __dir__), 'script', 'demo'))
     height, width = %w[SLIDE_HEIGHT SLIDE_WIDTH].map{|name| source[/^#{name} = (\d+)$/, 1].to_i}
     _([height, width].min).must_be :>, 0
-    overlong = sections.select do |section|
+    overlong = cut.select do |section|
       demo(section).lines.sum{|line| [(line.chomp.size / width.to_f).ceil, 1].max} > height
     end
     _(overlong).must_be_empty
