@@ -972,7 +972,7 @@ sales[:product, :quarter, :revenue].to_h
 
 ### Inspection output
 
-`inspect` renders the class, the stored rows with any derived dimensions among them, and the names of those derived dimensions:
+`inspect` renders the class and the stored rows, with any derived dimensions among them:
 
 ```ruby
 sales.inspect
@@ -981,18 +981,20 @@ sales.inspect
 #   {product: "Widget", quarter: "Q2", price: 10.0, quantity: 150, revenue: 1500.0},
 #   {product: "Gadget", quarter: "Q1", price: 25.0, quantity: 40, revenue: 1000.0},
 #   {product: "Gadget", quarter: "Q2", price: 25.0, quantity: 60, revenue: 1500.0}
-# ] derived: [:revenue]>
+# ]>
 ```
 
 A name, where the Namo carries one, follows the class: `#<Namo :sales [`. A subclass reports its own name in place of `Namo`.
 
-A derived dimension shows its value, in among the stored ones, and the `derived:` suffix names which of the keys are computed. Where there is no value to show it is omitted rather than the rendering failing: a formula which raises, and a parameterised one which cannot be materialised without its arguments, each render nothing and are named by the suffix alone.
+A derived dimension shows its value, in among the stored ones, so a computed dimension renders exactly as a stored one does — which is the claim the library makes about it. Where there is no value to show, the rendering omits it rather than failing, and the `derived:` suffix names it: a formula which raises, a parameterised one which cannot be materialised without its arguments, and any formula at all on a Namo with no rows to render.
+
+The suffix carries only those. Where every derived dimension rendered a value it has nothing left to say and does not appear. Ask `derived_dimensions` when you want the distinction named.
 
 Evaluation is bounded by the row cap rather than by the data — at most ten rows are rendered, so at most ten evaluations per formula. A collection-scoped formula makes each of those a pass over the Namo, so inspecting a large one that carries such a formula is not free.
 
 Rows beyond `Namo::INSPECTED_ROWS` — ten — are elided with a count of the remainder, so the output stays bounded however large the data: a thousand-row Namo renders its first ten rows and then `... 990 more rows`.
 
-A `Row` renders itself, its derived values and its formula names, never the Namo it came from. A `Collection` renders its member names and its row count, the members being its substance and the data view derived from them.
+A `Row` renders itself, its derived values and its formula names in every case, having no `derived_dimensions` of its own to be asked, and never the Namo it came from. A `Collection` renders its member names and its row count, the members being its substance and the data view derived from them.
 
 ```ruby
 sales.first

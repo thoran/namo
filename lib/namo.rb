@@ -250,7 +250,8 @@ class Namo
   end
 
   def inspect
-    "#<#{self.class}#{inspected_name}#{inspected_rows}#{inspected_derived}>"
+    rendered = @data.first(INSPECTED_ROWS).map{|row| [row, inspected_derivations(row)]}
+    "#<#{self.class}#{inspected_name}#{inspected_rows(rendered)}#{inspected_derived(rendered)}>"
   end
 
   protected
@@ -278,15 +279,11 @@ class Namo
   # The rows as they are stored, never the derived values: inspect is called
   # for every result in a console, and evaluating a formula there would cost a
   # pass over the data per access and raise whatever the formula raises.
-  def inspected_rows
+  def inspected_rows(rendered)
     return ' []' if @data.empty?
-    shown = @data.first(INSPECTED_ROWS).map{|row| "  #{inspected_row(row)}"}.join(",\n")
+    shown = rendered.map{|row, derived| "  #{row.merge(derived).inspect}"}.join(",\n")
     shown += "\n  ... #{@data.length - INSPECTED_ROWS} more rows" if @data.length > INSPECTED_ROWS
     " [\n#{shown}\n]"
-  end
-
-  def inspected_row(row)
-    row.merge(inspected_derivations(row)).inspect
   end
 
   # A derived dimension is shown with its value, in among the stored ones.  A
@@ -302,8 +299,15 @@ class Namo
     end
   end
 
-  def inspected_derived
-    derived_dimensions.empty? ? '' : " derived: #{derived_dimensions.inspect}"
+  # Only those the rows above do not already carry.  A formula which raises, and a
+  # parameterised one which cannot be materialised without its arguments, render
+  # no value and would otherwise be nowhere in the output at all.  A Collection
+  # renders no rows and so passes none, naming every one of them.
+  def inspected_derived(rendered = [])
+    unshown = derived_dimensions.reject do |dimension|
+      rendered.any? && rendered.all?{|_, derived| derived.key?(dimension)}
+    end
+    unshown.empty? ? '' : " derived: #{unshown.inspect}"
   end
 
   def initialize(positional_data = nil, data: [], formulae: {}, name: nil)

@@ -151,7 +151,7 @@ The formulae travel with the file. The earlier design carried names alone — th
 **The open question is whether `load` may define constants in the receiving process.** A carried formulary file says `module OrderFlow`, and if the receiver already has an `OrderFlow` then evaluating that file reopens it and merges the definitions in — Ruby's own semantics, happening before any Namo exists, and capable of altering a module the receiving program uses elsewhere. That is the concrete form of a broader question: `Namo.load` would be running code a colleague sent, which is Marshal-tier trust. Whether the consent is implicit in calling `load`, or explicit in a `load!` which evaluates where plain `load` takes data and names alone, is unsettled and is the thing to settle first.
 
 
-## Current state: 0.31.1
+## Current state: 0.31.2
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1256,6 +1256,12 @@ It is a minor rather than a patch because it is behaviour a caller can depend up
 What the three grounds cost was the thing `inspect` exists for. A Namo carrying formulae rendered exactly as one carrying none, and the suffix a reader had to hold against the rows themselves. Live recomputation is the model, so a console showing the stored half of a row was showing the half Namo is least about.
 
 A patch rather than a minor: 0.31.0 shipped the rendering wrong, and this is the correction rather than a new thing to depend upon.
+
+### 0.31.2 (2026-08-24): the `derived:` suffix names only what is not shown
+
+0.31.1 rendered derived values in among the stored ones and kept the suffix listing every derived dimension, so the names it carried were already visible in every row. It now names only what the rows do not carry — a formula which raises, a parameterised one which cannot be materialised without its arguments, and any formula on a Namo with no rows — and is omitted where every derived dimension rendered a value.
+
+What this gives up is telling a computed dimension from a stored one at a glance. That is the claim rather than the loss: a derived dimension is queryable exactly as a stored one is, and rendering it the same way says so, with `derived_dimensions` naming the distinction on demand. `Namo::Row` keeps its suffix in every case, having no `derived_dimensions` of its own to be asked; whether it should gain one, along with `dimensions` and `data_dimensions`, is open.
 
 ### Summary
 

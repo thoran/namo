@@ -2,6 +2,14 @@
 
 ## 20260824
 
+0.31.2: ~ Namo#inspect: the derived: suffix names only what the rows do not carry.
+
+1. ~ Namo#inspect: the derived: suffix names only the derived dimensions the rendered rows do not already carry, and is omitted where they all do. A formula which raises, a parameterised one which cannot be materialised without its arguments, and any formula on a Namo with no rows to render, are named as before, being nowhere else in the output. Namo::Collection renders no rows and so names every one of its own. Namo::Row is unchanged, naming its formulae in every case.
+2. ~ README.md: the Inspection output section, and the block whose suffix goes.
+3. ~ ROADMAP.md: + 0.31.2.
+4. ~ Namo::VERSION: /0.31.1/0.31.2/
+
+
 0.31.1: ~ Namo#inspect, Namo::Row#inspect: derived dimensions render their values.
 
 1. ~ Namo#inspect: a derived dimension renders with its value, in among the stored ones, rather than being named only. Where there is no value to show it is omitted and the derived: suffix names it alone: a formula which raises, and a parameterised one which cannot be materialised without its arguments.
