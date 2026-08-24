@@ -2126,6 +2126,12 @@ The question underneath is not which method to change but what a Namo means by i
 
 The second and third are the same change to `to_a` and differ over whether `Row` is brought along with it.
 
+The second is the one to take. Everything else a Namo can be asked already materialises — `dimensions`, `values`, `coordinates`, selection on a derived dimension, projection of one, the subset-returning Enumerable methods, `to_h`, and since 0.31.1 `inspect`. `to_a` is the single exception, and it is the row-shaped sibling of the columnar `to_h`, so the two views of one object presently disagree about what that object holds: `dimensions` reports three and `to_a` hands over rows carrying two. The rule for what to do about a formula which cannot be materialised without its arguments exists already and is documented — `values`, `coordinates` and `to_h` omit it and return the rest — so `to_a` needs no new policy, only the same one. `data` is unchanged and remains the accessor for the stored rows, which is the thing to reach for when the stored rows are what is meant.
+
+The cost is that `to_a` becomes proportional to rows times formulae, and a collection-scoped formula makes each row a pass over the Namo. That is the bill `to_h` already pays rather than a new kind of expense.
+
+`Row#to_h` should not follow, and not on taste: `Row#==` and `Row#eql?` compare a stored `@row` against `other.to_h`, and `Namo#<<` appends a Row through it. Materialising there would stop a Row carrying formulae from equalling itself, and would have `<<` store derived values as data for the 0.24.1 collision guard to then reject against the formula which produced them. A Row wanting a materialised view wants a new method, as it wants its own `derived_dimensions` rather than one inferred from what `inspect` prints.
+
 ## Presentation examples
 
 See [EXAMPLES.md](EXAMPLES.md) for full four-stage progressions (competitor tool → 1.x → 2.x → 3.x) across seven disciplines with side-by-side code comparisons.
