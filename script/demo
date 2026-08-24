@@ -28,7 +28,8 @@ def usage
   puts "Usage: script/demo [SECTION ... | talk]"
   puts
   puts "With no arguments, runs every section, pausing between them when attached to a terminal."
-  puts "At a pause, return moves on and `i` opens irb on the section's own binding."
+  puts "At a pause, the arrow keys move between sections, `i` opens irb on the section's"
+  puts "own binding, and `q` quits."
   puts "`talk` runs the fifteen-minute cut, marked * below. Named sections run in the listed"
   puts "order rather than the order given:"
   puts
@@ -54,12 +55,32 @@ end
 #
 # Leaving irb moves on rather than coming back here, which would charge a second
 # return for nothing: the first one submits the exit.
+#
+# Returns the number of sections to move by, so that one can be returned to
+# rather than only left.
 def pause(body)
-  return unless $stdin.tty?
-  answer = $stdin.gets
-  interact(body) if answer&.strip&.start_with?('i')
+  return 1 unless $stdin.tty?
+  loop do
+    case keypress
+    when *BACK then return -1
+    when *FORWARD then return 1
+    when *QUIT then exit
+    when 'i' then interact(body); return 1
+    end
+  end
 ensure
   release if $stdout.tty?
+end
+
+# One keypress, or the whole of an arrow's escape sequence.  The two bytes after
+# the escape arrive with it, so a bare escape reads as itself rather than waiting
+# on a sequence which is not coming.
+def keypress
+  $stdin.raw do |stdin|
+    pressed = stdin.getc
+    next pressed unless pressed == "\e"
+    pressed + (stdin.read_nonblock(2) rescue '')
+  end
 end
 
 # The section keeps the rows it occupies and irb takes what is left of the window
@@ -99,6 +120,11 @@ RULE = '─'
 # section gives up its last rows rather than the lot.
 IRB_ROWS = 8
 
+# What a pause answers to.  Arrows arrive as three bytes, which is why it reads
+# raw rather than by the line.
+FORWARD = ["\e[C", "\e[B", "\r", "\n", ' ']
+BACK = ["\e[D", "\e[A"]
+QUIT = ['q', "\u0003"]
 
 def slide(section)
   previous, $stdout = $stdout, StringIO.new
@@ -436,10 +462,11 @@ end
 
 def main
   validate_args
-  sections.each do |section|
-    body = slide(section)
+  index = 0
+  while index < sections.size
+    body = slide(sections[index])
     display(body)
-    pause(body)
+    index = [index + pause(body), 0].max
   end
 end
 
