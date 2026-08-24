@@ -2104,6 +2104,28 @@ When `TradingAnalysis * Namo` is evaluated, what class is the result? `TradingAn
 0.6.0 settles part of this question for equality: `eql?` cares about class match (`TradingAnalysis.new(data).eql?(Namo.new(data))` returns false even if the data matches), `==` does not. 0.12.0's subclass guard pattern (`if name` in `initialize`, introduced with the `name:` attribute) addresses the side-effects-on-operator-results question — operator-derived instances are name-less and skip side effects. The class of operator results currently defaults to the receiver's class, which works for same-class composition. Cross-class composition (`TradingAnalysis * SectorMetrics`) still raises the question of which subclass's modules carry through.
 
 
+### Which conversions materialise formulae
+
+The conversions disagree about whether a derived dimension is part of the data. On one Namo carrying a single one-arity formula:
+
+```ruby
+namo.to_h        # => {a: [1, 2], g: ["x", "y"], b: [2, 3]}      materialised
+namo.to_a        # => [{a: 1, g: "x"}, {a: 2, g: "y"}]           not
+namo.data        # => [{a: 1, g: "x"}, {a: 2, g: "y"}]           not
+namo.first.to_h  # => {a: 1, g: "x"}                             not
+namo.inspect     # => #<Namo [ {a: 1, g: "x", b: 2}, ... ]>      materialised
+```
+
+`to_h` is the columnar `values` hash and has materialised for as long as it has existed. `to_a` and `data` return the stored rows. `Row#to_h` returns the row the Row was built from. `inspect` crossed to the materialising side in 0.31.1, and that is what made the split worth writing down: the two which materialise are now the two most likely to be read by a person rather than consumed by code, so the disagreement shows up in a console rather than in a test.
+
+The question underneath is not which method to change but what a Namo means by its data, and the answer decides several things at once — what `.namo` writes to a file, what a frozen Namo freezes, and what `to_a` costs when the formulae attached to it are collection-scoped.
+
+- **The stored rows.** `to_h` stops materialising, which breaks its documented equivalence to the full `values` hash and leaves no row-and-column pair of conversions that agree.
+- **Everything queryable.** `to_a` and `Row#to_h` materialise. `data` stays stored, since it is the accessor for what the Namo was constructed from, which gives `data` and `to_a` different answers and makes that difference the thing to document. The cost of `to_a` then varies with the formulae attached rather than with the rows.
+- **Name the split.** `data` means stored, the `to_` conversions mean queryable, and `Row` gains `dimensions`, `data_dimensions` and `derived_dimensions` so the same question can be asked of it. This is the position the 0.31.2 note leaves open for `Row`.
+
+The second and third are the same change to `to_a` and differ over whether `Row` is brought along with it.
+
 ## Presentation examples
 
 See [EXAMPLES.md](EXAMPLES.md) for full four-stage progressions (competitor tool → 1.x → 2.x → 3.x) across seven disciplines with side-by-side code comparisons.
