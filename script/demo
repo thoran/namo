@@ -50,16 +50,39 @@ end
 
 # Return moves to the next section.  Anything starting with an i opens irb on the
 # same binding the sections have been using, so every name the transcript above
-# put on the screen is still bound, and leaving irb comes back to this pause
-# rather than skipping ahead, with the section put back on the screen irb had
-# scrolled away.  It is the console without the second window.
+# put on the screen is still bound.  It is the console without the second window.
+#
+# Leaving irb moves on rather than coming back here, which would charge a second
+# return for nothing: the first one submits the exit.
 def pause(body)
   return unless $stdin.tty?
-  while (answer = $stdin.gets)
-    return unless answer.strip.start_with?('i')
-    context.irb(show_code: false)
-    display(body)
-  end
+  answer = $stdin.gets
+  interact(body) if answer&.strip&.start_with?('i')
+ensure
+  release if $stdout.tty?
+end
+
+# The section keeps the rows it occupies and irb takes what is left of the window
+# as its own scrolling region, so the session scrolls beneath a transcript which
+# stays where it was rather than rolling off the top of the screen.
+def interact(body)
+  height, width = window_size
+  # The rule sits above the region rather than in it, so irb cannot scroll it
+  # away.
+  top = [rows(body, width) + 2, height - IRB_ROWS + 1].min
+  draw(body)
+  print("\e[#{top - 1};1H#{RULE * width}")
+  print("\e[#{top};#{height}r")
+  print("\e[#{top};1H")
+  context.irb(show_code: false)
+ensure
+  # Whatever was typed ahead of leaving irb, so that it cannot fall through to
+  # the next section's pause and skip it.
+  $stdin.iflush
+end
+
+def release
+  print("\e[r")
 end
 
 # Sections vary in length, which walks the title up and down the screen between
@@ -69,6 +92,13 @@ end
 # sections to.
 SLIDE_HEIGHT = 40
 SLIDE_WIDTH = 132
+RULE = '─'
+
+# The least irb is given.  A region of one row is degenerate — terminals ignore
+# it and scroll the whole screen instead, taking the section with it — so a tall
+# section gives up its last rows rather than the lot.
+IRB_ROWS = 8
+
 
 def slide(section)
   previous, $stdout = $stdout, StringIO.new
@@ -96,11 +126,18 @@ def rows(body, width)
   body.lines.sum{|line| [(line.chomp.size / width.to_f).ceil, 1].max}
 end
 
+# The region has to go before the clear, since a section which does not reach the
+# bottom of the screen would otherwise be drawn inside the one irb left behind.
+def draw(body)
+  release
+  print("\e[H\e[2J")
+  print(body)
+end
+
 def display(body)
   return print(body) unless $stdout.tty?
   height, width = window_size
-  print("\e[H\e[2J")
-  print(body)
+  draw(body)
   # One short of the window: the newline ending the last padded line would
   # otherwise scroll the title off the row the clear had just put it on.
   (height - 1 - rows(body, width)).times{puts}
