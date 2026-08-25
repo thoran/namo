@@ -53,8 +53,9 @@ end
 # same binding the sections have been using, so every name the transcript above
 # put on the screen is still bound.  It is the console without the second window.
 #
-# Leaving irb moves on rather than coming back here, which would charge a second
-# return for nothing: the first one submits the exit.
+# Leaving irb comes back to the slide rather than moving on, so that a section can
+# be poked at and then returned to, and so that an accidental ctrl-d does not
+# advance the talk.
 #
 # Returns the number of sections to move by, so that one can be returned to
 # rather than only left.
@@ -65,7 +66,7 @@ def pause(body)
     when *BACK then return -1
     when *FORWARD then return 1
     when *QUIT then quit
-    when 'i' then interact(body); return 1
+    when 'i' then interact(body)
     end
   end
 ensure
@@ -110,9 +111,20 @@ def interact(body)
   print("\e[#{top};1H")
   context.irb(show_code: false)
 ensure
-  # Whatever was typed ahead of leaving irb, so that it cannot fall through to
-  # the next section's pause and skip it.
+  settle
+  display(body)
+end
+
+# irb leaves the terminal however Reline left it, and leaves bytes in two places:
+# the tty's own input queue, which iflush empties, and Ruby's IO buffer, which it
+# does not.  A byte surviving in the second is returned by the next getc, so the
+# keypress which should have been read is spent on it instead.
+def settle
+  $stdin.cooked!
   $stdin.iflush
+  loop{$stdin.read_nonblock(4096)}
+rescue IO::WaitReadable, EOFError, SystemCallError
+  nil
 end
 
 def release
