@@ -1,26 +1,16 @@
 #!/usr/bin/env ruby
 # demo
 
-# 20260821
-# 0.0.0
+# 20260825
+# 0.1.0
 
-require_relative '../lib/namo'
 require 'date'
 require 'io/console'
 require 'stringio'
-require_relative 'fixtures'
 
-module Indicators
-  include Namo::Formulary
-
-  def signed_volume(row)
-    row[:buys] - row[:sells]
-  end
-
-  def cum_delta(row, namo)
-    namo[date: ..row[:date]].values(:signed_volume).sum
-  end
-end
+require_relative '../lib/namo'
+require_relative './fixtures'
+require_relative './Indicators'
 
 def usage
   puts "demo - Run through the Namo demonstration."
@@ -270,6 +260,10 @@ def ensure_readings
   eval("readings = Namo.new(#{Fixtures.readings})", context)
 end
 
+def ensure_stations
+  eval("stations = Namo.new(#{Fixtures.stations})", context)
+end
+
 def ensure_anomaly
   ensure_readings
   return if eval('readings.derived_dimensions.include?(:anomaly)', context)
@@ -288,19 +282,21 @@ end
 
 def bracket_notation
   ensure_readings
-  section 'The Bracket Notation', 'Use a single call for matching exactly, by array, regex, range, and proc.'
+  section 'The Bracket Notation', 'One syntax for matching exactly, by range, array, regex, and by proc.'
   remark 'Projection'
   show 'readings[:station, :high_temp]'
   remark "Contraction"
   show 'readings[-:mean_temp, -:rainfall]'
+  remark "Selection by range"
+  show "readings[rainfall: 50..60]"
   remark "Selection by array"
   show "readings[month: ['2025-01', '2025-02']]"
   remark "Selection by regex"
   show 'readings[station: /^M/]'
-  remark "Selection by regex"
+  remark "Selection by proc"
   show 'readings[rainfall: ->(v){v > 50.0}, high_temp: ->(v){v < 27.0}]'
-  remark "Projection and selection together"
-  show "readings[:month, :high_temp, station: /^M/, month: ['2025-01', '2025-02']]"
+  remark "Projection and selection together (projection precedes selection)"
+  show "readings[:station, :month, :high_temp, high_temp: 30..., month: ['2025-01', '2025-02']]"
 end
 
 def formulae
@@ -309,12 +305,15 @@ def formulae
   setup "readings[:anomaly] = #{Fixtures.anomaly}"
   show 'readings.data_dimensions'
   show 'readings.derived_dimensions'
-  show 'readings[anomaly: 1.0..2.0]'
+  show 'readings.dimensions'
   show 'readings.coordinates(:anomaly)'
+  show 'readings[anomaly: 1.0..2.0]'
   remark 'change the source data and the derived dimension follows'
   setup 'readings.data[0][:high_temp] = 28.9'
   show 'readings.values(:anomaly)'
+  remark 'and put back, the sections sharing one binding.'
   setup 'readings.data[0][:high_temp] = 26.4'
+  show 'readings.values(:anomaly)'
 end
 
 def non_numeric
@@ -329,6 +328,7 @@ def non_numeric
   show 'people[:full_name, :century]'
   show 'people[full_name: /^A/]'
   show 'people.coordinates(:century)'
+  show "people[century: 'C20']"
 end
 
 # Requires measurand only when this section runs, so the script still works
@@ -341,23 +341,25 @@ rescue LoadError
 end
 
 def uncertainty
-  section 'The formula never knew what it was multiplying', 'Same rows, same formula. One column changes type, and nothing in Namo is told.'
+  section 'Duck typing', 'Same rows, same formula. Change column type and it just works.'
   unless measurand?
     puts '  (measurand is not installed, so this section is skipped)'
     puts
     return
   end
-  setup "specimens = #{Fixtures.specimens}"
-  setup 'plain = Namo.new(specimens.map(&:dup))'
-  setup 'plain[:area] = proc{|row| row[:length] * row[:width]}'
-  show 'plain.values(:area)'
-  remark 'the same lengths, now carrying what the caliper could actually resolve'
-  setup 'measured = Namo.new(specimens.map{|row| row.merge(length: Measurand.new(row[:length], 0.05))})'
-  remark 'the formula is the one above, retyped unchanged'
-  setup 'measured[:area] = proc{|row| row[:length] * row[:width]}'
-  show 'measured.values(:area)'
-  remark 'equal area, unequal confidence — which the Float column had discarded'
-  show 'measured[:specimen, :area]'
+  setup "specimen_data = #{Fixtures.specimens}"
+  setup 'data_with_floats = specimen_data.map(&:dup)'
+  setup 'with_floats = Namo.new(data_with_floats)'
+  setup 'with_floats[:area] = proc{|row| row[:length] * row[:width]}'
+  show 'with_floats'
+  remark 'The same lengths, with measurement error bands.'
+  setup 'data_with_error = specimen_data.map{|row| row.merge(length: Measurand.new(row[:length], 0.05))}'
+  setup 'with_measurand = Namo.new(data_with_error)'
+  remark 'The formula is the one above, retyped unchanged.'
+  setup 'with_measurand[:area] = proc{|row| row[:length] * row[:width]}'
+  show 'with_measurand.values(:area)'
+  remark 'Equal area, unequal confidence — which the Float column had discarded'
+  show 'with_measurand[:specimen, :area]'
 end
 
 def parameterised
@@ -379,29 +381,51 @@ def formularies
   setup 'flows = Namo.new([
     {date: 1, buys: 60, sells: 40},
     {date: 2, buys: 80, sells: 120},
-    {date: 3, buys: 75, sells: 75}])'
+    {date: 3, buys: 75, sells: 75}
+  ])'
+  show 'flows.derived_dimensions'
   setup 'flows << Indicators'
   show 'flows.derived_dimensions'
-  show 'flows[:date, :signed_volume, :cum_delta]'
-  remark 'and the store keeps where each one came from'
+  show 'flows'
+  show 'flows.formulae[:signed_volume].class'
+  remark 'We still know from where each formula came.'
   show 'flows.formulae[:signed_volume].owner'
   setup 'flows.detach(Indicators)'
   show 'flows.derived_dimensions'
-  remark 'a proc written at the call site has no such handle'
+  remark 'A proc written at the call site has no such handle.'
   setup 'flows[:net] = proc{|row| row[:buys] + row[:sells]}'
   show 'flows.formulae[:net].class'
 end
 
-def algebra
-  section 'The operators are an algebra', 'Namo in, Namo out — and the laws hold, so you can run them rather than assert them.'
+def composition
+  section 'Composition', 'Namos combine along their dimensions, and the products come apart again.'
   setup "stations = Namo.new(#{Fixtures.stations})"
   setup "months = Namo.new(#{Fixtures.months})"
+  remark "Every station against every month."
   show 'stations ** months'
+  remark "And division takes it back apart."
   show '(stations ** months) / months == stations'
+  remark "A shared dimension joins rather than multiplies."
+  setup "states = Namo.new([{station: 'Melbourne', state: 'VIC'}, {station: 'Perth', state: 'WA'}])"
+  show 'stations * states'
+end
+
+def set_operations
+  ensure_stations
+  section 'Set operations', 'The row axis, where a Namo behaves as the multiset of rows it is.'
+  setup "southern = Namo.new([{station: 'Melbourne'}, {station: 'Sydney'}])"
+  remark "In either, in both, in one but not the other."
+  show 'stations | southern'
+  show 'stations & southern'
+  show 'stations ^ southern'
+  remark "Which are not three separate tricks: any two of them define the third."
+  show '(stations | southern) - (stations & southern) == stations ^ southern'
+  remark "Append is not union: + keeps the row that | folds away."
+  show 'stations + southern'
 end
 
 def conditional_join
-  section "Joins you don't have a function for", 'The block takes a Namo and returns a Namo, so the pairing rule is written in the same language as the pipeline.'
+  section "Conditional Joins", "The block takes a Namo and returns a Namo."
   ensure_readings
   setup "tolerances = Namo.new(#{Fixtures.tolerances})"
   remark 'each reading paired with every sensor whose range covers it'
@@ -413,16 +437,17 @@ end
 
 def collections
   ensure_anomaly
-  section 'Collections are Namos', 'Partition into a Collection, analyse at either level with the same tools, and reassemble exactly.'
+  section 'Collections are Namos', 'Partition into a collection, analyse collectively or separately, and reassemble exactly.'
   setup 'grouped = readings.group_by(:month)'
   show 'grouped.members.map(&:name)'
   show 'grouped.is_a?(Namo)'
-  remark 'so every row operation still applies, reading the detail view'
-  show "grouped[station: 'Melbourne'][:month, :high_temp, :rainfall]"
+  remark "Every row operation still applies, reading the detail view."
+  show "grouped.detail[station: 'Melbourne'][:month, :high_temp, :rainfall]"
+  remark "Summary will by default sum the values."
   show 'grouped.summary(:anomaly, by: :month)'
-  remark 'reducer: is any method the column responds to, so :max needs nothing of Namo'
+  remark "...unless a reducer is supplied. A reducer is any method to which the column responds."
   show 'grouped.summary(:anomaly, by: :month, reducer: :max)'
-  remark 'and the partition inverts exactly'
+  remark 'And the partition inverts exactly!'
   show 'grouped.as_detail(:month) == readings'
 end
 
@@ -436,8 +461,8 @@ end
 
 def shape_dispatch
   ensure_anomaly
-  section "Data 'shape'", "A Namo can be compared with another Namo by its dimensions and so can be used for dispatch on incoming data runs."
-  setup "shape = Namo.new([{station: '', month: '', temp: 0.0, mean_temp: 0.0, rainfall: 0.0}])"
+  section "Data 'shape'", "A Namo matches another by its dimensions and its formula names, so a shape can dispatch incoming data."
+  setup "shape = Namo.new([{station: '', month: '', high_temp: 0.0, mean_temp: 0.0, rainfall: 0.0}])"
   setup "shape[:anomaly] = #{Fixtures.anomaly}"
   remark 'same dimensions and formula names, different rows'
   show 'shape === readings'
@@ -475,18 +500,36 @@ end
 
 def all_sections
   [
-    :ingestion, :bracket_notation, :formulae,
-    :non_numeric, :parameterised, :formularies,
-    :uncertainty, :algebra, :conditional_join,
-    :collections, :summary_block, :shape_dispatch,
-    :just_ruby, :whats_next
+    :ingestion,
+    :bracket_notation,
+    :formulae,
+    :non_numeric,
+    :uncertainty,
+    :parameterised,
+    :formularies,
+    :composition,
+    :set_operations,
+    :conditional_join,
+    :collections,
+    :summary_block,
+    :shape_dispatch,
+    :just_ruby,
+    :whats_next,
   ]
 end
 
 # The cut which fits the slot: the six arguments in order, and the closer.  Named
 # here rather than remembered at the podium, where seven names is six too many.
 def talk_sections
-  [:ingestion, :formulae, :non_numeric, :uncertainty, :algebra, :collections, :whats_next]
+  [
+    :ingestion,
+    :formulae,
+    :non_numeric,
+    :uncertainty,
+    :composition,
+    :collections,
+    :whats_next,
+  ]
 end
 
 def more_sections

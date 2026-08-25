@@ -10,10 +10,11 @@
 # what runs are necessarily the same string, and the console evaluates the same
 # string to arrive at the same names.
 #
-# Two stations over two months, a measured temperature against its historical
-# mean, and rainfall.  The numbers are chosen so that the beats which turn upon
-# them still work: the anomalies are exact binary fractions and so sum without
-# drift, the two reducers disagree, and each station peaks in a different month.
+# Three stations over three months, a measured high against its historical mean,
+# and rainfall.  The numbers are chosen so that the beats which turn upon them
+# still work: the anomalies are exact binary fractions and so sum without drift,
+# the two reducers disagree, and the warmest month by anomaly is not the same for
+# every station, so the per-member extremum has something to pick.
 
 module Fixtures
   module_function
