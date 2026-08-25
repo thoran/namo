@@ -151,7 +151,7 @@ The formulae travel with the file. The earlier design carried names alone — th
 **The open question is whether `load` may define constants in the receiving process.** A carried formulary file says `module OrderFlow`, and if the receiver already has an `OrderFlow` then evaluating that file reopens it and merges the definitions in — Ruby's own semantics, happening before any Namo exists, and capable of altering a module the receiving program uses elsewhere. That is the concrete form of a broader question: `Namo.load` would be running code a colleague sent, which is Marshal-tier trust. Whether the consent is implicit in calling `load`, or explicit in a `load!` which evaluates where plain `load` takes data and names alone, is unsettled and is the thing to settle first.
 
 
-## Current state: 0.31.3
+## Current state: 0.31.4
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1272,6 +1272,20 @@ What this gives up is telling a computed dimension from a stored one at a glance
 A patch rather than a minor: the disagreement was not a position anyone would defend, and this sits in the same run as 0.31.0 through 0.31.2 — how a Namo represents itself, in a console and on the way out to other code. Breaking changes are permitted throughout 0.x in any case, so the number carries the story rather than a compatibility promise.
 
 Two consequences worth stating plainly. Rebuilding through `Namo.new(other.to_a)` now brings the derived dimensions in as stored data, so attaching the formulary which produced them raises on the 0.24.1 collision guard, while `[]=` accepts and evicts the data; `data` is the accessor where the stored rows are what is meant. And a formula whose inputs a projection has cut raises through `to_a` as it has always raised through `to_h` and `values` — 0.16.0 settled that as the caller's explicit choice, so `to_a` inherits the rule rather than acquiring a fault.
+
+### 0.31.4 (2026-08-26): a Collection renders its members
+
+0.18.0 settled that a Collection's substance is its `members` and that the inherited `@data` is a view derived from them. `inspect` had it the other way about: the members appeared as bare labels and the row count came from the derived view, so the rendering described the shadow and named the thing.
+
+The members are now rendered nested under their names, each showing its own rows. The `INSPECTED_ROWS` budget is spread across the members shown rather than spent on one — a single member renders ten of its rows, five render two apiece, ten render one each — so the output is bounded by what was asked for rather than by how the data happens to be shaped. A member showing a single row is put on one line, since three lines of brackets to carry one row is precisely the shape a Collection of many members lands in.
+
+The member list had no cap at all, which is the sharper half of it: 2,641 members emitted 22,704 characters on one line, against 620 for a 343,330-row Namo. Bounded output was the whole of 0.31.0, and the one class whose substance is a list had been left out of it.
+
+A member renders nested as it renders alone: the same rows, and the same `derived:` suffix for whatever none of those rows could materialise. Nesting a representation should not lose information the representation had — a member naming `:scaled` and `:broken` on its own must not fall silent inside a Collection.
+
+The Collection's own suffix sits after the closing bracket and means something different. A Collection and its members are separate formula namespaces, neither able to resolve the other's: `car.values(:light)` is `nil` where the member answers `false`, and `member.values(:heavy)` is `nil` where the Collection answers `true`. So a Collection's formulae have nowhere to appear among its members' rows, and naming them is the only way to say they are there.
+
+`Namo#inspected_data` is new and protected — the rendered rows, the count of those not shown, and the derived dimensions none of them carries. `Collection` renders through it rather than delegating to `Namo#inspect`, which would print each member's name twice and wrap every member in its own `#<Namo …>`.
 
 ### Summary
 

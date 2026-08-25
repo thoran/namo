@@ -262,6 +262,16 @@ class Namo
 
   protected
 
+  # The rendered rows, the count of those not shown, and the derived dimensions
+  # none of them carries.  Shared with Collection, which renders its members' rows
+  # rather than its own and must report what a member would report of itself.
+  def inspected_data(limit)
+    rendered = @data.first(limit).map{|row| [row, inspected_derivations(row)]}
+    [rendered.map{|row, derived| row.merge(derived).inspect},
+      @data.length - limit,
+      unshown_derived(rendered)]
+  end
+
   def row_multiset
     @data.tally
   end
@@ -277,6 +287,13 @@ class Namo
   end
 
   private
+
+  def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
+    @data = positional_data || data
+    @formulae = formulae.is_a?(Formulae) ? formulae : Formulae.new(formulae)
+    @name = name
+    attach_included_formularies
+  end
 
   def inspected_name
     @name.nil? ? '' : " #{@name.inspect}"
@@ -308,19 +325,19 @@ class Namo
   # Only those the rows above do not already carry.  A formula which raises, and a
   # parameterised one which cannot be materialised without its arguments, render
   # no value and would otherwise be nowhere in the output at all.  A Collection
-  # renders no rows and so passes none, naming every one of them.
+  # renders no rows of its own and so passes none, naming every one of them.
   def inspected_derived(rendered = [])
-    unshown = derived_dimensions.reject do |dimension|
-      rendered.any? && rendered.all?{|_, derived| derived.key?(dimension)}
-    end
+    inspected_derived_names(unshown_derived(rendered))
+  end
+
+  def inspected_derived_names(unshown)
     unshown.empty? ? '' : " derived: #{unshown.inspect}"
   end
 
-  def initialize(positional_data = nil, data: [], formulae: {}, name: nil)
-    @data = positional_data || data
-    @formulae = formulae.is_a?(Formulae) ? formulae : Formulae.new(formulae)
-    @name = name
-    attach_included_formularies
+  def unshown_derived(rendered)
+    derived_dimensions.reject do |dimension|
+      rendered.any? && rendered.all?{|_, derived| derived.key?(dimension)}
+    end
   end
 
   def add_row(row)

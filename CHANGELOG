@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 20260826
+
+0.31.4: ~ Namo::Collection#inspect: the members are rendered, nested under their names.
+
+1. ~ Namo::Collection#inspect: the members are rendered nested under their names rather than listed as bare labels beside a row count, the members being the substance and the data view derived from them. The Namo::INSPECTED_ROWS budget is spread across the members shown — one member renders ten of its rows, five render two apiece, ten render one each and are put on one line — and members beyond it are elided with a count, as rows are. The member list had no cap at all: 2,641 members emitted 22,704 characters on a single line, which is the failure INSPECTED_ROWS was introduced at 0.31.0 to end. A member renders nested as it renders alone, its derived values among its stored ones and its own derived: suffix naming whatever none of its rendered rows could materialise. The detail view's row count closes the block, and a Collection's own formulae are named after it, being a namespace its members cannot resolve.
+2. + Namo#inspected_data: the rendered rows, the count of those not shown, and the derived dimensions none of them carries — protected, so Namo::Collection can render its members' rows without going through Namo#inspect and repeating each member's name, and still report what a member reports of itself.
+3. ~ README.md: the Inspection output section, and the two group_by examples whose rendering changes.
+4. ~ ROADMAP.md: + 0.31.4.
+5. ~ Namo::VERSION: /0.31.3/0.31.4/
+
+
 ## 20260824
 
 0.31.3: ~ Namo#to_a: derived dimensions are carried alongside the stored ones.

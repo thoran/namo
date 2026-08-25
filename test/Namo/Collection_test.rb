@@ -348,14 +348,104 @@ describe Namo::Collection do
   end
 
   describe "#inspect" do
-    it "renders the member names and the row count" do
+    def collection_of(members, rows_each)
+      rows = (1..members).flat_map{|member| (1..rows_each).map{|row| {group: "g#{member}", n: row}}}
+      Namo.new(rows).group_by(:group)
+    end
+
+    it "renders each member nested, under its name" do
       collection = Namo::Collection.new
       collection << Namo.new([{a: 1}], name: :first) << Namo.new([{a: 2}], name: :second)
-      _(collection.inspect).must_equal "#<Namo::Collection members: [:first, :second], 2 rows>"
+      _(collection.inspect).must_equal <<~INSPECT.chomp
+        #<Namo::Collection [
+          :first => [{a: 1}],
+          :second => [{a: 2}]
+        ] 2 rows>
+      INSPECT
     end
 
     it "renders an empty Collection" do
-      _(Namo::Collection.new.inspect).must_equal "#<Namo::Collection members: [], 0 rows>"
+      _(Namo::Collection.new.inspect).must_equal "#<Namo::Collection [] 0 rows>"
+    end
+
+    # The budget is INSPECTED_ROWS spread across the members shown, so the output
+    # is bounded by what was asked for rather than by how the data is shaped.
+    it "gives a lone member the whole row budget" do
+      rendered = collection_of(1, 50).inspect
+      _(rendered.scan(/\{group:/).length).must_equal Namo::INSPECTED_ROWS
+      _(rendered).must_include "... 40 more rows"
+    end
+
+    it "gives five members two rows apiece" do
+      rendered = collection_of(5, 9).inspect
+      _(rendered.scan(/\{group:/).length).must_equal Namo::INSPECTED_ROWS
+      _(rendered).must_include "... 7 more rows"
+    end
+
+    it "gives ten members one row apiece, on one line each" do
+      rendered = collection_of(10, 4).inspect
+      _(rendered.scan(/\{group:/).length).must_equal Namo::INSPECTED_ROWS
+      _(rendered).must_include %q{"g1" => [{group: "g1", n: 1}, ... 3 more rows]}
+    end
+
+    it "elides the members beyond the budget, with a count" do
+      rendered = collection_of(2641, 130).inspect
+      _(rendered).must_include "... 2631 more members"
+      _(rendered.lines.length).must_equal 13
+    end
+
+    # 2,641 members emitted 22,704 characters on a single line before the budget.
+    it "stays bounded as the members multiply" do
+      _(collection_of(2641, 130).inspect.length).must_be :<, collection_of(10, 130).inspect.length * 2
+    end
+
+    it "reports the total row count of the detail view" do
+      _(collection_of(3, 7).inspect).must_include "] 21 rows>"
+    end
+
+    # Where the two rules meet: 0.31.2 names only what the rendered rows do not
+    # carry.  A member's formula is carried, since its rows are what is rendered; a
+    # Collection's own applies to the data view, which the nested form never shows,
+    # so naming it is the only way to learn it is there.
+    it "names its own derived dimensions while showing its members' inline" do
+      member = Namo.new([{part: "block", weight: 90}], name: :powertrain)
+      member[:light] = proc{|row| row[:weight] < 50}
+      collection = Namo::Collection.new
+      collection << member
+      collection[:heavy] = proc{|row| row[:weight] > 50}
+      _(collection.derived_dimensions).must_equal [:heavy]
+      _(member.derived_dimensions).must_equal [:light]
+      _(collection.inspect).must_include "{part: \"block\", weight: 90, light: false}"
+      _(collection.inspect).must_include "] 1 rows derived: [:heavy]>"
+    end
+
+    # Nested, a member must say what it says of itself: a formula it cannot
+    # materialise is named in its own inspect, and vanishing here would make the
+    # nested rendering quieter than the parts it is made of.
+    it "carries a member's own suffix for what that member cannot materialise" do
+      member = Namo.new([{part: "block", weight: 90}], name: :powertrain)
+      member[:light] = proc{|row| row[:weight] < 50}
+      member[:scaled] = proc{|row, namo, factor| row[:weight] * factor}
+      collection = Namo::Collection.new
+      collection << member
+      _(member.inspect).must_include "derived: [:scaled]"
+      _(collection.inspect).must_include ":powertrain => [{part: \"block\", weight: 90, light: false}] derived: [:scaled]"
+    end
+
+    it "carries no suffix when only its members hold formulae" do
+      member = Namo.new([{part: "block", weight: 90}], name: :powertrain)
+      member[:light] = proc{|row| row[:weight] < 50}
+      collection = Namo::Collection.new
+      collection << member
+      _(collection.inspect).wont_include "derived:"
+    end
+
+    it "renders a member's derived dimensions among its stored ones" do
+      member = Namo.new([{a: 1}], name: :first)
+      member[:b] = proc{|row| row[:a] + 1}
+      collection = Namo::Collection.new
+      collection << member
+      _(collection.inspect).must_include "{a: 1, b: 2}"
     end
   end
 

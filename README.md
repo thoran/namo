@@ -996,14 +996,27 @@ Evaluation is bounded by the row cap rather than by the data — at most ten row
 
 Rows beyond `Namo::INSPECTED_ROWS` — ten — are elided with a count of the remainder, so the output stays bounded however large the data: a thousand-row Namo renders its first ten rows and then `... 990 more rows`.
 
-A `Row` renders itself, its derived values and its formula names in every case, having no `derived_dimensions` of its own to be asked, and never the Namo it came from. A `Collection` renders its member names and its row count, the members being its substance and the data view derived from them.
+A `Row` renders itself, its derived values and its formula names in every case, having no `derived_dimensions` of its own to be asked, and never the Namo it came from.
+
+A `Collection` renders its members, nested under their names, because the members are its substance and `@data` is a view derived from them. The `INSPECTED_ROWS` budget is spread across the members shown rather than spent on one: a single member renders ten of its rows, five members render two apiece, ten render one each and are put on one line. Members beyond that are elided with a count, as rows are, so a Collection of thousands renders in a dozen lines. The total row count of the detail view closes the block.
+
+A member renders nested as it would render alone: its derived values among its stored ones, and its own `derived:` suffix naming whatever it cannot materialise. A Collection's own formulae are a separate namespace — it cannot resolve its members' and they cannot resolve its — so they are named in a suffix of the Collection's own, after the closing bracket.
 
 ```ruby
 sales.first
 # => #<Namo::Row {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100, revenue: 1000.0} derived: [:revenue]>
 
 sales.group_by(:quarter)
-# => #<Namo::Collection members: ["Q1", "Q2"], 4 rows>
+# => #<Namo::Collection [
+#   "Q1" => [
+#     {product: "Widget", quarter: "Q1", price: 10.0, quantity: 100, revenue: 1000.0},
+#     {product: "Gadget", quarter: "Q1", price: 25.0, quantity: 40, revenue: 1000.0}
+#   ],
+#   "Q2" => [
+#     {product: "Widget", quarter: "Q2", price: 10.0, quantity: 150, revenue: 1500.0},
+#     {product: "Gadget", quarter: "Q2", price: 25.0, quantity: 60, revenue: 1500.0}
+#   ]
+# ] 4 rows>
 ```
 
 ### Named Namos
@@ -1204,7 +1217,14 @@ Freeze-gated memoisation is a 2.x optimisation — opt-in via `freeze`, transpar
 
 ```ruby
 prices.group_by(:symbol)
-# => #<Namo::Collection members: [:BHP, :RIO, :CBA]>
+# => #<Namo::Collection [
+#   :BHP => [
+#     {symbol: :BHP, date: "2025-01-02", close: 42.5},
+#     {symbol: :BHP, date: "2025-01-03", close: 43.0}
+#   ],
+#   :RIO => [{symbol: :RIO, date: "2025-01-02", close: 118.0}],
+#   :CBA => [{symbol: :CBA, date: "2025-01-02", close: 96.4}]
+# ] 4 rows>
 
 prices.group_by(:symbol).summary(:close, reducer: :mean)
 # => Namo with {member:, close:} rows — mean close per symbol
