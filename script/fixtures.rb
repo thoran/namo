@@ -4,11 +4,9 @@
 # 20260824
 # 0.0.1
 
-# The data script/demo shows and script/console hands you, in one place so the
-# two cannot drift.  They are held as source text rather than as objects: the
+# The data script/demo shows, held as source text rather than as objects: the
 # demo prints these lines before evaluating them, so what the audience reads and
-# what runs are necessarily the same string, and the console evaluates the same
-# string to arrive at the same names.
+# what runs are necessarily the same string.
 #
 # Three stations over three months, a measured high against its historical mean,
 # and rainfall.  The numbers are chosen so that the beats which turn upon them

@@ -4,17 +4,20 @@ require 'minitest/autorun'
 require 'minitest-spec-context'
 
 require_relative '../lib/namo'
-require_relative '../script/fixtures'
 
-# script/console exists so that a question asked at a prompt is asked of the same
-# data the demo put on the screen.  That is only true while both read
-# script/fixtures.rb, so what is worth asserting is the agreement rather than the
-# session: the names it defines, and that they hold what the fixtures say.
+# bin/console is the conventional gem prompt: irb with the library loaded and
+# nothing else.  It held the demo's fixtures until 20260826, so that a question
+# asked here was asked of the data the demo had shown — a guarantee the demo's
+# own `i` now keeps better, opening irb on the binding the run is using rather
+# than on a second process holding equal values.
+#
+# What is left to assert is that it starts, that Namo is there, and that it needs
+# nothing off the load path.
 
-describe 'script/console' do
+describe 'bin/console' do
   def console(*expressions)
     root = File.expand_path('..', __dir__)
-    IO.popen([File.join(root, 'script', 'console'), '--prompt', 'simple'],
+    IO.popen([File.join(root, 'bin', 'console'), '--prompt', 'simple'],
       'r+', chdir: root, err: [:child, :out]) do |io|
       io.puts(expressions, 'exit')
       io.close_write
@@ -22,21 +25,22 @@ describe 'script/console' do
     end
   end
 
-  it "defines the names it says it does" do
-    output = console('[readings, stations, months].map{|n| n.class}.inspect')
-    _(output).must_match(/\[Namo, Namo, Namo\]/)
-  end
-
-  it "gives sales the revenue formula" do
-    _(console('readings.derived_dimensions.inspect')).must_match(/\[:anomaly\]/)
-  end
-
-  it "holds what the fixtures hold, so it cannot drift from the demo" do
-    expected = eval(Fixtures.readings)
-    _(console('readings.data == ' + expected.inspect)).must_match(/true/)
+  it "starts with Namo loaded" do
+    _(console('Namo.new([{a: 1}]).dimensions.inspect')).must_match(/\[:a\]/)
   end
 
   it "starts without echoing its own source" do
-    _(console('1')).wont_match(/binding\.irb/)
+    _(console('1')).wont_match(/IRB\.start/)
+  end
+
+  it "needs nothing but the gem's own dependencies" do
+    root = File.expand_path('..', __dir__)
+    output = IO.popen({'RUBYLIB' => nil}, [File.join(root, 'bin', 'console'), '--prompt', 'simple'],
+      'r+', chdir: root, err: [:child, :out]) do |io|
+      io.puts('exit')
+      io.close_write
+      io.read
+    end
+    _(output).wont_match(/LoadError/)
   end
 end

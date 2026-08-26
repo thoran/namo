@@ -1,0 +1,19 @@
+#!/usr/bin/env ruby
+# console
+
+# 20260826
+# 0.0.0
+
+# An irb session with Namo loaded, for asking a question of the library without
+# writing a file first.  require_relative rather than bundler/setup, so that it
+# runs on a clean clone as script/demo and script/sizing do.
+#
+# The demo's own prompt is elsewhere: pressing i at a pause in script/demo opens
+# irb on the binding that run has been using, which is the better tool for asking
+# a question of what is on the screen — the objects themselves rather than a
+# second process holding equal ones.
+
+require_relative '../lib/namo'
+require 'irb'
+
+IRB.start
