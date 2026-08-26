@@ -144,8 +144,8 @@ end
 # it covers whatever the shorter sections would otherwise leave showing
 # underneath.  The constant is the fallback, and the bound the suite holds
 # sections to.
-SLIDE_HEIGHT = 40
-SLIDE_WIDTH = 132
+SLIDE_HEIGHT = 41
+SLIDE_WIDTH = 145
 RULE = '─'
 
 # The least irb is given.  A region of one row is degenerate — terminals ignore
@@ -280,14 +280,14 @@ end
 
 def ingestion
   section 'Ingestion', 'Nothing is declared on ingestion. Hash keys become dimensions, values become coordinates. No dimension is privileged.'
-  show "parsed_csv = CSV.read(readings_csv, headers: true, header_converters: :symbol, converters: :numeric).map(&:to_h)"
+  setup "parsed_csv = CSV.read(readings_csv, headers: true, header_converters: :symbol, converters: :numeric).map(&:to_h)"
   setup "readings = Namo.new(parsed_csv)"
   show "readings"
   show 'readings.dimensions'
   show 'readings.coordinates'
   remark "The same call selects on a label and on a measure."
   show "readings[station: 'Melbourne']"
-  show 'readings[mean_temp: 30.0]'
+  show 'readings[mean_temp: 29.0]'
 end
 
 def bracket_notation
