@@ -2054,7 +2054,7 @@ Namo as a specification language that emits executable code in other targets:
 - SQL (DuckDB, PostgreSQL) for production deployment.
 - Python/Polars for handoff to Python teams.
 
-Explore interactively in Ruby. Deploy as transpiled output. The exploration tool and the production artifact are the same object viewed from different angles.
+Explore interactively in Ruby. Deploy as transpiled output. The exploration tool and the production artefact are the same object viewed from different angles.
 
 ### Genetic algorithm support
 
