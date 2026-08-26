@@ -151,7 +151,7 @@ The formulae travel with the file. The earlier design carried names alone — th
 **The open question is whether `load` may define constants in the receiving process.** A carried formulary file says `module OrderFlow`, and if the receiver already has an `OrderFlow` then evaluating that file reopens it and merges the definitions in — Ruby's own semantics, happening before any Namo exists, and capable of altering a module the receiving program uses elsewhere. That is the concrete form of a broader question: `Namo.load` would be running code a colleague sent, which is Marshal-tier trust. Whether the consent is implicit in calling `load`, or explicit in a `load!` which evaluates where plain `load` takes data and names alone, is unsettled and is the thing to settle first.
 
 
-## Current state: 0.31.5
+## Current state: 0.31.6
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1296,6 +1296,16 @@ It stood because `==` cannot see it. Row-multiset equality compares rows, so `co
 `detail` now folds the members' formulae in member order, a later member winning a name collision as a later member wins a collision of names in `<<`. `group_by` gives every member the same formulae, so the fold only decides anything for an assembled Collection whose members disagree. `as_detail` merges them into the Collection's own, having become that view; taking only the data left the round trip broken by the other half.
 
 `summary` is deliberately untouched. Its rows are reductions, holding neither the dimensions the members' formulae read nor the rows they read them from, so carrying them would name dimensions which could not be materialised.
+
+### 0.31.6 (2026-08-26): a row operation on a Collection yields a Namo
+
+0.18.0 settled that an inherited row-operation on a Collection reads the detail view, so that `collection[component: 'engine']` "just works, behaving as the detail". The detail is a `Namo`. The result was built as a `Namo::Collection`, because every operation in the library builds its result with `self.class.new` — which is right for a subclass, whose kind is its class, and wrong for a Collection, whose kind is its members and which a row operation carries none of.
+
+What came back was therefore a Collection with no members. It rendered as `[] 3 rows`, saying nothing about the rows it held; `members` answered `[]`; and `summary` walked an empty member list and returned an empty Namo — a wrong answer where the right outcome is that a Namo has no summary to give. None of it needed the `data` back door: plain bracket selection reached it.
+
+`Namo#return_class` is new and protected, returning `self.class`, and the twenty-two sites which build what they return ask for it. `Namo::Collection` overrides it to return `Namo`. A subclass is untouched, since it does not override — a projection of a `PriceData` is a `PriceData`, which the `Car`/`SubAssembly` shape of 0.18.0 depends on — and `group_by` still returns a Collection, being a constructor rather than a row operation.
+
+A patch rather than a minor: nothing correct can have relied on a memberless Collection, there being nothing it answers usefully. This is the 0.11.0 precedent's opposite case — that minor withdrew an `Array` return which was correct and useful, where this withdraws one which was the defect.
 
 ### Summary
 

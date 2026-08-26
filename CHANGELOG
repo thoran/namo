@@ -2,6 +2,15 @@
 
 ## 20260826
 
+0.31.6: ~ Namo::Collection: a row operation yields a Namo rather than a memberless Collection.
+
+1. + Namo#return_class: the class an operation returns, protected, returning self.class. The twenty-two sites which built what they return — projection and contraction, the five set operators, the two composition operators, and the subset Enumerable methods in Namo::Enumerable — now ask for it rather than naming self.class themselves.
+2. ~ Namo::Collection#return_class: returns Namo. A Collection's kind is its members and a row operation carries none across, so what came back was a Collection with none: it answered summary with an empty Namo rather than raising, and rendered as [] beside a row count. 0.18.0 has these operations read the detail view and behave as the detail, and the detail is a Namo; this is the code meeting that sentence.
+3. ~ README.md: the four views, on what a row operation on a Collection returns.
+4. ~ ROADMAP.md: + 0.31.6.
+5. ~ Namo::VERSION: /0.31.5/0.31.6/
+
+
 0.31.5: ~ Namo::Collection#detail, #as_detail: the detail view carries the members' formulae.
 
 1. ~ Namo::Collection#detail: the returned Namo carries the members' formulae, folded in member order so that a later member wins a name collision, as a later member wins a collision of names in <<. It had been built with none, so the view documented at 0.18.0 as the lossless union of the members' rows dropped every derived dimension: group_by hands each member the source's formulae, and detail handed them back stripped.
@@ -11,8 +20,6 @@
 5. ~ ROADMAP.md: + 0.31.5.
 6. ~ Namo::VERSION: /0.31.4/0.31.5/
 
-
-## 20260826
 
 0.31.4: ~ Namo::Collection#inspect: the members are rendered, nested under their names.
 

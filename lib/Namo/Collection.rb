@@ -70,6 +70,16 @@ class Namo
       "#<#{self.class}#{inspected_name} #{inspected_members} #{@data.length} rows#{inspected_derived}>"
     end
 
+    protected
+
+    # A row operation on a Collection yields a Namo: 0.18.0 has it read the detail
+    # view and behave as the detail, and the detail is a Namo.  Built as a
+    # Collection it would be one with no members, answering summary with an empty
+    # Namo rather than saying it cannot.
+    def return_class
+      Namo
+    end
+
     private
 
     # The members' formulae, folded in member order so that a later member wins a

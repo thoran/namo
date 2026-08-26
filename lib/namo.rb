@@ -79,7 +79,7 @@ class Namo
       end
     )
     carried = positive.any? ? @formulae.reject{|name, _| positive.include?(name)} : @formulae.dup
-    self.class.new(projected, formulae: carried)
+    return_class.new(projected, formulae: carried)
   end
 
   def []=(name, value)
@@ -124,31 +124,31 @@ class Namo
   def +(other)
     raise_unless_namo(other)
     raise_unless_matching_data_dimensions(other)
-    self.class.new(@data + other.data, formulae: other.formulae.merge(@formulae))
+    return_class.new(@data + other.data, formulae: other.formulae.merge(@formulae))
   end
 
   def -(other)
     raise_unless_namo(other)
     raise_unless_matching_data_dimensions(other)
-    self.class.new(@data - other.data, formulae: @formulae.dup)
+    return_class.new(@data - other.data, formulae: @formulae.dup)
   end
 
   def &(other)
     raise_unless_namo(other)
     raise_unless_matching_data_dimensions(other)
-    self.class.new(@data & other.data, formulae: @formulae.dup)
+    return_class.new(@data & other.data, formulae: @formulae.dup)
   end
 
   def |(other)
     raise_unless_namo(other)
     raise_unless_matching_data_dimensions(other)
-    self.class.new((@data | other.data), formulae: other.formulae.merge(@formulae))
+    return_class.new((@data | other.data), formulae: other.formulae.merge(@formulae))
   end
 
   def ^(other)
     raise_unless_namo(other)
     raise_unless_matching_data_dimensions(other)
-    self.class.new((@data - other.data) + (other.data - @data), formulae: other.formulae.merge(@formulae))
+    return_class.new((@data - other.data) + (other.data - @data), formulae: other.formulae.merge(@formulae))
   end
 
   def *(other, &block)
@@ -167,7 +167,7 @@ class Namo
         matched.each{|right_row| combined_data << left_row.merge(right_row)}
       end
     end
-    self.class.new(combined_data, formulae: other.formulae.merge(@formulae))
+    return_class.new(combined_data, formulae: other.formulae.merge(@formulae))
   end
 
   def **(other, &block)
@@ -184,7 +184,7 @@ class Namo
         other.data.each{|right_row| combined_data << left_row.merge(right_row)}
       end
     end
-    self.class.new(combined_data, formulae: other.formulae.merge(@formulae))
+    return_class.new(combined_data, formulae: other.formulae.merge(@formulae))
   end
 
   def /(other)
@@ -193,7 +193,7 @@ class Namo
     projected = @data.map do |row|
       kept.each_with_object({}){|dim, hash| hash[dim] = row[dim]}
     end
-    self.class.new(projected.uniq, formulae: @formulae.dup)
+    return_class.new(projected.uniq, formulae: @formulae.dup)
   end
 
   def ==(other)
@@ -261,6 +261,13 @@ class Namo
   end
 
   protected
+
+  # The class an operation returns.  A subclass is its own kind of thing, so a
+  # projection of a PriceData is a PriceData; Namo::Collection is not, its kind
+  # being its members, which a row operation carries none of.
+  def return_class
+    self.class
+  end
 
   # The rendered rows, the count of those not shown, and the derived dimensions
   # none of them carries.  Shared with Collection, which renders its members' rows

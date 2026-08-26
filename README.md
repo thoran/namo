@@ -1119,6 +1119,8 @@ gt[component: 'engine'].values(:cost)
 
 Detail is the lazy view because a Collection's rows simply *are* its members' rows; a summary is a reduction you pose against them, so it is never reached by accident — only through `summary` or `as_summary`.
 
+An inherited row-operation on a Collection — selection, projection, `select`, `sort_by`, the set and composition operators — returns a `Namo`, not a Collection. It reads the detail view and behaves as the detail, and the detail is a Namo. A Collection is defined by its members, and a row operation carries none of them across, so a Collection is not what the result is: asking one for a `summary` should say there is none to give rather than answer for no members. A subclass of `Namo` is unaffected — a projection of a `PriceData` is a `PriceData`.
+
 #### Four view methods
 
 `detail` carries the members' formulae, its rows being the members' rows — folded in member order, so a later member wins a name collision as it wins a collision of names in `<<`. A `summary`'s rows are reductions, holding neither the dimensions those formulae read nor the rows they read them from, so it carries none.

@@ -347,6 +347,60 @@ describe Namo::Collection do
     end
   end
 
+  # 0.18.0 has an inherited row-operation read the detail view and "behave as the
+  # detail", and the detail is a Namo.  Built as a Collection the result was one
+  # with no members: it answered summary with an empty Namo rather than saying it
+  # had no summary to give, and rendered as [] beside a row count.
+  describe "the class of a derived result" do
+    def grouped
+      Namo.new([
+        {station: "Melbourne", month: "2025-01", high_temp: 26.4},
+        {station: "Perth", month: "2025-01", high_temp: 32.0},
+        {station: "Perth", month: "2025-02", high_temp: 29.5}]).group_by(:month)
+    end
+
+    it "is a Namo for selection and projection" do
+      _(grouped[station: "Perth"]).must_be_instance_of Namo
+      _(grouped[:station, :high_temp]).must_be_instance_of Namo
+    end
+
+    it "is a Namo for the subset Enumerable methods" do
+      collection = grouped
+      _(collection.select{|row| row[:station] == "Perth"}).must_be_instance_of Namo
+      _(collection.sort_by{|row| row[:high_temp]}).must_be_instance_of Namo
+      _(collection.first(2)).must_be_instance_of Namo
+      _(collection.uniq).must_be_instance_of Namo
+    end
+
+    it "is a Namo for the set and composition operators" do
+      collection = grouped
+      _(collection + collection).must_be_instance_of Namo
+      _(collection - collection).must_be_instance_of Namo
+      _(collection & collection).must_be_instance_of Namo
+    end
+
+    it "carries the rows the operation selected" do
+      _(grouped[station: "Perth"].values(:high_temp)).must_equal [32.0, 29.5]
+    end
+
+    # The point of it: a summary of no members is not an empty summary.
+    it "has no summary to give, rather than an empty one" do
+      _{grouped[station: "Perth"].summary(:high_temp)}.must_raise NoMethodError
+    end
+
+    it "leaves a subclass its own kind" do
+      priced = Class.new(Namo)
+      instance = priced.new([{a: 1}, {a: 2}])
+      _(instance.select{|row| row[:a] > 1}).must_be_instance_of priced
+      _(instance[:a]).must_be_instance_of priced
+    end
+
+    it "leaves group_by returning a Collection" do
+      _(grouped).must_be_instance_of Namo::Collection
+      _(grouped.members.length).must_equal 2
+    end
+  end
+
   describe "the detail view and its formulae" do
     def readings
       namo = Namo.new([
