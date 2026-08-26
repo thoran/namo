@@ -42,7 +42,7 @@ class Namo
           member.data.map{|row| row.key?(by) ? row : row.merge(by => member.name)}
         end
       )
-      Namo.new(rows)
+      Namo.new(rows, formulae: member_formulae)
     end
 
     def as_summary(dimension = nil, by: :member, reducer: :sum, &block)
@@ -52,7 +52,9 @@ class Namo
 
     def as_detail(positional_by = nil, by: :member)
       by = positional_by || by
-      @data = detail(by).data
+      view = detail(by)
+      @data = view.data
+      @formulae = @formulae.merge(view.formulae)
       self
     end
 
@@ -69,6 +71,15 @@ class Namo
     end
 
     private
+
+    # The members' formulae, folded in member order so that a later member wins a
+    # name collision, as a later member wins a collision of names in <<.  The
+    # detail view is the members' rows, so it must be able to answer what the
+    # members can answer of them; group_by hands every member the same formulae,
+    # so only an assembled Collection can have members which disagree.
+    def member_formulae
+      @members.map(&:formulae).reduce(Formulae.new){|merged, formulae| merged.merge(formulae)}
+    end
 
     def inspected_members
       return '[]' if @members.empty?

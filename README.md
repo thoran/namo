@@ -1121,6 +1121,8 @@ Detail is the lazy view because a Collection's rows simply *are* its members' ro
 
 #### Four view methods
 
+`detail` carries the members' formulae, its rows being the members' rows — folded in member order, so a later member wins a name collision as it wins a collision of names in `<<`. A `summary`'s rows are reductions, holding neither the dimensions those formulae read nor the rows they read them from, so it carries none.
+
 The views come in a non-mutating pair and a mutating pair:
 
 - `summary(dimension = nil, by:, reducer:, &block)` and `detail(by:)` are **non-mutating** — each returns a fresh `Namo` derived from the members, leaving the Collection untouched. Use these when you want a view to keep: assign the result to a variable and operate on it independently.

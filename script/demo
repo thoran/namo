@@ -448,7 +448,7 @@ def collections
   remark "...unless a reducer is supplied. A reducer is any method to which the column responds."
   show 'grouped.summary(:anomaly, by: :month, reducer: :max)'
   remark 'And the partition inverts exactly!'
-  show 'grouped.as_detail(:month) == readings'
+  show 'grouped.as_detail(:month) === readings'
 end
 
 def summary_block

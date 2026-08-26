@@ -347,6 +347,48 @@ describe Namo::Collection do
     end
   end
 
+  describe "the detail view and its formulae" do
+    def readings
+      namo = Namo.new([
+        {station: "Melbourne", month: "2025-01", high_temp: 26.4, mean_temp: 25.9},
+        {station: "Perth", month: "2025-01", high_temp: 32.0, mean_temp: 30.0}])
+      namo[:anomaly] = proc{|row| (row[:high_temp] - row[:mean_temp]).round(1)}
+      namo
+    end
+
+    it "carries the members' formulae, the view being the members' rows" do
+      _(readings.group_by(:station).detail(:station).derived_dimensions).must_equal [:anomaly]
+    end
+
+    it "answers a derived dimension through the detail view" do
+      _(readings.group_by(:station).detail(:station).values(:anomaly)).must_equal [0.5, 2.0]
+    end
+
+    # == compares row multisets and cannot see a formula go missing, so it called
+    # the partition exact while the derived dimensions were being dropped.  === is
+    # the operator which compares the formula names too.
+    it "inverts the partition exactly, formulae and all" do
+      source = readings
+      _(source.group_by(:station).as_detail(:station)).must_be :===, source
+    end
+
+    it "folds the members' formulae, a later member winning the name" do
+      first = Namo.new([{a: 1}], name: :first)
+      first[:b] = proc{|row| :from_first}
+      second = Namo.new([{a: 2}], name: :second)
+      second[:b] = proc{|row| :from_second}
+      collection = Namo::Collection.new
+      collection << first << second
+      _(collection.detail.values(:b)).must_equal [:from_second, :from_second]
+    end
+
+    # A summary's rows are reductions, holding neither the dimensions the members'
+    # formulae read nor the rows they read them from, so it carries none.
+    it "leaves the summary without them" do
+      _(readings.group_by(:station).summary(:high_temp).derived_dimensions).must_equal []
+    end
+  end
+
   describe "#inspect" do
     def collection_of(members, rows_each)
       rows = (1..members).flat_map{|member| (1..rows_each).map{|row| {group: "g#{member}", n: row}}}

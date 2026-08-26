@@ -151,7 +151,7 @@ The formulae travel with the file. The earlier design carried names alone — th
 **The open question is whether `load` may define constants in the receiving process.** A carried formulary file says `module OrderFlow`, and if the receiver already has an `OrderFlow` then evaluating that file reopens it and merges the definitions in — Ruby's own semantics, happening before any Namo exists, and capable of altering a module the receiving program uses elsewhere. That is the concrete form of a broader question: `Namo.load` would be running code a colleague sent, which is Marshal-tier trust. Whether the consent is implicit in calling `load`, or explicit in a `load!` which evaluates where plain `load` takes data and names alone, is unsettled and is the thing to settle first.
 
 
-## Current state: 0.31.4
+## Current state: 0.31.5
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1286,6 +1286,16 @@ A member renders nested as it renders alone: the same rows, and the same `derive
 The Collection's own suffix sits after the closing bracket and means something different. A Collection and its members are separate formula namespaces, neither able to resolve the other's: `car.values(:light)` is `nil` where the member answers `false`, and `member.values(:heavy)` is `nil` where the Collection answers `true`. So a Collection's formulae have nowhere to appear among its members' rows, and naming them is the only way to say they are there.
 
 `Namo#inspected_data` is new and protected — the rendered rows, the count of those not shown, and the derived dimensions none of them carries. `Collection` renders through it rather than delegating to `Namo#inspect`, which would print each member's name twice and wrap every member in its own `#<Namo …>`.
+
+### 0.31.5 (2026-08-26): the detail view carries the formulae
+
+0.18.0 defines `detail` as the lossless union of the members' rows, and 0.20.0 makes `group_by` the partition-side constructor whose inverse it is. `group_by` hands each member `source.formulae.dup`; `detail` built its Namo with none, so the pair was lossless in one direction only. Every derived dimension went into the partition and none came back.
+
+It stood because `==` cannot see it. Row-multiset equality compares rows, so `collection.as_detail(:month) == readings` reported an exact inversion while `readings.values(:anomaly)` gave `[0.5, 2.0]` and the reassembled Namo gave `[nil, nil]`. `===`, which compares the formula names too, said `false` throughout — the operator which would have caught it was the one nothing was calling.
+
+`detail` now folds the members' formulae in member order, a later member winning a name collision as a later member wins a collision of names in `<<`. `group_by` gives every member the same formulae, so the fold only decides anything for an assembled Collection whose members disagree. `as_detail` merges them into the Collection's own, having become that view; taking only the data left the round trip broken by the other half.
+
+`summary` is deliberately untouched. Its rows are reductions, holding neither the dimensions the members' formulae read nor the rows they read them from, so carrying them would name dimensions which could not be materialised.
 
 ### Summary
 
