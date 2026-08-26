@@ -4,6 +4,7 @@
 # 20260825
 # 0.1.0
 
+require 'csv'
 require 'date'
 require 'io/console'
 require 'stringio'
@@ -256,6 +257,13 @@ def point(title, *lines)
   puts
 end
 
+# The CSV the ingestion section reads, named from the script's own directory
+# rather than the caller's, so that the demo runs from anywhere as the rest of
+# it does.
+def readings_csv
+  File.join(__dir__, 'readings.csv')
+end
+
 def ensure_readings
   eval("readings = Namo.new(#{Fixtures.readings})", context)
 end
@@ -272,7 +280,9 @@ end
 
 def ingestion
   section 'Ingestion', 'Nothing is declared on ingestion. Hash keys become dimensions, values become coordinates. No dimension is privileged.'
-  setup "readings = Namo.new(#{Fixtures.readings})"
+  show "parsed_csv = CSV.read(readings_csv, headers: true, header_converters: :symbol, converters: :numeric).map(&:to_h)"
+  setup "readings = Namo.new(parsed_csv)"
+  show "readings"
   show 'readings.dimensions'
   show 'readings.coordinates'
   remark "The same call selects on a label and on a measure."
@@ -301,17 +311,17 @@ end
 
 def formulae
   ensure_readings
-  section 'Formulae are dimensions', 'A computed value is queryable exactly like a stored one.'
+  section 'Formulae are dimensions', 'A computed dimension is queryable exactly like a stored one, but live.'
   setup "readings[:anomaly] = #{Fixtures.anomaly}"
   show 'readings.data_dimensions'
   show 'readings.derived_dimensions'
   show 'readings.dimensions'
   show 'readings.coordinates(:anomaly)'
   show 'readings[anomaly: 1.0..2.0]'
-  remark 'change the source data and the derived dimension follows'
+  remark 'Change the source data and the derived dimension follows.'
   setup 'readings.data[0][:high_temp] = 28.9'
   show 'readings.values(:anomaly)'
-  remark 'and put back, the sections sharing one binding.'
+  remark "And put back again."
   setup 'readings.data[0][:high_temp] = 26.4'
   show 'readings.values(:anomaly)'
 end
@@ -349,17 +359,17 @@ def uncertainty
   end
   setup "specimen_data = #{Fixtures.specimens}"
   setup 'data_with_floats = specimen_data.map(&:dup)'
-  setup 'with_floats = Namo.new(data_with_floats)'
-  setup 'with_floats[:area] = proc{|row| row[:length] * row[:width]}'
-  show 'with_floats'
+  setup "namo_with_floats = Namo.new(data_with_floats)"
+  setup 'namo_with_floats[:area] = proc{|row| row[:length] * row[:width]}'
+  show 'namo_with_floats'
   remark 'The same lengths, with measurement error bands.'
   setup 'data_with_error = specimen_data.map{|row| row.merge(length: Measurand.new(row[:length], 0.05))}'
-  setup 'with_measurand = Namo.new(data_with_error)'
+  setup "namo_with_measurand = Namo.new(data_with_error)"
   remark 'The formula is the one above, retyped unchanged.'
-  setup 'with_measurand[:area] = proc{|row| row[:length] * row[:width]}'
-  show 'with_measurand.values(:area)'
+  setup "namo_with_measurand[:area] = proc{|row| row[:length] * row[:width]}"
+  show "namo_with_measurand.values(:area)"
   remark 'Equal area, unequal confidence — which the Float column had discarded'
-  show 'with_measurand[:specimen, :area]'
+  show "namo_with_measurand[:specimen, :area]"
 end
 
 def parameterised
@@ -445,7 +455,7 @@ def collections
   show "grouped.detail[station: 'Melbourne'][:month, :high_temp, :rainfall]"
   remark "Summary will by default sum the values."
   show 'grouped.summary(:anomaly, by: :month)'
-  remark "...unless a reducer is supplied. A reducer is any method to which the column responds."
+  remark "If a reducer is supplied. A reducer is any method to which the column responds."
   show 'grouped.summary(:anomaly, by: :month, reducer: :max)'
   remark 'And the partition inverts exactly!'
   show 'grouped.as_detail(:month) === readings'
