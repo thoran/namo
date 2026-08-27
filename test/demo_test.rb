@@ -3,8 +3,6 @@
 require 'minitest/autorun'
 require 'minitest-spec-context'
 
-require_relative '../lib/namo'
-
 # script/demo is 300-odd lines exercising selection, projection, formulae,
 # group_by, summary, the operators and inspect, and nothing else runs it.  These
 # assert only that each section completes, which is the difference between a

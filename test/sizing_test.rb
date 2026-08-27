@@ -3,8 +3,6 @@
 require 'minitest/autorun'
 require 'minitest-spec-context'
 
-require_relative '../lib/namo'
-
 # script/sizing produces the figures in ROADMAP.md's "What size it is for".  A
 # measurement whose script has rotted is a measurement nobody can repeat, which is
 # the condition the script exists to end — so assert it still runs, at sizes small

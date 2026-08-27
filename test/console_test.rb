@@ -3,8 +3,6 @@
 require 'minitest/autorun'
 require 'minitest-spec-context'
 
-require_relative '../lib/namo'
-
 # bin/console is the conventional gem prompt: irb with the library loaded and
 # nothing else.  It held the demo's fixtures until 20260826, so that a question
 # asked here was asked of the data the demo had shown — a guarantee the demo's
