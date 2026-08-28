@@ -21,9 +21,13 @@ Gem::Specification.new do |spec|
   spec.license = 'MIT'
 
   spec.required_ruby_version = '>= 2.7'
+
+  spec.bindir = 'bin'
+  spec.executables = ['namo']
   spec.require_paths = ['lib']
 
   spec.files = [
+    Dir['bin/*'],
     Dir['lib/**/*.rb'],
     Dir['test/**/*.rb'],
     'CHANGELOG',

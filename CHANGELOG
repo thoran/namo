@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 20260828
+
+0.32.0: + bin/namo, the gem's first executable, and the gems it installs.
+
+1. + bin/namo: a setup subcommand which installs the gems Namo's scripts want — Namo itself, so that a clone leaves require 'namo' working, and measurand, which the demo's uncertainty section does without when it is missing — and a console subcommand which is bin/console. Each step asks first and says so when there is nothing to do.
+2. + install.sh: the two things a Ruby script cannot do for itself, Homebrew and the Ruby it would be running on, handed over to bin/namo for the rest. It is not shipped: a bootstrap for a machine without the gem cannot arrive by way of the gem.
+3. ~ namo.gemspec, namo.rb.gemspec: + Dir['bin/*'] to spec.files, + spec.bindir, + spec.executables. Shipping bin/namo without declaring it would carry a script nobody could run.
+4. + test/namo_command_test.rb: the subcommands are named, setup reports rather than acts where a gem is present, an unknown subcommand fails, and it runs with RUBYLIB unset.
+5. ~ Namo::VERSION: /0.31.7/0.32.0/
+
+
 ## 20260827
 
 0.31.7: + namo.rb.gemspec, so that the gem resolves under both names.

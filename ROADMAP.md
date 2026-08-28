@@ -151,7 +151,7 @@ The formulae travel with the file. The earlier design carried names alone — th
 **The open question is whether `load` may define constants in the receiving process.** A carried formulary file says `module OrderFlow`, and if the receiver already has an `OrderFlow` then evaluating that file reopens it and merges the definitions in — Ruby's own semantics, happening before any Namo exists, and capable of altering a module the receiving program uses elsewhere. That is the concrete form of a broader question: `Namo.load` would be running code a colleague sent, which is Marshal-tier trust. Whether the consent is implicit in calling `load`, or explicit in a `load!` which evaluates where plain `load` takes data and names alone, is unsettled and is the thing to settle first.
 
 
-## Current state: 0.31.6
+## Current state: 0.32.0
 
 ### 0.0.0 (2026-03-15): Initial release
 
@@ -1306,6 +1306,14 @@ What came back was therefore a Collection with no members. It rendered as `[] 3 
 `Namo#return_class` is new and protected, returning `self.class`, and the twenty-two sites which build what they return ask for it. `Namo::Collection` overrides it to return `Namo`. A subclass is untouched, since it does not override — a projection of a `PriceData` is a `PriceData`, which the `Car`/`SubAssembly` shape of 0.18.0 depends on — and `group_by` still returns a Collection, being a constructor rather than a row operation.
 
 A patch rather than a minor: nothing correct can have relied on a memberless Collection, there being nothing it answers usefully. This is the 0.11.0 precedent's opposite case — that minor withdrew an `Array` return which was correct and useful, where this withdraws one which was the defect.
+
+### 0.32.0 (2026-08-28): the gem carries a command
+
+Namo has shipped as a library and nothing else: `gem install namo` put files on the load path and nothing on the PATH. `bin/namo` is the first executable, and `setup` is its first subcommand — it installs the gems the library's own scripts want, and it is what makes a `git clone` leave `require 'namo'` working, since a clone puts source on disk and nothing anywhere Ruby looks.
+
+`install.sh` sits outside the gem deliberately. Its two steps are Homebrew and Ruby, which is exactly the work a Ruby script cannot do for itself — a script running on the Ruby it proposes to install can only ever report that Ruby is already there. Being the bootstrap for a machine which has none of it, it cannot arrive by way of the gem, and so it belongs to the clone.
+
+A minor rather than a patch: 0.31.1 through 0.31.7 were corrections and packaging, and this is a capability the gem did not have. Nothing breaks — a gem gaining an executable takes nothing away — but the surface is new, which is the line the earlier releases were on the other side of.
 
 ### Summary
 

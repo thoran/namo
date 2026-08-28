@@ -1,0 +1,72 @@
+#!/usr/bin/env ruby
+# namo
+
+# 20260827
+# 0.0.0
+
+# Description: Install the gems Namo's own scripts want, and hand you a prompt
+# with Namo loaded.
+#
+# Homebrew and Ruby are install.sh's business, not this file's: a Ruby script
+# cannot install the Ruby it is running on, and saying "Ruby is already
+# installed!" is the only thing it could ever truthfully report.  Every step here
+# asks first and says so when there is nothing to do, so running it twice is not
+# a mistake.
+
+def usage
+  puts 'namo - Get a machine ready to run Namo.'
+  puts
+  puts 'Usage: namo [setup | console]'
+  puts
+  puts '  setup    install the gems the scripts want, skipping whatever is there'
+  puts '  console  an irb session with Namo loaded'
+  puts
+  puts 'The comparison scripts want two gems beyond these — sqlite3 and monotonic.rb —'
+  puts 'and a database which is not in this repository, so setup leaves them alone.'
+end
+
+def run(command)
+  puts '', command, ''
+  system(command)
+end
+
+def gem_installed?(name)
+  system("gem list -i #{name} > /dev/null 2>&1")
+end
+
+def install_gem(name)
+  if gem_installed?(name)
+    puts "#{name} is already installed!"
+  else
+    run("gem install #{name}")
+  end
+end
+
+# Namo itself first: arriving by `git clone` leaves the source on disk and nothing
+# on the load path, so the gem is what makes `require 'namo'` work from anywhere
+# else.  Arriving by `gem install namo` has it already, and the step says so.
+#
+# measurand is the one the demo asks for and does without: its uncertainty section
+# skips itself when it is missing, and every other section runs regardless.
+def setup
+  install_gem('namo')
+  install_gem('measurand')
+end
+
+def console
+  exec(File.join(__dir__, 'console'))
+end
+
+def main
+  case ARGV[0]
+  when 'setup'; setup
+  when 'console'; console
+  when '--help', '-h', 'help', nil; usage
+  else
+    puts "Error: unknown command '#{ARGV[0]}'"
+    puts 'Use --help for usage'
+    exit 1
+  end
+end
+
+main
