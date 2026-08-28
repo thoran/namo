@@ -18,7 +18,7 @@ Or in your Gemfile:
 gem 'namo'
 ```
 
-Or from nothing at all — Ruby, the gem, and the gems its scripts want, each step skipped where it is already there. Where Ruby is missing, whichever package manager is already installed supplies it — Homebrew, MacPorts, apt, dnf, pacman or zypper; where none is, you are asked before Homebrew is installed; `-y` answers yes in advance, and a machine with nobody at the keyboard is taken to have said no. Where the gem's own directory is not on the PATH, it offers to add it to your shell's configuration, so that a new shell has `namo` in it:
+Or from nothing at all — Ruby, the gem, and the gems its scripts want, each step skipped where it is already there. Where Ruby is missing, whichever package manager is already installed supplies it — Homebrew, MacPorts, apt, dnf, pacman or zypper; where none is, you are asked before Homebrew is installed, and then before ruby-install is built from source; `-y` answers yes in advance, and a machine with nobody at the keyboard is taken to have said no. Where the gem's own directory is not on the PATH, it offers to add it to your shell's configuration, so that a new shell has `namo` in it:
 
 ```
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/thoran/namo/master/install.sh)"

@@ -31,20 +31,31 @@ def gem_installed?(name)
   system("gem list -i #{name} > /dev/null 2>&1")
 end
 
+def gem_version(name)
+  Gem::Specification.find_all_by_name(name).map(&:version).max
+rescue StandardError
+  nil
+end
+
+def report(name, status)
+  puts format('  %-11s %-8s %s', name, gem_version(name) || '-', status)
+end
+
+# The status and the version, one line per check.  "already installed" on its own
+# was the second script announcing what install.sh had just done; the version is
+# what neither script has said, and is the reason to look.
 def install_gem(name)
   if gem_installed?(name)
-    puts "#{name} is already installed!"
+    report(name, 'already installed')
   else
     run("gem install #{name}")
+    report(name, 'installed')
   end
 end
 
-# Namo itself first: arriving by `git clone` leaves the source on disk and nothing
-# on the load path, so the gem is what makes `require 'namo'` work from anywhere
-# else.  Arriving by `gem install namo` has it already, and the step says so.
-#
-# measurand is the one the demo asks for and does without: its uncertainty section
-# skips itself when it is missing, and every other section runs regardless.
+# namo itself first: arriving by `git clone`, or by install.sh before the gem is
+# there, leaves nothing on the load path.  measurand the demo asks for and does
+# without, its uncertainty section skipping itself where it is missing.
 def setup
   install_gem('namo')
   install_gem('measurand')

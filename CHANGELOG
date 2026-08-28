@@ -2,6 +2,19 @@
 
 ## 20260828
 
+0.32.3: ~ install.sh: + ruby-install, for a machine with no package manager at all; the handover is to a clone's own bin/namo where the script was run from one.
+
+1. ~ install.sh: + install_ruby_install, + ruby_from_ruby_install. Where no package manager is found and Homebrew is declined, ruby-install is offered — fetched from its latest release rather than a pinned version, built with make as root, and used to build Ruby. It is the last thing tried and the only route here which builds Ruby rather than fetching it.
+2. ~ install.sh: ruby-install leaves its Ruby under ~/.rubies, which nothing puts on the PATH — chruby's job, and chruby is not there either — so that directory is added to the PATH of the run and offered to the shell's configuration, as the gem's own directory is.
+3. ~ install.sh: + wants_on_path, and add_to_path takes none. A machine taking the ruby-install route has a Ruby under ~/.rubies and its gems elsewhere, so two directories want adding; they are gathered as they are found and the shell configuration is written to once, naming both, rather than the same question being asked twice seconds apart. Each is put on the running PATH as it is found, so that `namo setup` happens whether or not the file is written to.
+4. ~ install.sh: install_namo runs gem install rather than skipping where the command is present. gem install is idempotent for a version already installed and fetches a newer one where there is one, so this is what makes a second run an upgrade.
+5. ~ bin/namo: + gem_version, + report. Each check states the gem, its version and its status on one line, where the announcement had been a sentence carrying no version — the version being the part neither script had said. install.sh reports in the same shape, and its namo step speaks only where something changed — installed, or upgraded from a version — since gem install says "Successfully installed" whether or not it did anything, and `namo setup` reports the gem and its version a moment later regardless.
+6. ~ install.sh: + repository, and hand_over takes the clone it was given. install_namo is the bootstrap for the handover and nothing else — a way to have a namo command to run — so a script run from a checkout hands over to that checkout's bin/namo and leaves the gem to `namo setup`, which installs it as its own first act. A checkout with the gem not yet installed now works as it stands, and the gem is named once rather than by both scripts in turn. 0.32.1 had taken the path lookup out for being unconditional, which failed piped from curl where the working directory is not a checkout; it is guarded now on $0 being a readable file beside both bin/namo and the gemspec, none of which holds for the shell's own name, so the curl route finds nothing and installs the gem as it did.
+7. ~ Namo::VERSION: /0.32.2/0.32.3/
+
+
+## 20260828
+
 0.32.2: ~ install.sh: the one command ends with namo runnable from anywhere.
 
 1. ~ install.sh: + add_to_path, + gem_bin_directory, + shell_configuration_file. gem puts the command in a directory which is on the PATH on some machines and not on others — Homebrew's ruby puts it somewhere which is not — so the run ended by naming the directory and stopping. It now offers to add it to the shell's configuration file, and adds it to the PATH of the run itself so that `namo setup` happens rather than being left as a further instruction.

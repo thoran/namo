@@ -22,11 +22,15 @@ describe 'bin/namo' do
     _(output).must_match(/console/)
   end
 
-  it "reports rather than acts where a gem is already there" do
+  # A line per check carrying the status and the version.  "already installed" on
+  # its own repeated what install.sh had just done; the version is the part
+  # neither script has said, and the reason to read the line at all.
+  it "reports the status and version of each gem it checks" do
     output = namo('setup')
     _($?.success?).must_equal true
-    _(output).must_match(/namo is already installed!/)
-    _(output).must_match(/measurand is already installed!/)
+    _(output.lines.length).must_equal 2
+    _(output).must_match(/^\s+namo\s+\d+\.\d+\.\d+\s+already installed$/)
+    _(output).must_match(/^\s+measurand\s+\d+\.\d+\.\d+\s+already installed$/)
   end
 
   # install.sh is the part a Ruby script cannot do — the Ruby the script would be
@@ -34,8 +38,11 @@ describe 'bin/namo' do
   # syntax is asserted and its body is not run: a test which executed it on a
   # machine without Ruby would install Ruby.
   #
-  # It hands over by name rather than by path, which is what lets it run piped
-  # from curl — an assertion that it finds nothing by SCRIPT_DIR.
+  # It hands over to a clone's own bin/namo where it was run from one, and fetches
+  # the gem only where it was not: the gem is the bootstrap for the handover rather
+  # than a second opinion about what wants installing.  Piped from curl there is no
+  # clone to find, the guard being that $0 is a readable file at all, which the
+  # shell's own name is not.
   #
   # It installs Homebrew only through `agreed`, which answers no unless -y was
   # given or somebody is there to say yes.  What is asserted is that the curl of
@@ -52,8 +59,18 @@ describe 'bin/namo' do
       _(body).must_match(/command -v #{manager}/)
     end
     _(body).must_match(/ruby_routes/)
+    _(body).must_match(/install_ruby_install/)
+    # One prompt and one line however many directories want adding: the shell
+    # configuration is written to once, not once per directory.
+    _(body).must_match(/wants_on_path/)
+    _(body.scan(/>> "\$file"/).length).must_equal 1
+    # The tag is resolved from the latest release rather than pinned, so that the
+    # branch does not rot against a version.
+    _(body).wont_match(/ruby-install-0\.\d+\.\d+\.tar\.gz/)
     _(body).must_match(/namo setup/)
-    _(body).wont_match(/SCRIPT_DIR/)
+    _(body).must_match(/repository\(\) \{\n\s+\[ -f "\$0" \]/)
+    _(body).must_match(%r{"\$clone/bin/namo" setup})
+    _(body).must_match(/\[ -n "\$clone" \] \|\| install_namo/)
     _(body).must_match(/elif agreed .*Install Homebrew\?.*; then\n\s+\/bin\/bash -c/)
   end
 
