@@ -2,14 +2,15 @@
 # install.sh
 
 # 20260828
-# 0.1.0
+# 0.2.0
 
 # Bootstraps what has to be there before Ruby can speak for itself, and hands the
 # rest to `namo setup`, which is Ruby and can say what it is doing in the language
 # of the thing it is installing.
 #
-# Homebrew or MacPorts is used where either is already installed.  Where neither
-# is, and Ruby is missing too, you are asked before anything is installed — `-y` answers yes in
+# Whichever package manager is already installed is used — Homebrew, MacPorts, apt,
+# dnf, pacman or zypper.  Where none is, and Ruby is missing too, you are asked
+# before anything is installed — `-y` answers yes in
 # advance, and a machine with nothing on its standard input is treated as having
 # said no, since a script piped into a shell must not install a package manager
 # because nobody was there to refuse.
@@ -70,16 +71,24 @@ ruby_routes() {
   echo '  MacPorts      https://www.macports.org/install.php'
   echo '  ruby-install  https://github.com/postmodern/ruby-install#install'
   echo ''
-  echo 'On Linux, your distribution ships one: apt install ruby, dnf install ruby,'
-  echo 'pacman -S ruby, and so on.'
+  echo 'On Linux this is unusual — apt, dnf, pacman and zypper are all used where'
+  echo 'they are found — so a machine reaching this message has none of them.'
   echo ''
   echo 'Install Ruby by whichever suits this machine, then run this again.'
 }
 
+# Every package manager but Homebrew installs as root, so the password is asked
+# for by name rather than arriving unannounced in the middle of a run.
+install_with_sudo() {
+  echo "$* installs as root, so this asks for your password."
+  sudo "$@"
+}
+
 # A package manager which is already here is used before one is installed, so a
-# MacPorts machine is never asked about Homebrew.  Only reached for where Ruby is
-# actually missing: a machine with Ruby by any other means — rbenv, ruby-install,
-# a distribution package — is asked nothing.
+# machine with apt or MacPorts is never asked about Homebrew.  Homebrew comes
+# first among them only because it needs no password.  Only reached for where
+# Ruby is actually missing: a machine with Ruby by any other means — rbenv,
+# ruby-install, a distribution package — is asked nothing.
 install_ruby() {
   if command -v ruby > /dev/null 2>&1; then
     echo "Ruby is already installed! ($(ruby -e 'print RUBY_VERSION'))"
@@ -90,8 +99,23 @@ install_ruby() {
     return
   fi
   if command -v port > /dev/null 2>&1; then
-    echo 'MacPorts installs as root, so this asks for your password.'
-    sudo port install ruby
+    install_with_sudo port install ruby
+    return
+  fi
+  if command -v apt-get > /dev/null 2>&1; then
+    install_with_sudo apt-get install -y ruby-full
+    return
+  fi
+  if command -v dnf > /dev/null 2>&1; then
+    install_with_sudo dnf install -y ruby
+    return
+  fi
+  if command -v pacman > /dev/null 2>&1; then
+    install_with_sudo pacman -S --noconfirm ruby
+    return
+  fi
+  if command -v zypper > /dev/null 2>&1; then
+    install_with_sudo zypper install -y ruby
     return
   fi
   install_homebrew
@@ -111,18 +135,53 @@ install_namo() {
   fi
 }
 
+# gem's EXECUTABLE DIRECTORY rather than gemdir/bin: they agree on most machines
+# and the former is what gem itself reports.
+gem_bin_directory() {
+  gem environment 2>/dev/null | awk '/EXECUTABLE DIRECTORY/{print $NF}'
+}
+
+# The login shell decides the file, not whichever file happens to exist: a stock
+# macOS account runs zsh and may still carry a .bashrc that nothing reads.
+shell_configuration_file() {
+  case "$(basename "${SHELL:-/bin/sh}")" in
+    zsh) echo "$HOME/.zshrc" ;;
+    bash) if [ -f "$HOME/.bashrc" ]; then echo "$HOME/.bashrc"; else echo "$HOME/.bash_profile"; fi ;;
+    *) echo "$HOME/.profile" ;;
+  esac
+}
+
 # gem puts the command in its own directory, which is on the PATH on some machines
-# and not on others.  Saying which directory is the honest thing a script can do
-# without editing somebody's shell.
-hand_over() {
-  if command -v namo > /dev/null 2>&1; then
-    namo setup
+# and not on others.  Writing to somebody's shell configuration is the one thing
+# here which outlives an uninstall, so it is asked for like the rest.
+add_to_path() {
+  directory="$(gem_bin_directory)"
+  file="$(shell_configuration_file)"
+  line="export PATH=\"$directory:\$PATH\""
+
+  if [ -n "$directory" ] && grep -qF "$directory" "$file" 2>/dev/null; then
+    echo "$file already names $directory."
+  elif agreed "namo is installed, but $directory is not on the PATH.  Add it to $file?"; then
+    echo "$line" >> "$file"
+    echo "Added to $file:"
+    echo "  $line"
   else
-    echo ''
-    echo 'namo is installed, but its directory is not on the PATH.  Add it with:'
-    echo "  export PATH=\"$(gem environment gemdir)/bin:\$PATH\""
-    echo 'and then run `namo setup` for the gems the scripts want.'
+    echo 'Leaving your shell configuration alone.  Add this to it yourself:'
+    echo "  $line"
+    return 1
   fi
+}
+
+hand_over() {
+  if ! command -v namo > /dev/null 2>&1; then
+    add_to_path || return
+    # For this run as well as the next shell, so that `namo setup` happens now.
+    PATH="$(gem_bin_directory):$PATH"
+    export PATH
+  fi
+  namo setup
+  echo ''
+  echo 'Open a new shell, and `namo console` will run from anywhere.'
 }
 
 main() {

@@ -48,7 +48,9 @@ describe 'bin/namo' do
     body = File.read(File.join(root, 'install.sh'))
     _(body).must_match(/install_ruby/)
     _(body).must_match(/install_namo/)
-    _(body).must_match(/command -v port/)
+    %w{brew port apt-get dnf pacman zypper}.each do |manager|
+      _(body).must_match(/command -v #{manager}/)
+    end
     _(body).must_match(/ruby_routes/)
     _(body).must_match(/namo setup/)
     _(body).wont_match(/SCRIPT_DIR/)
