@@ -1,4 +1,4 @@
-# namo.gemspec
+# namo.rb.gemspec
 
 require_relative './lib/Namo/VERSION'
 
@@ -9,7 +9,7 @@ class Gem::Specification
 end
 
 Gem::Specification.new do |spec|
-  spec.name = 'namo'
+  spec.name = 'namo.rb'
   spec.version = Namo::VERSION
 
   spec.summary = "Named dimensional data for Ruby."
@@ -29,7 +29,7 @@ Gem::Specification.new do |spec|
     'CHANGELOG',
     'Gemfile',
     'LICENSE',
-    'namo.gemspec',
+    'namo.rb.gemspec',
     'Rakefile',
     'README.md',
   ].flatten

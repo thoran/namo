@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 20260827
+
+0.31.7: + namo.rb.gemspec, so that the gem resolves under both names.
+
+1. + namo.rb.gemspec
+2. ~ Gemfile: /gemspec/gemspec name: 'namo'/, bundler refusing to parse a Gemfile whose bare gemspec directive finds more than one gemspec to choose from.
+3. ~ namo.gemspec: + the file's own name as a header comment, which namo.rb.gemspec carries and which every other file here does.
+4. ~ Namo::VERSION: /0.31.6/0.31.7/
+
+
 ## 20260826
 
 0.31.6: ~ Namo::Collection: a row operation yields a Namo rather than a memberless Collection.
