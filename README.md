@@ -18,11 +18,41 @@ Or in your Gemfile:
 gem 'namo'
 ```
 
+Either brings the `namo` command with it, where the directory gem installs commands into is one your PATH reaches — it is on a Ruby from ruby-install or rbenv, and is not on Homebrew's. `namo setup` then adds measurand, which the uncertainty examples want and which nothing else does.
+
+Or from a clone, which wants none of it installed first:
+
+```
+git clone https://github.com/thoran/namo.git
+cd namo
+./install.sh
+```
+
 Or from nothing at all — Ruby, the gem, and the gems its scripts want, each step skipped where it is already there. Where Ruby is missing, whichever package manager is already installed supplies it — Homebrew, MacPorts, apt, dnf, pacman or zypper; where none is, you are asked before Homebrew is installed, and then before ruby-install is built from source; `-y` answers yes in advance, and a machine with nobody at the keyboard is taken to have said no. Where the gem's own directory is not on the PATH, it offers to add it to your shell's configuration, so that a new shell has `namo` in it:
 
 ```
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/thoran/namo/master/install.sh)"
 ```
+
+The two which run `install.sh` end at a `namo` which runs from anywhere. The first ends at one which runs where your PATH already reaches it.
+
+## Console
+
+The gem ships one command.
+
+```
+namo console
+```
+
+An irb session with Namo loaded, for asking a question of the library without writing a file first.
+
+```
+namo setup
+```
+
+Installs the gems the scripts want — namo itself, and measurand — skipping whichever is already there and naming each and its version either way. `install.sh` runs it as the last of its own work, so it is here for a gem which arrived by `gem install`, and for adding measurand to an installation which went without it.
+
+`namo` alone prints the usage, as `namo --help` does.
 
 ## Usage
 

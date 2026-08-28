@@ -2,6 +2,15 @@
 
 ## 20260828
 
+0.32.4: ~ README.md: + Console, the command the gem has shipped since 0.32.0 going unmentioned until now.
+
+1. ~ README.md: + Console. `namo console` and `namo setup` had appeared nowhere: the gem gained an executable at 0.32.0 and the README named install.sh once, in the curl line, and the command not at all. Someone taking `gem install namo`, the first line of Installation, arrived at the library without learning that the console existed.
+2. ~ README.md: + the clone route, `git clone` and ./install.sh, which is the route the adjacent-bin/namo handover of 0.32.3 was written for and the one route no line described.
+3. ~ README.md: `gem install` and the Gemfile line say what they leave undone — the command is on the PATH only where gem's own directory is, which Homebrew's Ruby is the case against, and measurand arrives by `namo setup` rather than with the gem, a gemspec having no way to name a companion which is optional.
+4. ~ CHANGELOG: the 20260828 releases gather under one heading, as 20260824 and 20260826 gather theirs. Four releases in a day had taken a heading each.
+5. ~ Namo::VERSION: /0.32.3/0.32.4/
+
+
 0.32.3: ~ install.sh: + ruby-install, for a machine with no package manager at all; the handover is to a clone's own bin/namo where the script was run from one.
 
 1. ~ install.sh: + install_ruby_install, + ruby_from_ruby_install. Where no package manager is found and Homebrew is declined, ruby-install is offered — fetched from its latest release rather than a pinned version, built with make as root, and used to build Ruby. It is the last thing tried and the only route here which builds Ruby rather than fetching it.
@@ -13,8 +22,6 @@
 7. ~ Namo::VERSION: /0.32.2/0.32.3/
 
 
-## 20260828
-
 0.32.2: ~ install.sh: the one command ends with namo runnable from anywhere.
 
 1. ~ install.sh: + add_to_path, + gem_bin_directory, + shell_configuration_file. gem puts the command in a directory which is on the PATH on some machines and not on others — Homebrew's ruby puts it somewhere which is not — so the run ended by naming the directory and stopping. It now offers to add it to the shell's configuration file, and adds it to the PATH of the run itself so that `namo setup` happens rather than being left as a further instruction.
@@ -24,8 +31,6 @@
 5. ~ Namo::VERSION: /0.32.1/0.32.2/
 
 
-## 20260828
-
 0.32.1: ~ install.sh: it runs the same piped from curl as from a clone, and forces no package manager; ~ README.md: + the one-line install.
 
 1. ~ install.sh: the handover is to `namo setup` on the PATH rather than to bin/namo beside the script. It had found bin/namo by its own path, so piped from curl it looked in the working directory and failed there. It now finds nothing by its path and so runs from anywhere. The check is for the namo command rather than for the gem, that being what the next step needs: an older namo installs no executable.
@@ -34,8 +39,6 @@
 4. ~ README.md: + the one-line install, for a machine with neither Ruby nor the gem.
 5. ~ Namo::VERSION: /0.32.0/0.32.1/
 
-
-## 20260828
 
 0.32.0: + bin/namo, the gem's first executable, and the gems it installs.
 
