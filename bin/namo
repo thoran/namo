@@ -1,9 +1,6 @@
 #!/usr/bin/env ruby
 # namo
 
-# 20260827
-# 0.0.0
-
 # Description: Install the gems Namo's own scripts want, and hand you a prompt
 # with Namo loaded.
 #

@@ -2,6 +2,17 @@
 
 ## 20260828
 
+0.32.1: ~ install.sh: it runs the same piped from curl as from a clone, and forces no package manager; ~ README.md: + the one-line install.
+
+1. ~ install.sh: the handover is to `namo setup` on the PATH rather than to bin/namo beside the script. It had found bin/namo by its own path, so piped from curl it looked in the working directory and failed there. It now finds nothing by its path and so runs from anywhere. The check is for the namo command rather than for the gem, that being what the next step needs: an older namo installs no executable.
+2. ~ install.sh: + agreed, + parse_arguments, + usage, and install_homebrew is reached only where Ruby is missing and neither Homebrew nor MacPorts is present — a package manager already installed being used before one is installed, so a MacPorts machine is never asked about Homebrew. Homebrew is used where it is already installed, and installed only on a yes — -y answers in advance, and a script piped into a shell, having nobody able to refuse, is taken to have refused. Where Ruby is missing and Homebrew is declined, + ruby_routes names the ways to get Ruby — Homebrew as the command it is, MacPorts and ruby-install as pages, and a distribution's own package manager on Linux — rather than reporting only that no package manager was found.
+3. ~ install.sh: + report_path. gem puts the command in its own directory, which is on the PATH on some machines and not on others; where it is not, the directory is named rather than somebody's shell configuration being written to.
+4. ~ README.md: + the one-line install, for a machine with neither Ruby nor the gem.
+5. ~ Namo::VERSION: /0.32.0/0.32.1/
+
+
+## 20260828
+
 0.32.0: + bin/namo, the gem's first executable, and the gems it installs.
 
 1. + bin/namo: a setup subcommand which installs the gems Namo's scripts want — Namo itself, so that a clone leaves require 'namo' working, and measurand, which the demo's uncertainty section does without when it is missing — and a console subcommand which is bin/console. Each step asks first and says so when there is nothing to do.

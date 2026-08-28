@@ -18,6 +18,12 @@ Or in your Gemfile:
 gem 'namo'
 ```
 
+Or from nothing at all — Ruby, the gem, and the gems its scripts want, each step skipped where it is already there. Where Ruby is missing, Homebrew or MacPorts supplies it if either is already installed; where neither is, you are asked before Homebrew is installed; `-y` answers yes in advance, and a machine with nobody at the keyboard is taken to have said no:
+
+```
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/thoran/namo/master/install.sh)"
+```
+
 ## Usage
 
 Create a Namo instance from an array of hashes:

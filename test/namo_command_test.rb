@@ -29,17 +29,37 @@ describe 'bin/namo' do
     _(output).must_match(/measurand is already installed!/)
   end
 
-  # install.sh is the half a Ruby script cannot do — Homebrew, and the Ruby the
-  # script would be running on.  Its syntax is asserted and its body is not run:
-  # a test which executed it on a machine lacking Homebrew would install Homebrew.
-  it "has a shell bootstrap which parses, and which hands over to this" do
+  # install.sh is the part a Ruby script cannot do — the Ruby the script would be
+  # running on, and the gem which carries the command it hands over to.  Its
+  # syntax is asserted and its body is not run: a test which executed it on a
+  # machine without Ruby would install Ruby.
+  #
+  # It hands over by name rather than by path, which is what lets it run piped
+  # from curl — an assertion that it finds nothing by SCRIPT_DIR.
+  #
+  # It installs Homebrew only through `agreed`, which answers no unless -y was
+  # given or somebody is there to say yes.  What is asserted is that the curl of
+  # Homebrew's installer sits behind that gate: an unguarded call is the failure
+  # this is written against.
+  it "has a shell bootstrap which parses, hands over by name, and gates the one install it forces" do
     root = File.expand_path('..', __dir__)
     system("sh -n #{File.join(root, 'install.sh')}")
     _($?.success?).must_equal true
     body = File.read(File.join(root, 'install.sh'))
-    _(body).must_match(/install_homebrew/)
     _(body).must_match(/install_ruby/)
-    _(body).must_match(%r{bin/namo" setup})
+    _(body).must_match(/install_namo/)
+    _(body).must_match(/command -v port/)
+    _(body).must_match(/ruby_routes/)
+    _(body).must_match(/namo setup/)
+    _(body).wont_match(/SCRIPT_DIR/)
+    _(body).must_match(/elif agreed .*Install Homebrew\?.*; then\n\s+\/bin\/bash -c/)
+  end
+
+  it "declines to install anything where nothing can answer" do
+    root = File.expand_path('..', __dir__)
+    output = IO.popen([File.join(root, 'install.sh'), '--help'], chdir: root, err: [:child, :out]){|io| io.read}
+    _($?.success?).must_equal true
+    _(output).must_match(/-y, --yes/)
   end
 
   it "refuses a subcommand it does not have" do
