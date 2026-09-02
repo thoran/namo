@@ -262,7 +262,7 @@ A base Namo's constituents are formularies and rows: << dispatches a Module to a
 
 ## 20260627
 
-0.23.0: + Namo::Formulary — A formulary is a reusable body of derived dimensions a Namo instance may draw upon.
+0.23.0: + Namo::Formulary — A formulary is a reusable collection of derived dimensions a Namo instance may draw upon.
 
 1. + lib/Namo/Formulary.rb: + Namo::Formulary, an empty marker module. A module includes it to brand itself a formulary; attach raises ArgumentError for an untagged module, so an ordinary module of helpers can't be mistaken for a body of derivations.
 2. ~ lib/Namo/Formulae.rb: + attach(modul), aliased as << — after the marker guard, extends a single memoised inert host (@host ||= Object.new) with the module and stores each of its public_instance_methods(false) as a Method bound to that host, then returns self. One host per Formulae across all attaches, so the bound Methods share a self-free receiver and a formulary method can't shadow Namo's API. No other change: derive, key?, required_parameter_count, keys, merge/dup/reject, and ==/eql?/hash are the 0.22.0 store-only methods, and they handle the formulary methods because the formulary methods are now store entries.
