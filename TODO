@@ -1,0 +1,4 @@
+# TODO
+
+1. The gem's copy of namo answers ahead of the formula's. ~/.gem/ruby/4.0.5/bin/namo is searched before /opt/homebrew/bin, so `namo` on the PATH runs 0.32.0 from the gem while the formula holds 0.32.4 and never runs. Either the gem goes, or the PATH is reordered, or the two are accepted as the same program at two versions and the formula's is reached by its full path.
+2. The CHANGELOG summaries for 0.21.0 and 0.22.0 say more than their commit subjects do, each appending rationale which the convention puts in the numbered items beneath. 0.23.0 was the same disagreement over a single word and was settled by making the CHANGELOG match the commit; these two are longer and want the trailing prose moved down rather than deleted.
