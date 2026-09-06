@@ -2237,6 +2237,14 @@ So a Row cannot presently be asked what it holds. It has no `dimensions`, `data_
 
 The shape that resolves it is `Row` gaining the three dimension methods its Namo has, and a separate conversion for the materialised row rather than a change to `to_h`. That is a minor: new methods, nothing moved. It would also let `Row#inspect` drop its suffix on the same terms `Namo#inspect` did, which is the only reason the two currently render differently.
 
+### How the demonstration ships
+
+`script/demo` runs the Namo demonstration and reaches `../lib/namo`, `./fixtures` and `./Indicators` by relative path, so it runs from a clone and from nowhere else. Whoever installs the gem or the formula has the library and none of the demonstration, and a README naming it is describing something their install cannot do.
+
+Three shapes answer it. `namo demo` as a subcommand beside `setup` puts it on the PATH every install already has, at the cost of carrying `fixtures.rb`, `Indicators.rb` and `readings.csv` into the gem as data files the library itself never loads. A second executable keeps the demonstration's requires clear of the library's but doubles the install surface for one command. Leaving it in the repository is what happens now, and is defensible if the demonstration is understood as something a reader clones for — in which case the README should say so rather than implying otherwise.
+
+The question is which reader it is for: someone deciding whether to install, who has not cloned, or someone already reading the source. 0.32.0 settled the adjacent one by making `bin/namo` exist at all, so the seam is there should the demonstration want it.
+
 ## Presentation examples
 
 See [EXAMPLES.md](EXAMPLES.md) for full four-stage progressions (competitor tool → 1.x → 2.x → 3.x) across seven disciplines with side-by-side code comparisons.
