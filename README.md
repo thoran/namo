@@ -1295,6 +1295,8 @@ prices.group_by(:value_score)
 
 This gives a single inversion law over the whole namespace — `namo.group_by(d).as_detail(d) == namo[*namo.data_dimensions, d]` for any `d`, with the exact-original round-trip being the data-dimension instance of it. A nil-valued group produces a nil-named member, holding its rows and round-tripping like any other.
 
+`group_by` takes a dimension and no block. The block form `Enumerable#group_by` teaches is not implemented — the groups a computed key makes would have no dimension to round-trip through on `as_detail` — and it says so when called; partitioning by a computed key drops to Ruby, where `prices.entries.group_by{|row| row[:symbol]}` returns the `{key => [Row]}` hash `Enumerable#group_by` always returned.
+
 ## Name
 
 Namo: nam(ed) (dimensi)o(ns). A companion to Numo (numeric arrays for Ruby). And in Aussie culture 'o' gets added to the end of names.
