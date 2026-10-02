@@ -69,7 +69,16 @@ class Namo
       ]
     end
 
-    def group_by(dimension)
+    # The block form is the call Enumerable#group_by makes, and it is not
+    # implemented: the groups a computed key makes have no dimension to
+    # round-trip through on as_detail.  The raise says so and names the way to
+    # partition by one, where Ruby's arity error said only that the count was
+    # wrong; a call with no dimension at all gets its own sentence.
+    def group_by(dimension = nil)
+      if block_given?
+        raise ArgumentError, 'the block form of group_by is not implemented; entries.group_by{|row| ...} partitions by a computed key'
+      end
+      raise ArgumentError, 'group_by needs a dimension' if dimension.nil?
       collection = Collection.new
       source = derived_dimensions.include?(dimension) ? self[*data_dimensions, dimension] : self
       members = (

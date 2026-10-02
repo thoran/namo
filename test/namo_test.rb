@@ -3234,6 +3234,18 @@ describe Namo do
       end
     end
 
+    context "the boundary of the call" do
+      it "raises informatively on the block form, which is not implemented" do
+        error = _(proc{prices.group_by{|row| row[:symbol]}}).must_raise ArgumentError
+        _(error.message).must_match(/entries\.group_by/)
+      end
+
+      it "raises informatively with no dimension at all" do
+        error = _(proc{prices.group_by}).must_raise ArgumentError
+        _(error.message).must_match(/dimension/)
+      end
+    end
+
     context "single-pass assembly" do
       # Collection#<< rebuilds @data = detail.data over all members-so-far on every
       # append, so appending one member per group re-materialised the data g times

@@ -1317,6 +1317,12 @@ Namo has shipped as a library and nothing else: `gem install namo` put files on 
 
 A minor rather than a patch: 0.31.1 through 0.31.7 were corrections and packaging, and this is a capability the gem did not have. Nothing breaks — a gem gaining an executable takes nothing away — but the surface is new, which is the line the earlier releases were on the other side of.
 
+### 0.32.6 (2026-10-02): `group_by` names its boundary
+
+`group_by{|row| ...}` met Ruby's own arity error, which said an argument was missing and nothing about the two things a reader of it needed: that the block form is not implemented — the 0.20.0 deferral, a computed key having no dimension to round-trip through on `as_detail` — and that `entries.group_by{|row| ...}` is the way to partition by one. The call now raises an `ArgumentError` carrying both, and a call with no dimension at all, which had the same arity error for company, raises its own sentence. The boundary the 0.20.0 section drew is unchanged; what changed is that the error message at it says where it is.
+
+A patch rather than a minor: what raises is new wording, not new ground — the exception class is unchanged, and nothing which ran before runs differently.
+
 ### Summary
 
 The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped, two-arity collection-scoped, and parameterised receiving arguments at access time, mixing freely), polymorphic assignment via `[]=` (a callable — proc, lambda, or `Method` — registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, a constructor that takes data positionally or by keyword and carries an optional `name:`, `Namo::Collection` — a hierarchical aggregate of named member Namos, assembled with `<<` and queried through `summary`/`detail` views with lazy detail materialisation, `summary`/`as_summary` taking an optional block for a per-member reduction beyond a single named reducer — and `group_by`, the partition-side constructor that splits a Namo into a `Collection` (the mirror of assembling one), formularies (`Namo::Formulary`) — reusable modules of derived dimensions attached to a Namo at runtime through `attach`/`<<` (or `attach!`, the forceful sibling that evicts a colliding data column rather than raising) or mixed into a subclass through `include`, and removed by `detach` — the mutating family is `attach`/`attach!`/`detach` — resolving as first-class derived dimensions — and the polymorphic `<<` operator that appends the constituent appropriate to its receiver (a formulary or a data row to a base Namo, guarding a row against a data/formula name collision; a member to a `Collection`), give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, combining or decomposing datasets with different dimensions, composing named datasets into a queryable whole, partitioning one back into named pieces, and drawing on reusable libraries of derived dimensions, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase is the 1.0.0 stable release.
@@ -1551,6 +1557,21 @@ allocated objects alongside elapsed time, since on the workload measured under
 objects rather than arithmetic. And where an implementation is compared against
 another, assert that the two return the same answer before comparing their
 timings.
+
+Recorded ahead of the baseline, so that they are found when it exists, the
+candidates already in view — each to be proven against the 1.1 numbers rather
+than argued from the code:
+
+- A hash index for `*`, replacing the scan of `other.data` which every left row
+  performs. The index matches keys by `eql?` where the scan matches by `==`, so
+  `close: 1` and `close: 1.0` would stop joining — a stance to take and record
+  before the algorithm changes.
+- Hoisting the block forms' loop-invariants: `**` builds its `candidates` Namo
+  afresh for every left row against an unchanging `other`, and `*` duplicates
+  `other`'s formulae on the same schedule.
+- One Row per row per pass: `values` over derived dimensions allocates a Row
+  per row per dimension, and each Enumerable traversal allocates afresh per
+  row, so a chain of subset methods allocates a chain's worth.
 
 ## 1.2: Loaders
 
