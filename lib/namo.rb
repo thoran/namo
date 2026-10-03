@@ -306,9 +306,10 @@ class Namo
     @name.nil? ? '' : " #{@name.inspect}"
   end
 
-  # The rows as they are stored, never the derived values: inspect is called
-  # for every result in a console, and evaluating a formula there would cost a
-  # pass over the data per access and raise whatever the formula raises.
+  # inspect is called for every result in a console, so evaluating the derived
+  # dimensions is bounded to the rows shown — INSPECTED_ROWS of them, one
+  # evaluation each — and a formula which raises renders no value rather than
+  # raising out of inspect.  The cost is constant however large the data.
   def inspected_rows(rendered)
     return ' []' if @data.empty?
     shown = rendered.map{|row, derived| "  #{row.merge(derived).inspect}"}.join(",\n")

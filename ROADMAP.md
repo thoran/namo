@@ -580,6 +580,8 @@ Round-trip identity:
 
 The asymmetry between the two round-trip cases is real: `/` operates only on the two values it receives and cannot distinguish "shared dimension that belonged to both" from "exclusive dimension that belonged only to the right". Removing the intersection is the only rule expressible from the operands alone.
 
+(2026-10 note, owed to the 0.6.0 doctrine: every identity in this subsection is stated for duplicate-free rows. The projection dedupes — it says so in the first line — and multiplicities are data everywhere else, so "equal to self", the identity test, and the "exactly" round-trip each fail a duplicate-bearing operand. The collapse stands regardless: `**` manufactures multiplicities whenever its right operand has more than one row, so a projection that kept them could not invert the product. Decomposition-with-multiplicities was always already spellable as `namo[*other.data_dimensions.map{|d| -d}]` — contraction is bag-faithful, and operand-keyed contraction with a collapse layered on is the whole of what `/` adds over it, which is why no second operator was introduced. See the README's "Why `/` dedupes".)
+
 ### 0.10.0 (2026-05-28): Row comparison
 
 Extends 0.6.0's comparison work one level down. 0.6.0 settled comparison at the Namo level — `==`, `eql?`, `hash`, `===`, and the subset/superset operators — but left Row without value semantics. The omission was defensible at the time: Row read as implementation detail behind Namo's algebra. Applied use showed otherwise. Rows leak through `each`, get reached for directly in interactive sessions, and become prerequisites for the dedup, hash-keying, and Row-against-Row equality that 0.11.0's Enumerable coherence pass needs. This release closes that gap: Row gets `==`, `eql?`, and `hash` matching its role as a hash-shaped value.
@@ -2236,6 +2238,14 @@ namo.first.to_h  # => {a: 1, g: "x"}   the stored row
 So a Row cannot presently be asked what it holds. It has no `dimensions`, `data_dimensions` or `derived_dimensions`, and `to_h` answers for the stored half only, which leaves reading `inspect` as the way to learn a Row carries formulae at all — the reason `Row#inspect` keeps naming them in its suffix where `Namo#inspect` stopped at 0.31.2.
 
 The shape that resolves it is `Row` gaining the three dimension methods its Namo has, and a separate conversion for the materialised row rather than a change to `to_h`. That is a minor: new methods, nothing moved. It would also let `Row#inspect` drop its suffix on the same terms `Namo#inspect` did, which is the only reason the two currently render differently.
+
+### How the demonstration ships
+
+`script/demo` runs the Namo demonstration and reaches `../lib/namo`, `./fixtures` and `./Indicators` by relative path, so it runs from a clone and from nowhere else. Whoever installs the gem or the formula has the library and none of the demonstration, and a README naming it is describing something their install cannot do.
+
+Three shapes answer it. `namo demo` as a subcommand beside `setup` puts it on the PATH every install already has, at the cost of carrying `fixtures.rb`, `Indicators.rb` and `readings.csv` into the gem as data files the library itself never loads. A second executable keeps the demonstration's requires clear of the library's but doubles the install surface for one command. Leaving it in the repository is what happens now, and is defensible if the demonstration is understood as something a reader clones for — in which case the README should say so rather than implying otherwise.
+
+The question is which reader it is for: someone deciding whether to install, who has not cloned, or someone already reading the source. 0.32.0 settled the adjacent one by making `bin/namo` exist at all, so the seam is there should the demonstration want it.
 
 ## Presentation examples
 

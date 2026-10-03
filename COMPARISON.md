@@ -848,29 +848,35 @@ Factor out dimensions. The inverse of `*` and `**`.
 combined / ohlcv
 ```
 
-**Pandas** — no equivalent operation. You'd manually drop columns and deduplicate.
+**Pandas** — no operator. Drop the other operand's columns and deduplicate.
 
 ```python
-# No direct equivalent
-combined.drop(columns=[c for c in ohlcv.columns if c not in shared]).drop_duplicates()
+combined.drop(columns=ohlcv.columns).drop_duplicates()
 ```
 
-**Polars** — no equivalent.
+**Polars** — no operator. Drop the other operand's columns and deduplicate.
 
-**R/dplyr** — no equivalent. You'd `select()` the desired columns and `distinct()`.
+```python
+combined.drop(ohlcv.columns).unique()
+```
+
+**R/dplyr** — no operator. Deselect the other operand's columns and `distinct()`.
 
 ```r
-# No direct equivalent
-combined %>% select(-exclusive_to_ohlcv_cols) %>% distinct()
+combined %>% select(-any_of(names(ohlcv))) %>% distinct()
 ```
 
 **xarray** — no equivalent.
 
-**Julia/DataFrames.jl** — no equivalent.
+**Julia/DataFrames.jl** — no operator. Deselect the other operand's columns and `unique`.
 
-**Summary:** No other tool exposes decomposition as a first-class operator — the concept of "undoing" a join, factoring out the dimensions contributed by one operand, doesn't exist elsewhere. This completes the algebraic relationship: `(a ** b) / b` recovers `a` exactly, and `(a * b) / b` recovers `a` modulo the dimensions shared with `b`.
+```julia
+unique(select(combined, Not(names(ohlcv))))
+```
 
-Where Namo's decomposition operator differs structurally from `*` and `**` is in its precondition stance. `*` and `**` are strict — they raise on dimension-incompatible operands, because combining unrelated Namos has no natural answer and silently producing arbitrary output would turn a logic error into nonsense rows. `/` is loose — it's a no-op when the operands share no dimensions, because projecting away nothing returns the original. This asymmetry isn't arbitrary; it reflects a structural distinction between combining and projecting. The asymmetry earns `/` properties a strict version would lose: identity test (`c / b == c` iff dimensionally independent), idempotence (`(c / b) / b == c / b`), and pipeline composition (a `/ separator` step runs over any Namo without special-casing applicability). The pattern mirrors `Array#-` — `[1, 2, 3] - [9] == [1, 2, 3]`, not an error — where the no-op-on-non-applicable rule lets the operator compose into pipelines that don't know in advance whether the operation applies.
+**Summary:** Decomposition is relational projection — keep the dimensions not in the other operand, then deduplicate — and every general-purpose tool can do it in a line. None offers it as an operator. Namo pairs `/` with the operators it undoes, which completes the algebraic relationship: `(a ** b) / b` recovers `a` exactly, and `(a * b) / b` recovers `a` modulo the dimensions shared with `b` — both stated for duplicate-free `a`, since the projection deduplicates. The dedup is also what makes inversion possible at all: the pandas/polars/dplyr/Julia snippets show it is a distinct step (`drop_duplicates`/`unique`/`distinct`), fused into the operator here; a multiplicity-preserving projection needs no new operation in Namo, just `namo[*other.data_dimensions.map{|d| -d}]` (contraction is bag-faithful).
+
+Where Namo's decomposition operator differs structurally from `*` and `**` is in its precondition stance. `*` and `**` are strict — they raise on dimension-incompatible operands, because combining unrelated Namos has no natural answer and silently producing arbitrary output would turn a logic error into nonsense rows. `/` is loose — it's a no-op when the operands share no dimensions, because projecting away nothing returns the original. This asymmetry isn't arbitrary; it reflects a structural distinction between combining and projecting. The asymmetry earns `/` properties a strict version would lose, each holding on duplicate-free rows (the projection deduplicates): identity test (`c / b == c` iff dimensionally independent), idempotence (`(c / b) / b == c / b`), and pipeline composition (a `/ separator` step runs over any Namo without special-casing applicability). The pattern mirrors `Array#-` — `[1, 2, 3] - [9] == [1, 2, 3]`, not an error — where the no-op-on-non-applicable rule lets the operator compose into pipelines that don't know in advance whether the operation applies.
 
 
 ## Aggregation / group-by-aggregate

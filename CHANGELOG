@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 20261003
+
+0.32.6: ~ Namo::Enumerable#group_by: the block form and the no-argument call raise errors which say what to do instead.
+
+1. ~ Namo::Enumerable#group_by: When called with a block, it raises an ArgumentError naming the block form as unimplemented and entries.group_by{|row| ...} as the way to partition by a computed key, where Ruby's arity error said only that the count was wrong — which told the reader something was broken rather than that the boundary was drawn at 0.20.0, a computed key having no dimension to round-trip through.
+2. ~ Namo::Enumerable#group_by: When called with no argument, it raises 'group_by needs a dimension' rather than the same arity error.
+3. ~ README.md: The group_by section says it takes a dimension and no block, and what entries.group_by returns instead.
+4. ~ ROADMAP.md: + 0.32.6; + the optimisation candidates already in view, parked under 1.1 until there is a baseline to measure them against.
+5. ~ Namo::VERSION: /0.32.5/0.32.6/
+
+0.32.5: Documentation clean up.
+
+1. ~ README.md: + what Symbol#-@ costs, and why `/` dedupes.
+2. ~ COMPARISON.md: decomposition is relational projection, dedup and all.
+3. ~ ROADMAP.md: + the 0.9.0 memoir's 2026-10 note and the "How the demonstration ships" section.
+4. ~ lib/namo.rb: the inspected_rows comment corrected.
+5. ~ namo.gemspec: the gem name heads the file list.
+6. ~ CHANGELOG: the 0.21.0, 0.22.0 and 0.23.0 entries aligned with the commit message for each.
+7. ~ Namo::VERSION: /0.32.4/0.32.5/
+
 ## 20260828
 
 0.32.4: ~ README.md: + Console, the command the gem has shipped since 0.32.0 going unmentioned until now.
@@ -9,7 +29,6 @@
 3. ~ README.md: `gem install` and the Gemfile line say what they leave undone — the command is on the PATH only where gem's own directory is, which Homebrew's Ruby is the case against, and measurand arrives by `namo setup` rather than with the gem, a gemspec having no way to name a companion which is optional.
 4. ~ CHANGELOG: the 20260828 releases gather under one heading, as 20260824 and 20260826 gather theirs. Four releases in a day had taken a heading each.
 5. ~ Namo::VERSION: /0.32.3/0.32.4/
-
 
 0.32.3: ~ install.sh: + ruby-install, for a machine with no package manager at all; the handover is to a clone's own bin/namo where the script was run from one.
 
@@ -21,7 +40,6 @@
 6. ~ install.sh: + repository, and hand_over takes the clone it was given. install_namo is the bootstrap for the handover and nothing else — a way to have a namo command to run — so a script run from a checkout hands over to that checkout's bin/namo and leaves the gem to `namo setup`, which installs it as its own first act. A checkout with the gem not yet installed now works as it stands, and the gem is named once rather than by both scripts in turn. 0.32.1 had taken the path lookup out for being unconditional, which failed piped from curl where the working directory is not a checkout; it is guarded now on $0 being a readable file beside both bin/namo and the gemspec, none of which holds for the shell's own name, so the curl route finds nothing and installs the gem as it did.
 7. ~ Namo::VERSION: /0.32.2/0.32.3/
 
-
 0.32.2: ~ install.sh: the one command ends with namo runnable from anywhere.
 
 1. ~ install.sh: + add_to_path, + gem_bin_directory, + shell_configuration_file. gem puts the command in a directory which is on the PATH on some machines and not on others — Homebrew's ruby puts it somewhere which is not — so the run ended by naming the directory and stopping. It now offers to add it to the shell's configuration file, and adds it to the PATH of the run itself so that `namo setup` happens rather than being left as a further instruction.
@@ -29,7 +47,6 @@
 3. ~ install.sh: writing to a shell configuration outlives an uninstall, so it is asked for as Homebrew is — -y answers in advance, no terminal answers no, and a refusal prints the line to add by hand.
 4. ~ install.sh: + apt-get, dnf, pacman and zypper alongside Homebrew and MacPorts, so the script reaches a Ruby on Linux rather than offering to install Homebrew on a machine which has apt. + install_with_sudo, every package manager but Homebrew installing as root, so the password is asked for by name rather than arriving unannounced.
 5. ~ Namo::VERSION: /0.32.1/0.32.2/
-
 
 0.32.1: ~ install.sh: it runs the same piped from curl as from a clone, and forces no package manager; ~ README.md: + the one-line install.
 
