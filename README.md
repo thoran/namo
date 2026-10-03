@@ -214,6 +214,8 @@ The `-:price` syntax uses unary minus on Symbol to produce a negated dimension. 
 sales[:product, -:price]  # => ArgumentError
 ```
 
+`-:price` is not a local trick: unary minus is defined on Symbol itself (`lib/Symbol.rb`), so once `namo` is loaded, every Symbol in the process has a `-@` it did not have before. Nothing in Ruby or its standard library reads a negated Symbol as anything — the ground was empty — so a collision would take another library claiming the same operator for its own purpose, and contraction is the part of Namo which yields if one does.
+
 Selection and contraction can be chained:
 
 ```ruby
@@ -497,7 +499,7 @@ combined / fundamentals
 
 The intersection of dimensions — here `:symbol` and `:pe` — is removed. Everything else stays. The projected rows are deduplicated, so `/` answers "what's left when these dimensions are factored out?" rather than "what rows survive a column drop?". Formulae carry through from the left-hand side.
 
-`/` has no precondition. When the two Namos share no dimensions, the intersection is empty, nothing is removed, and `self / other` returns a Namo equal to self:
+`/` has no precondition. When the two Namos share no dimensions, the intersection is empty, nothing is removed, and `self / other` returns a Namo equal to self (multiplicity aside — the deduplication above still applies, so "equal" here means equal on duplicate-free rows):
 
 ```ruby
 shipments = Namo.new([{order_id: 1, weight: 10}])
@@ -507,7 +509,7 @@ shipments / weather
 # => #<Namo [{order_id: 1, weight: 10}]> — equal to shipments
 ```
 
-The round-trip identity holds for the `**` case exactly:
+The round-trip identity holds for the `**` case exactly — again on duplicate-free rows, for the reason given below:
 
 ```ruby
 a = Namo.new([{symbol: 'BHP'}, {symbol: 'RIO'}])
@@ -525,7 +527,7 @@ b = Namo.new([{symbol: 'BHP', pe: 14.5}, {symbol: 'RIO', pe: 9.2}])
 
 (a * b) / b
 # => #<Namo [{close: 42.5}, {close: 118.3}]>
-# Equal to a[-:symbol]. :symbol was shared and is lost.
+# Equal to a[-:symbol] on duplicate-free rows. :symbol was shared and is lost.
 ```
 
 The asymmetry is inherent: `/` operates only on the two values it receives and can't distinguish "shared dimension that belonged to both" from "exclusive dimension that belonged only to the right". Removing the intersection is the only rule expressible from the operands alone, and it gives clean recovery from `**` and well-defined (if lossy) recovery from `*`.
@@ -534,13 +536,19 @@ The asymmetry is inherent: `/` operates only on the two values it receives and c
 
 `*` and `**` raise when their preconditions are violated — combining unrelated Namos has no natural answer, and silently producing arbitrary output would turn a logic error into a large pile of nonsense rows. `/` is different: it's a projecting operator, not a combining one, and projecting away nothing returns the original. The no-precondition rule isn't a fallback; it's the structurally correct result.
 
-This earns `/` three properties a strict version would lose:
+This earns `/` three properties a strict version would lose, each stated for duplicate-free rows (the projection deduplicates; see below):
 
 - **Identity test.** `combined / other == combined` exactly when the two have no shared dimensions — answers "are these Namos dimensionally independent?" without explicit introspection. Same shape as `a & b == a` answering subset from 0.6.0.
 - **Idempotence.** `(c / b) / b == c / b`. Once `b`'s dimensions are removed, removing them again does nothing.
-- **Pipeline composition.** A processing step that applies `/ separator` can run over any Namo regardless of whether the separator's dimensions apply. Uninvolved Namos pass through unchanged; involved Namos get stripped. The pipeline doesn't need to special-case applicability.
+- **Pipeline composition.** A processing step that applies `/ separator` can run over any Namo regardless of whether the separator's dimensions apply. Uninvolved Namos pass through stripped of nothing but duplicate rows; involved Namos get their shared dimensions stripped. The pipeline doesn't need to special-case applicability.
 
 This is the same pattern that makes `Array#-` useful with arrays that aren't subsets: `[1, 2, 3] - [9] == [1, 2, 3]`, not an error. The no-op-on-non-applicable behaviour lets the operator compose into pipelines that don't know in advance whether the operation applies.
+
+#### Why `/` dedupes
+
+`/` is the one operator outside the set family (`&`, `|`, `^`) and the explicitly collapsing verbs (`uniq`, `coordinates`) that drops multiplicities — everywhere else duplicate rows are data. The collapse is definitional, and is in fact what makes `/` the inverse of the composers at all: `**` with a multi-row right operand manufactures multiplicities on the left operand's rows, so any projection that kept them could never satisfy `(a ** b) / b == a`. Inversion is only a function once duplicates are collapsed.
+
+Projection with multiplicities intact is one line of existing operators: `namo[*other.data_dimensions.map{|d| -d}]` — contraction over the other operand's dimensions. `[]`, contraction, and everything else in the row algebra are bag-faithful, so nothing essential goes unspellable; what `/` alone adds over the contraction spelling is operand-keying plus the collapse, which is to say, its role as the composition algebra's decomposer.
 
 ### Equality
 

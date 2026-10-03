@@ -27,13 +27,13 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   spec.files = [
+    'namo.gemspec',
     Dir['bin/*'],
     Dir['lib/**/*.rb'],
     Dir['test/**/*.rb'],
     'CHANGELOG',
     'Gemfile',
     'LICENSE',
-    'namo.gemspec',
     'Rakefile',
     'README.md',
   ].flatten
