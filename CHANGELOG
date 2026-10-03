@@ -2,6 +2,14 @@
 
 ## 20261003
 
+0.32.6: ~ Namo::Enumerable#group_by: the block form and the no-argument call raise errors which say what to do instead.
+
+1. ~ Namo::Enumerable#group_by: When called with a block, it raises an ArgumentError naming the block form as unimplemented and entries.group_by{|row| ...} as the way to partition by a computed key, where Ruby's arity error said only that the count was wrong — which told the reader something was broken rather than that the boundary was drawn at 0.20.0, a computed key having no dimension to round-trip through.
+2. ~ Namo::Enumerable#group_by: When called with no argument, it raises 'group_by needs a dimension' rather than the same arity error.
+3. ~ README.md: The group_by section says it takes a dimension and no block, and what entries.group_by returns instead.
+4. ~ ROADMAP.md: + 0.32.6; + the optimisation candidates already in view, parked under 1.1 until there is a baseline to measure them against.
+5. ~ Namo::VERSION: /0.32.5/0.32.6/
+
 0.32.5: Documentation clean up.
 
 1. ~ README.md: + what Symbol#-@ costs, and why `/` dedupes.
