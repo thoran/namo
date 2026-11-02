@@ -1,13 +1,52 @@
 # comparison
 
-The scripts behind "Measured, at 0.31.0" in [ROADMAP.md](../ROADMAP.md).
+Two sets of scripts: those which run the snippets in
+[COMPARISON.md](../COMPARISON.md), and those behind "Measured, at 0.31.0" in
+[ROADMAP.md](../ROADMAP.md).
+
+## The COMPARISON.md scripts
+
+One per tool, each with its own small inline data, so they run on a clean clone
+given the tool. Each runs every snippet COMPARISON.md shows for its tool, in the
+document's order, and then the probes behind its claims: what raises, what warns,
+what a call returns where the document says something about it. Every step prints
+its label and its result, or the exception it raised.
+
+| | |
+| --- | --- |
+| `namo_claims.rb` | Namo |
+| `pandas_claims.py` | pandas |
+| `polars_claims.py` | Polars |
+| `xarray_claims.py` | xarray, with pandas and NumPy |
+| `dplyr_claims.R` | R, with dplyr, tidyr, tibble and zoo |
+| `dataframes_claims.jl` | Julia, with DataFrames.jl, RollingFunctions.jl and Tables.jl |
+
+Each prints the versions it ran against first. The Python ones want an environment
+with pandas, Polars and xarray, which a virtual environment in this directory
+provides:
+
+```sh
+uv venv comparison/.venv
+uv pip install -p comparison/.venv/bin/python pandas polars xarray
+comparison/.venv/bin/python comparison/polars_claims.py
+```
+
+The R one wants R with dplyr, tidyr, tibble and zoo, and the Julia one Julia with
+DataFrames, RollingFunctions and Tables; both run as they stand, `Rscript
+comparison/dplyr_claims.R` and `julia comparison/dataframes_claims.jl`, given an
+environment with those packages. `.venv/` and `.tools/` here are ignored by git, for
+environments kept beside the scripts.
+
+`namo_claims.rb` loads `lib/` from this repository rather than an installed gem.
+
+## The timing scripts
 
 These do not run on a clean clone, which is why they are here rather than in
 `script/`. They need a sqlite database that is not in this repository, and the
 Python ones need NumPy or pandas. What they offer a reader without that database is
 the thing prose cannot: whether the two sides were cut the same way.
 
-## What they need
+### What they need
 
 A sqlite table of daily prices:
 
@@ -26,14 +65,14 @@ which over the data the figures were taken from returns 344,697 rows for 2,641
 securities. The path defaults to `~/data/market_data.db` and is overridden with
 `MARKET_DATA_DB`.
 
-## The computation
+### The computation
 
 Group by security, take the close at the earliest and at the latest date within
 each group, and keep the securities whose last close exceeds their first. Every
 script prints the count, and the securities themselves on stderr, so the outputs can
 be diffed rather than compared by eye. All six agree at 1,622.
 
-## The scripts
+### The scripts
 
 | | |
 | --- | --- |
@@ -47,7 +86,7 @@ The Ruby and Python files are named for their approach rather than their library
 because `numpy.py` and `pandas.py` shadow the modules they import, and the failure
 is a confusing one.
 
-## Reading the phases
+### Reading the phases
 
 `namo.rb`, `numpy_vectorised.py` and `pandas_grouped.py` cut at the same places:
 **query** is the database driver alone, **construct** is the library taking the rows,
@@ -61,7 +100,7 @@ NumPy's fetch while leaving `PriceData.new` inside Namo's compute. The figures
 favoured Namo until that was corrected, which is the argument for this directory
 existing.
 
-## Caveats
+### Caveats
 
 Medians of five, except the query, which is measured once because it is the phase
 you cannot repeat honestly — the second run reads a warm cache. Namo's compute

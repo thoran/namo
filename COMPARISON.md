@@ -1,6 +1,10 @@
 # Namo Feature Comparison
 
-Date: 20260615
+Date: 20261101
+
+Compared at Namo 0.32.7; pandas 3.1.0, Polars 2.1.0 and xarray 2026.9.0, on Python 3.13.18 with NumPy 2.5.4; dplyr 1.2.1, tidyr 1.3.2, tibble 3.3.1 and zoo 1.9.0, on R 4.5.3; and DataFrames.jl 1.8.2 with RollingFunctions.jl 0.8.1, on Julia 1.13.3. Where a claim is about a tool's history or advice ("since 1.1.0", a deprecation), it is from that tool's own documentation.
+
+Every snippet below, and the probes behind the claims, are run by the `*_claims` scripts in [comparison/](comparison/README.md), one per tool.
 
 Feature-by-feature comparison of Namo against Pandas, Polars, R/dplyr, xarray, and Julia/DataFrames.jl. Covers both where the tools are the same and where they differ.
 
@@ -19,13 +23,13 @@ Infers dimensions from hash keys. No column types, no index declaration, no sche
 namo = Namo.new([{symbol: 'BHP', close: 42.5}, {symbol: 'RIO', close: 118.3}])
 ```
 
-**Pandas** — similar. Accepts a list of dicts and infers columns. Types are inferred but often wrong (strings as objects, dates as strings). However, Pandas then expects you to set an index (`df.set_index('symbol')`) to get performant lookups. Without an index, filtering is a linear scan with verbose syntax.
+**Pandas** — similar. Accepts a list of dicts and infers columns. Dates given as strings stay strings until converted. Lookup by label (`df.loc['BHP']`) needs an index set first (`df.set_index('symbol')`); without one it raises `KeyError`, and rows are found by a boolean mask over the column instead.
 
 ```python
 df = pd.DataFrame([{'symbol': 'BHP', 'close': 42.5}, {'symbol': 'RIO', 'close': 118.3}])
 ```
 
-**Polars** — similar. Accepts a list of dicts. Types are inferred more aggressively than Pandas (strict typing). Schema can be passed explicitly. No index concept — Polars never requires you to declare one. Closest to Namo on ingestion simplicity.
+**Polars** — similar. Accepts a list of dicts. Each column has one dtype, inferred or passed as `schema=`. No index concept — Polars never requires you to declare one.
 
 ```python
 df = pl.DataFrame([{'symbol': 'BHP', 'close': 42.5}, {'symbol': 'RIO', 'close': 118.3}])
@@ -37,7 +41,7 @@ df = pl.DataFrame([{'symbol': 'BHP', 'close': 42.5}, {'symbol': 'RIO', 'close': 
 df <- tibble(symbol = c('BHP', 'RIO'), close = c(42.5, 118.3))
 ```
 
-**xarray** — different. Requires explicit declaration of dimensions, coordinates, and data variables at construction. You must decide what is a dimension, what is a coordinate, and what is a data variable before loading. This is the opposite of Namo's approach.
+**xarray** — different. Requires explicit declaration of dimensions, coordinates, and data variables at construction. You must decide what is a dimension, what is a coordinate, and what is a data variable before loading; `xr.Dataset.from_dataframe` makes the decision from a pandas frame's index. This is the opposite of Namo's approach.
 
 ```python
 ds = xr.Dataset(
@@ -65,10 +69,10 @@ namo[symbol: 'BHP']
 namo[close: 42.5]
 ```
 
-**Pandas** — different. The index/column distinction is fundamental to Pandas' design. Different syntax, different performance characteristics, different behaviour on joins. `reset_index()` and `set_index()` are among the most frequently called Pandas methods, indicating that the distinction creates ongoing friction. Multi-level indexes (MultiIndex) add further complexity.
+**Pandas** — different. The index/column distinction is fundamental to Pandas' design. Different syntax, different performance characteristics, different behaviour on joins. Moving a column into or out of the index is a call of its own (`set_index()`, `reset_index()`). Multi-level indexes (MultiIndex) add further complexity.
 
 ```python
-df.loc['BHP']                  # uses the index
+df.loc['BHP']                  # uses the index, once set_index('symbol') has made one
 df[df['close'] == 42.5]        # uses a column — different syntax
 ```
 
@@ -79,19 +83,19 @@ df.filter(pl.col('symbol') == 'BHP')
 df.filter(pl.col('close') == 42.5)
 ```
 
-**R/dplyr** — mostly same. Tibbles have row names but they're vestigial — dplyr ignores them. All columns are filtered identically via `filter()`.
+**R/dplyr** — same. A tibble keeps no row names: `as_tibble()` drops a data frame's. All columns are filtered identically via `filter()`.
 
 ```r
 filter(df, symbol == 'BHP')
 filter(df, close == 42.5)
 ```
 
-**xarray** — different, and more so than Pandas. Three-tier hierarchy: dimensions (axes), coordinates (labels on axes), and data variables (the payload). Each has different access patterns. You can select on coordinates but not on data variables with the same syntax.
+**xarray** — different, and more so than Pandas. Three-tier hierarchy: dimensions (axes), coordinates (labels on axes), and data variables (the payload). Each has different access patterns. You can select on coordinates but not on data variables with the same syntax. `where` masks the rows it doesn't keep, filling them with `NaN`, unless given `drop=True`.
 
 ```python
-ds.sel(symbol='BHP')           # works on coordinates
-# ds.sel(close=42.5)           # does not work on data variables
-ds.where(ds['close'] == 42.5)  # different syntax required
+ds.sel(symbol='BHP')                      # works on coordinates
+# ds.sel(close=42.5)                      # KeyError: not a dimension or coordinate
+ds.where(ds['close'] == 42.5, drop=True)  # different syntax required
 ```
 
 **Julia/DataFrames.jl** — same as Namo. No index. All columns filtered identically.
@@ -125,10 +129,11 @@ df[(df['symbol'] == 'BHP') & (df['quarter'] == 'Q1')]
 df.query("symbol == 'BHP' and quarter == 'Q1'")
 ```
 
-**Polars** — different. Every column reference requires `pl.col()`.
+**Polars** — similar for equality. `filter` takes keyword arguments as `pl.col(name) == value`, joined with `&`; anything other than equality is an expression through `pl.col()`.
 
 ```python
-df.filter(pl.col('symbol') == 'BHP')
+df.filter(symbol='BHP')
+df.filter(symbol='BHP', quarter='Q1')
 df.filter((pl.col('symbol') == 'BHP') & (pl.col('quarter') == 'Q1'))
 ```
 
@@ -152,7 +157,7 @@ filter(:symbol => ==("BHP"), df)
 filter([:symbol, :quarter] => (s, q) -> s == "BHP" && q == "Q1", df)
 ```
 
-**Summary:** Namo's keyword selection is closest to xarray's `sel()` in syntax but applies to all dimensions, not just coordinates. R/dplyr is clean but function-based. Pandas and Polars require more ceremony. Julia's pair syntax is idiosyncratic.
+**Summary:** Namo's keyword selection is closest to xarray's `sel()` in syntax but applies to all dimensions, not just coordinates. Polars' keyword form of `filter` reads the same for equality and stops there. R/dplyr is clean but function-based. Pandas requires more ceremony. Julia's pair syntax is idiosyncratic.
 
 ### Array and range selection
 
@@ -184,7 +189,7 @@ filter(df, quarter %in% c('Q1', 'Q2'))
 filter(df, between(close, 10.0, 20.0))
 ```
 
-**xarray** — array selection on coordinates. Range selection via `slice` but only on coordinates, not data variables.
+**xarray** — array selection on coordinates whose labels are unique; over repeated labels, such as a coordinate along an observation dimension, a list raises `InvalidIndexError`. Range selection via `slice` but only on indexed coordinates, not data variables.
 
 ```python
 ds.sel(quarter=['Q1', 'Q2'])
@@ -210,13 +215,14 @@ An arbitrary predicate as a selection value. Any logic expressible in Ruby.
 namo[pe: ->(v){ v && v < 15 }]
 ```
 
-**Pandas** — `.apply()` with a lambda is the equivalent, but it's applied to the column, not as a selection criterion. No way to pass a predicate directly to the filtering interface.
+**Pandas** — `.apply()` with a lambda is the equivalent, but it's applied to the column, not as a selection criterion. `[]` and `.loc` do take a callable, but it is called once with the whole DataFrame and must return the mask, so a per-value predicate still goes through `.apply()`. A missing `pe` reaches the lambda as `NaN`, not `None`: `v is not None` lets it through and `NaN < 15` rejects it.
 
 ```python
 df[df['pe'].apply(lambda v: v is not None and v < 15)]
+df.loc[lambda d: d['pe'] < 15]     # the callable receives the frame
 ```
 
-**Polars** — doesn't support arbitrary lambdas in filter expressions. The expression DSL is powerful but constrained to what Polars implements. Complex predicates require `map_elements()` which breaks lazy evaluation.
+**Polars** — the expression DSL covers what Polars implements; an arbitrary Python predicate goes through `map_elements()`, which calls Python once per value. Polars warns (`PolarsInefficientMapWarning`) and documents it as much slower than the native expressions. It runs in lazy mode as well as eager.
 
 ```python
 df.filter(pl.col('pe').is_not_null() & (pl.col('pe') < 15))
@@ -224,17 +230,18 @@ df.filter(pl.col('pe').is_not_null() & (pl.col('pe') < 15))
 df.filter(pl.col('pe').map_elements(lambda v: v is not None and v < 15))
 ```
 
-**R/dplyr** — clean for simple predicates. Arbitrary functions work inside `filter()` via non-standard evaluation.
+**R/dplyr** — clean for simple predicates. Any vectorised function works inside `filter()` via non-standard evaluation; a function of one value must be mapped over the column (`sapply(pe, f)`), or `filter()` raises.
 
 ```r
 filter(df, !is.na(pe), pe < 15)
 filter(df, my_predicate(pe))
 ```
 
-**xarray** — boolean masking only, no arbitrary predicates on coordinates.
+**xarray** — boolean masking. `where` also takes a callable, which, as in pandas, receives the whole Dataset.
 
 ```python
-ds.where(ds['pe'] < 15)
+ds.where(ds['pe'] < 15, drop=True)
+ds.where(lambda d: d['pe'] < 15, drop=True)
 ```
 
 **Julia/DataFrames.jl** — lambda syntax in filter, similar capability to Namo.
@@ -243,7 +250,7 @@ ds.where(ds['pe'] < 15)
 filter(:pe => v -> !ismissing(v) && v < 15, df)
 ```
 
-**Summary:** Namo and Julia both accept arbitrary predicates inline in the selection interface. R/dplyr does too via non-standard evaluation. Pandas requires `.apply()` as a separate step. Polars restricts you to its expression DSL. xarray supports only boolean masking.
+**Summary:** Namo and Julia both accept a per-value predicate inline in the selection interface. R/dplyr takes any vectorised function of the columns via non-standard evaluation. Pandas' and xarray's indexers take a callable, but of the whole frame, so a per-value predicate goes through `.apply()` as a separate step. Polars runs one through `map_elements()`, at a cost it warns of.
 
 ### Regex-based selection
 
@@ -271,7 +278,11 @@ df.filter(pl.col('symbol').str.contains(r'^BH'))
 filter(df, grepl("^BH", symbol))
 ```
 
-**xarray** — no string pattern matching on coordinates.
+**xarray** — the `.str` accessor, on a coordinate or a string data variable, as a mask for `where`.
+
+```python
+ds.where(ds['symbol'].str.match('^BH'), drop=True)
+```
 
 **Julia/DataFrames.jl** — lambda with `occursin`.
 
@@ -279,7 +290,7 @@ filter(df, grepl("^BH", symbol))
 filter(:symbol => s -> occursin(r"^BH", s), df)
 ```
 
-**Summary:** All general-purpose tools can do regex filtering, but none accept a regex as a direct selection value. Namo treats regex as a first-class selection type alongside scalars, arrays, ranges, and procs — the same slot accepts all of them.
+**Summary:** All five tools can do regex filtering, but in each the regex goes through a string function to make a mask or predicate; none takes it as the value to select rows by. pandas (`filter(regex=)`), Polars (`pl.col('^…$')`) and DataFrames.jl (`select(df, r"^c")`) take a regex to pick columns by name. Namo treats regex as a first-class selection type alongside scalars, arrays, ranges, and procs — the same slot accepts all of them.
 
 ### Mixed selection types in one call
 
@@ -324,7 +335,11 @@ filter(df,
 )
 ```
 
-**xarray** — cannot combine selection types in a single call.
+**xarray** — `sel` takes a scalar, a list and a slice on different dimensions in one call, where each dimension's labels are unique. The regex and the predicate are masks for `where`, a second step.
+
+```python
+ds.sel(symbol='BHP', quarter=['Q1'], date=slice('2025-01-02', '2025-01-03'))
+```
 
 **Julia/DataFrames.jl** — requires a compound lambda or multiple chained filters.
 
@@ -337,7 +352,7 @@ filter(
 )
 ```
 
-**Summary:** No other tool unifies selection types into a single polymorphic interface. Namo's `[]` dispatches on the type of each value — the user doesn't need to know which method to call for arrays vs ranges vs predicates. This is a direct consequence of the `case` statement in `Row#match?`.
+**Summary:** xarray's `sel`, and pandas' `.loc` over a MultiIndex, take a scalar, a list or a slice per dimension or level in one call. Neither takes a regex or a per-value predicate in that slot, and none of the five tools does. Namo's `[]` dispatches on the type of each value — the user doesn't need to know which method to call for arrays vs ranges vs predicates. This is a direct consequence of the `case` statement in `Row#match?`.
 
 
 ## Projection and contraction
@@ -434,7 +449,7 @@ Positional symbols for projection and keyword arguments for selection in a singl
 namo[:symbol, :close, quarter: 'Q1']
 ```
 
-**Pandas** — two operations.
+**Pandas** — one `.loc` call, taking a row mask built beforehand and a list of columns.
 
 ```python
 df.loc[df['quarter'] == 'Q1', ['symbol', 'close']]
@@ -458,13 +473,14 @@ df %>% filter(quarter == 'Q1') %>% select(symbol, close)
 ds.sel(quarter='Q1')[['close']]
 ```
 
-**Julia/DataFrames.jl** — two operations or a compound expression.
+**Julia/DataFrames.jl** — two operations, or one indexing call taking a row mask built beforehand.
 
 ```julia
 select(filter(:quarter => ==("Q1"), df), :symbol, :close)
+df[df.quarter .== "Q1", [:symbol, :close]]
 ```
 
-**Summary:** No other tool combines selection and projection in a single call. All require two operations, either chained or nested. Namo's `[]` overloading handles both in one expression.
+**Summary:** pandas' `.loc[rows, columns]` and DataFrames.jl's `df[rows, columns]` index rows and columns in one call, but the rows are a boolean mask built from the column first. Polars, R/dplyr and xarray chain or nest two operations. Namo's `[]` takes the criterion itself, by dimension name, alongside the projection.
 
 
 ## Formulae
@@ -509,7 +525,7 @@ ds['revenue'] = ds['price'] * ds['quantity']
 df.revenue = df.price .* df.quantity
 ```
 
-**Summary:** Every other tool computes immediately and stores the result. Namo's formulae are lazy — they resolve when accessed, not when defined. This means formulae can reference other formulae that haven't been defined yet (forward references), and they always reflect the current state of dependencies. No other tool in this comparison has this capability.
+**Summary:** In each of the forms shown for the other tools, the new column is computed and stored; change `price` afterwards and `revenue` keeps the old product. (Polars' lazy mode defers the computation to `collect()`, and what it then produces is a stored column.) Namo's formulae are lazy — they resolve when accessed, not when defined. This means formulae can reference other formulae that haven't been defined yet (forward references), and they always reflect the current state of dependencies.
 
 ### Formula chains
 
@@ -531,7 +547,7 @@ df['profit'] = df['revenue'] - df['cost']
 df['margin'] = df['profit'] / df['revenue']
 ```
 
-**Polars** — `with_columns` calls must be sequenced correctly, or combined in a single `with_columns` that Polars evaluates in declaration order.
+**Polars** — `with_columns` calls must be sequenced correctly. Within a single `with_columns`, or `with_columns_seq`, every expression sees only the frame it was given, so `profit` cannot refer to a `revenue` made in the same call (`ColumnNotFoundError`).
 
 ```python
 df = df.with_columns((pl.col('price') * pl.col('quantity')).alias('revenue'))
@@ -565,7 +581,7 @@ df.profit = df.revenue .- df.cost
 df.margin = df.profit ./ df.revenue
 ```
 
-**Summary:** R/dplyr's `mutate()` handles sequential dependencies within a single call. Namo handles them lazily across any number of separate definitions, in any order. No other tool allows forward references — defining `profit` before `revenue` and having it resolve correctly when accessed.
+**Summary:** R/dplyr's `mutate()` handles sequential dependencies within a single call. Namo handles them lazily across any number of separate definitions, in any order. In none of the other forms shown can `profit` be defined before `revenue`: pandas raises `KeyError`, Polars `ColumnNotFoundError`, dplyr `object 'revenue' not found`; Namo resolves it when accessed.
 
 ### Formulae indistinguishable from data
 
@@ -573,7 +589,7 @@ df.margin = df.profit ./ df.revenue
 
 `row[:close]` and `row[:earnings_yield]` resolve through the same mechanism. The consumer doesn't know or care whether a value is stored or computed.
 
-**Pandas** — computed columns become data columns. They look the same in the DataFrame, but they were computed eagerly. If underlying data changes, computed columns are stale. The user must re-run the computation. No way to mark a column as "derived" versus "stored."
+**Pandas** — computed columns become data columns. They look the same in the DataFrame, but they were computed eagerly. If underlying data changes, computed columns are stale. The user must re-run the computation. The frame keeps no record of which columns were derived.
 
 **Polars** — same. Once materialised, a computed column is indistinguishable from data, but it's a snapshot, not a live computation.
 
@@ -598,6 +614,8 @@ namo[:sma_20] = proc do |row, namo|
 end
 ```
 
+At 0.32.7 the window above, and those in the next two sections, need `date` to be numeric: `Row#match?` tests a range with `include?`, which raises `TypeError` for a beginless range of Dates or Strings.
+
 **Pandas** — the `groupby` + `transform` + `rolling` chain is the idiom. Powerful but the formula is not attached to the dataset — it's a one-off column creation.
 
 ```python
@@ -612,10 +630,10 @@ df = df.with_columns(
 )
 ```
 
-**R/dplyr** — requires the `zoo` package for rolling operations.
+**R/dplyr** — rolling operations come from another package, such as `zoo`. `rollmean` centres its window unless told `align = 'right'`.
 
 ```r
-df <- df %>% group_by(symbol) %>% mutate(sma_20 = zoo::rollmean(close, 20, fill = NA))
+df <- df %>% group_by(symbol) %>% mutate(sma_20 = zoo::rollmean(close, 20, fill = NA, align = 'right'))
 ```
 
 **xarray** — rolling operations are built in for numeric data along named dimensions.
@@ -624,10 +642,10 @@ df <- df %>% group_by(symbol) %>% mutate(sma_20 = zoo::rollmean(close, 20, fill 
 ds['sma_20'] = ds['close'].rolling(date=20).mean()
 ```
 
-**Julia/DataFrames.jl** — requires a rolling mean function.
+**Julia/DataFrames.jl** — requires a rolling mean function, such as RollingFunctions.jl's `rollmean`, which returns `n - 19` values; padded, it lines up with the rows under `transform`. Under `combine` the unpadded values come back without their dates.
 
 ```julia
-combine(groupby(df, :symbol), :close => (x -> rollmean(x, 20)) => :sma_20)
+transform(groupby(df, :symbol), :close => (x -> vcat(fill(missing, 19), rollmean(x, 20))) => :sma_20)
 ```
 
 **Summary:** All tools can compute rolling windows, but through different mechanisms — groupby chains, expression DSLs, or external packages. Namo's two-arity formula is more general: the proc receives the entire Namo and can perform arbitrary cross-row logic, not just windowed aggregations. The selection `namo[symbol: row[:symbol], date: ..row[:date]]` inside the formula uses the same `[]` interface as external selection.
@@ -658,7 +676,7 @@ df['sma_close_20'] = sma(df, 'close', 20)
 df['sma_volume_50'] = sma(df, 'volume', 50)
 ```
 
-**Polars** — no equivalent. Expression DSL doesn't support parameterised reuse in this way.
+**Polars** — no equivalent attached to the frame. The reuse unit is a Python function returning an expression, `def sma(field, period): return pl.col(field).rolling_mean(period).over('symbol')`, applied per column.
 
 ```python
 df = df.with_columns(pl.col('close').rolling_mean(20).over('symbol').alias('sma_close_20'))
@@ -668,7 +686,7 @@ df = df.with_columns(pl.col('volume').rolling_mean(50).over('symbol').alias('sma
 **R/dplyr** — you'd write a function and use it inside `mutate()`. The function is external.
 
 ```r
-sma <- function(x, n) zoo::rollmean(x, n, fill = NA)
+sma <- function(x, n) zoo::rollmean(x, n, fill = NA, align = 'right')
 
 df <- df %>% group_by(symbol) %>% mutate(
     sma_close_20 = sma(close, 20),
@@ -686,15 +704,15 @@ ds['sma_volume_50'] = ds['volume'].rolling(date=50).mean()
 **Julia/DataFrames.jl** — same as R. External function, applied per column.
 
 ```julia
-sma(x, n) = rollmean(x, n)
+sma(x, n) = vcat(fill(missing, n - 1), rollmean(x, n))
 
-combine(groupby(df, :symbol),
+transform(groupby(df, :symbol),
     :close => (x -> sma(x, 20)) => :sma_close_20,
     :volume => (x -> sma(x, 50)) => :sma_volume_50
 )
 ```
 
-**Summary:** No other tool has parameterised formulae as a first-class concept attached to the dataset. In every other tool, reusable computations are external functions that you call during column creation. In Namo, they're named formulae on the dataset that accept arguments at access time.
+**Summary:** In the other tools, reusable computations are functions that you call during column creation. pandas, Polars and xarray can also register an accessor or namespace, which puts named, parameterised methods on every frame (`df.ta.sma('close', 20)`); those are methods of the type, called to produce a column, and what they produce is stored. In Namo, they're named formulae on the dataset that accept arguments at access time.
 
 ### Formularies
 
@@ -713,7 +731,7 @@ flows.attach(Indicators)
 flows.values(:cum_delta)   # resolves live, like any other derived dimension
 ```
 
-**Pandas / Polars / xarray** — no equivalent. You organise reusable computations in modules or functions, but they're external to the frame: each one assigns an eagerly-computed column, the result is data severed from the computation, and there's no notion of attaching a named, reusable, live-resolving body of derivations to the dataset.
+**Pandas / Polars / xarray** — no equivalent. You organise reusable computations in modules or functions, but they're external to the frame: each one assigns an eagerly-computed column, the result is data severed from the computation, and there's no notion of attaching a named, reusable, live-resolving body of derivations to the dataset. The nearest is a registered accessor or namespace (`pd.api.extensions.register_dataframe_accessor`, `pl.api.register_dataframe_namespace`, `xr.register_dataset_accessor`): named and reusable, but attached to every frame of the type rather than to one dataset, and computed when called.
 
 **R/dplyr, Julia/DataFrames.jl** — same. A package or file of functions is the reuse unit, applied during column creation. The functions don't become derived dimensions of the dataset; they produce stored columns when called.
 
@@ -732,7 +750,7 @@ Joins on shared dimensions automatically.
 ohlcv * fundamentals
 ```
 
-**Pandas** — you must specify the join columns. Or Pandas infers shared column names with a warning.
+**Pandas** — specify the join columns, or leave out `on=` and Pandas joins on every shared column, silently.
 
 ```python
 pd.merge(ohlcv, fundamentals, on=['symbol', 'exchange'])
@@ -744,7 +762,7 @@ pd.merge(ohlcv, fundamentals, on=['symbol', 'exchange'])
 ohlcv.join(fundamentals, on=['symbol', 'exchange'])
 ```
 
-**R/dplyr** — must specify join columns. Or `inner_join(ohlcv, fundamentals)` infers shared columns but warns.
+**R/dplyr** — specify join columns, or leave out `by` and `inner_join(ohlcv, fundamentals)` joins on the shared columns, naming them in a message.
 
 ```r
 inner_join(ohlcv, fundamentals, by = c('symbol', 'exchange'))
@@ -756,13 +774,13 @@ inner_join(ohlcv, fundamentals, by = c('symbol', 'exchange'))
 xr.merge([ds1, ds2])
 ```
 
-**Julia/DataFrames.jl** — must specify join columns.
+**Julia/DataFrames.jl** — must specify join columns (`ArgumentError: Missing join argument 'on'`).
 
 ```julia
 innerjoin(ohlcv, fundamentals, on = [:symbol, :exchange])
 ```
 
-**Summary:** Most tools require explicit join column specification. R/dplyr can infer shared columns but warns. xarray merges on shared dimensions automatically. Namo's `*` infers shared dimensions silently — the operator is the join, and the shared dimension names are the join condition.
+**Summary:** Polars and DataFrames.jl require the join columns. Pandas, given none, joins on the shared columns silently; R/dplyr does so naming them in a message. xarray merges on shared dimensions automatically. Namo's `*` infers shared dimensions silently, as pandas' default does — the operator is the join, and the shared dimension names are the join condition.
 
 ### Conditional join with block
 
@@ -776,7 +794,7 @@ ohlcv.*(fundamentals) do |row, candidates|
 end
 ```
 
-**Pandas** — a specialised function that most users don't know exists. Requires both DataFrames to be sorted by the join key. The `direction` parameter is limited to 'backward', 'forward', and 'nearest'.
+**Pandas** — a specialised function. Requires both DataFrames to be sorted by the join key (`ValueError: left keys must be sorted`). The `direction` parameter is limited to 'backward', 'forward', and 'nearest'.
 
 ```python
 pd.merge_asof(ohlcv, fundamentals,
@@ -785,7 +803,7 @@ pd.merge_asof(ohlcv, fundamentals,
 )
 ```
 
-**Polars** — similar to Pandas' `merge_asof`.
+**Polars** — similar to Pandas' `merge_asof`, with the same three strategies. `join_where` joins on arbitrary expression predicates, inequalities included, without picking the nearest match.
 
 ```python
 ohlcv.join_asof(fundamentals,
@@ -794,13 +812,21 @@ ohlcv.join_asof(fundamentals,
 )
 ```
 
-**R/dplyr** — no built-in asof join. Workarounds involve `fuzzyjoin` or rolling joins via `data.table`. The tidyverse has no native solution.
+**R/dplyr** — since dplyr 1.1.0, `join_by()` takes inequality, rolling and overlap conditions; `closest()` makes a rolling join, the asof join.
 
-**xarray** — no equivalent. Merging assumes aligned coordinates.
+```r
+left_join(ohlcv, fundamentals, by = join_by(symbol, closest(date >= quarter_end)))
+```
 
-**Julia/DataFrames.jl** — no built-in asof join. Workarounds via `LeftJoin` + filtering or external packages.
+**xarray** — no join. `sel` with `method='ffill'` looks up, for each label given, the most recent coordinate on or before it, which is the backward asof lookup along one dimension.
 
-**Summary:** Pandas and Polars have specialised asof join functions with fixed strategies (backward, forward, nearest). Namo's block on `*` is fully general — the matching logic is arbitrary Ruby code. Any temporal, spatial, or domain-specific matching strategy is expressible. The asof join is just one use case.
+```python
+fundamentals.sel(quarter_end=dates, method='ffill')
+```
+
+**Julia/DataFrames.jl** — no built-in asof join. Its joins are inner, left, right, outer, semi, anti and cross; workarounds are `leftjoin` plus filtering, or external packages.
+
+**Summary:** Pandas and Polars have specialised asof join functions with fixed strategies (backward, forward, nearest); dplyr's `join_by()` and Polars' `join_where` take inequality conditions, and xarray's `sel(method='ffill')` looks up along one dimension. Namo's block on `*` is fully general — the matching logic is arbitrary Ruby code. Any temporal, spatial, or domain-specific matching strategy is expressible. The asof join is just one use case.
 
 ### Cartesian product
 
@@ -810,7 +836,7 @@ ohlcv.join_asof(fundamentals,
 ohlcv ** fundamentals
 ```
 
-**Pandas** — added in Pandas 1.2. Before that, required adding a dummy key column.
+**Pandas** — `how='cross'`, added in Pandas 1.2. Before that, required adding a dummy key column.
 
 ```python
 pd.merge(ohlcv, fundamentals, how='cross')
@@ -822,13 +848,13 @@ pd.merge(ohlcv, fundamentals, how='cross')
 ohlcv.join(fundamentals, how='cross')
 ```
 
-**R/dplyr** — `crossing()` from tidyr.
+**R/dplyr** — `crossing()` from tidyr, or `cross_join()` in dplyr since 1.1.0.
 
 ```r
 crossing(ohlcv, fundamentals)
 ```
 
-**xarray** — no direct Cartesian product of datasets.
+**xarray** — no Cartesian product of rows. Merging datasets on different dimensions gives a dataset spanning both, each variable keeping its own dimensions and broadcasting against the other in arithmetic.
 
 **Julia/DataFrames.jl**
 
@@ -906,7 +932,7 @@ The aggregation surface itself already exists on a Collection. `summary` reduces
 collection = Namo::Collection.new
 collection << bhp_namo    # name: 'BHP'
 collection << rio_namo    # name: 'RIO'
-collection.summary(:close, reducer: :mean)
+collection.summary(:close, reducer: :mean)   # :mean from a statistics library; Ruby's Array has none
 # => Namo with {member:, close:} rows — mean close per member
 
 collection.members.map{|n| n.values(:close).sum / n.count}
@@ -916,7 +942,7 @@ collection.members.map{|n| n.values(:close).sum / n.count}
 
 ```ruby
 # 0.20.0
-namo.group_by(:symbol).summary(:close, reducer: :mean)
+namo.group_by(:symbol).summary(:close, reducer: :mean)   # :mean as above
 # => Namo with {member:, close:} rows — mean close per symbol
 namo.group_by(:symbol).as_detail(:symbol) == namo
 # => true — the partition round-trips exactly
@@ -924,9 +950,9 @@ namo.group_by(:symbol).as_detail(:symbol) == namo
 
 Grouping by a computed key is itself not unique — every general-purpose tool can do it, inline. Polars comes closest to reading like Namo: `df.group_by((pl.col('pe') < 10).alias('value_score'))` takes the expression directly. Pandas groups by a derived Series (`df.groupby(df['pe'].apply(score))`) or materialises a column first and groups by its name. R/dplyr groups by an inline expression (`group_by(df, value_score = pe < 10)`); Julia must `transform` the column first, then `groupby` its name. In every case the key is reconstructed at the call site, and the computation is a free-floating expression or function, not a property of the frame. What Namo does that none of them do is group by a *named, attached* derived dimension through the *same interface* as a data dimension — `group_by(:value_score)` and `group_by(:symbol)` are the identical call, because a formula is a dimension and the unified-treatment principle makes the two indistinguishable to the operation. The formula was defined once, via `[]=`, and is reused across selection, projection, and grouping; the others have a name-path for stored columns and a separate expression-path for computed keys, and the computed key lives only inside the `group_by` call. This isn't a `group_by` feature so much as a consequence of formulae being first-class dimensions: the same architecture that lets `namo[revenue: 1000..2000]` select on a formula lets `namo.group_by(:revenue)` partition on one, with no new mechanism.
 
-The distinction from every other tool is that the group-by intermediate is a **persistent, named object** — assembled or partitioned, held and re-queried — not the transient grouping context the other libraries dissolve at the end of the chain. Bare names (2.x) then shorten the member-wise form to `n.close.sum / n.count`, and grouping by a formula to the same `group_by(:value_score)` it already is — the name was the point.
+The others' grouped objects can be held and re-queried too — pandas' `DataFrameGroupBy`, Polars' `GroupBy`, xarray's `DatasetGroupBy`, dplyr's grouped tibble, DataFrames.jl's `GroupedDataFrame`. What a Namo Collection adds is that it is itself a Namo, its members named Namos, reachable by assembly as well as partition, with a `summary`/`detail` surface that inverts the partition. Bare names (2.x) then shorten the member-wise form to `n.close.sum / n.count`, and grouping by a formula to the same `group_by(:value_score)` it already is — the name was the point.
 
-**Summary:** Every tool aggregates, but the others dissolve the grouping context at the end of the chain; Namo's `group_by` returns a `Namo::Collection` — a persistent, named object reachable by partition or assembly and carrying the full `summary`/`detail` surface. Grouping by a computed key is parity (Polars takes an inline expression cleanly), but only Namo groups by a *named, attached* formula through the same interface as a data dimension, because a formula is a dimension — defined once and reused across selection, projection, and grouping, with no separate expression-path.
+**Summary:** Every tool aggregates, and each has a grouped object that can be held; Namo's `group_by` returns a `Namo::Collection` — itself a Namo, of named member Namos, reachable by partition or assembly and carrying the full `summary`/`detail` surface. Grouping by a computed key is parity (Polars takes an inline expression cleanly), but only Namo groups by a *named, attached* formula through the same interface as a data dimension, because a formula is a dimension — defined once and reused across selection, projection, and grouping, with no separate expression-path.
 
 
 ## Set operators
@@ -945,7 +971,7 @@ a | b    # union (deduplicated)
 a ^ b    # symmetric difference
 ```
 
-**Pandas** — concatenation via function call. Set operations require workarounds via merges and deduplication. No operator syntax. No symmetric difference.
+**Pandas** — concatenation via function call. DataFrame has no set-operation methods; they are worked round with merges and deduplication. No operator syntax. No symmetric difference.
 
 ```python
 pd.concat([a, b])                                        # concatenation
@@ -954,21 +980,21 @@ pd.concat([a, b]).drop_duplicates()                      # union (approximate)
 # difference and symmetric difference require merge + indicator + filter
 ```
 
-**Polars** — concatenation via function call. No set operators. Workarounds via joins and anti-joins.
+**Polars** — concatenation via function call. No set operators or set-operation methods. Workarounds via semi- and anti-joins.
 
 ```python
 pl.concat([a, b])
 # Set operations require join workarounds
 ```
 
-**R/dplyr** — named functions for three of five. No symmetric difference. No operator syntax.
+**R/dplyr** — named functions for all five, `symdiff()` since 1.1.0. No operator syntax. `intersect()`, `union()`, `setdiff()` and `symdiff()` remove duplicate rows, where Namo's operators count them.
 
 ```r
 bind_rows(a, b)      # concatenation
 intersect(a, b)      # intersection
 union(a, b)          # union
 setdiff(a, b)        # difference
-# No symmetric difference
+symdiff(a, b)        # symmetric difference
 ```
 
 **xarray** — concatenation along a dimension. No row-level set operations.
@@ -977,14 +1003,15 @@ setdiff(a, b)        # difference
 xr.concat([ds1, ds2], dim='obs')
 ```
 
-**Julia/DataFrames.jl** — concatenation via function call. Set operations via converting to sets of rows. No symmetric difference. No operator syntax.
+**Julia/DataFrames.jl** — concatenation via function call. Set operations, symmetric difference included, via converting to Sets of rows, which drops duplicates. No operator syntax.
 
 ```julia
 vcat(a, b)
-# intersect, union, setdiff via Sets
+as, bs = Set(copy.(eachrow(a))), Set(copy.(eachrow(b)))
+intersect(as, bs); union(as, bs); setdiff(as, bs); symdiff(as, bs)
 ```
 
-**Summary:** R/dplyr comes closest with `intersect`, `union`, `setdiff` as named functions. Namo provides all five as operators that read like algebraic expressions and compose naturally. No other tool has symmetric difference as a first-class operation. No other tool carries formulae through set operations.
+**Summary:** R/dplyr comes closest, with `intersect`, `union`, `setdiff` and `symdiff` as named functions, on sets rather than multisets. Namo provides all five as operators that read like algebraic expressions and compose naturally, and carries formulae through them.
 
 ### Keyed anti-join
 
@@ -1009,7 +1036,7 @@ today[~today['symbol'].isin(exclusions['symbol'])]
 today.join(exclusions, on='symbol', how='anti')
 ```
 
-**R/dplyr** — clean, but the `by` parameter only accepts column names, not arbitrary predicates.
+**R/dplyr** — clean. `by` takes column names, or `join_by()`'s equality, inequality, rolling and overlap conditions; not arbitrary predicates.
 
 ```r
 anti_join(today, exclusions, by = 'symbol')
@@ -1023,7 +1050,7 @@ anti_join(today, exclusions, by = 'symbol')
 antijoin(today, exclusions, on = :symbol)
 ```
 
-**Summary:** Other tools express keyed exclusion through dedicated anti-join functions, restricted to column-name matching. Namo composes it from projection and proc selection, so the predicate is arbitrary Ruby — membership, computed values, fuzzy comparisons, any criterion — and the set operators stay whole-row and dimension-blind. The keyed match is a selection, not a set operation.
+**Summary:** Other tools express keyed exclusion through dedicated anti-join functions, matching on columns, on expressions of them in Polars, or on `join_by()` conditions in dplyr. Namo composes it from projection and proc selection, so the predicate is arbitrary Ruby — membership, computed values, fuzzy comparisons, any criterion — and the set operators stay whole-row and dimension-blind. The keyed match is a selection, not a set operation.
 
 ### Worked example: comparing yesterday's screen to today's
 
@@ -1041,7 +1068,7 @@ end
 
 The row-set operators (`==`, `<=`, `>=`, `-`, `&`, `|`, `^`) all work directly on Namos and return Namos (or booleans). The whole comparison stays in one type system. The algebraic identity `today >= yesterday` iff `(yesterday - today).count == 0` reads consistently with how you'd describe a superset relation in English.
 
-**Pandas** — `DataFrame.equals` is order-sensitive, so set-equality on rows requires materialising each row as a tuple and dropping into Python's `set` type. The DataFrame structure goes away for the operation; the boolean comes back as a Python primitive. The `set` type happens to have `==`, `>=`, `-`, `^` defined, which is why this works at all — but you're working in two type systems for one comparison.
+**Pandas** — `DataFrame.equals` is order-sensitive, so set-equality on rows requires materialising each row as a tuple and dropping into Python's `set` type. A `set` drops duplicate rows, which Namo's operators count. The DataFrame structure goes away for the operation; the boolean comes back as a Python primitive. The `set` type happens to have `==`, `>=`, `-`, `^` defined, which is why this works at all — but you're working in two type systems for one comparison.
 
 ```python
 yesterday_rows = set(map(tuple, yesterday.itertuples(index=False)))
@@ -1053,9 +1080,23 @@ elif yesterday_rows >= today_rows: status = f"removed {len(yesterday_rows - toda
 else:                              status = f"churn: {len(today_rows ^ yesterday_rows)} differing"
 ```
 
-**Polars / R/dplyr / xarray / Julia** — same pattern as Pandas. None has full set algebra on whole datasets; the workaround is to extract rows into a language-level set type, perform the operation there, and translate back.
+**R/dplyr** — `setequal()`, `setdiff()` and `symdiff()` work on data frames directly, as sets, so the idiom stays in dplyr.
 
-**Summary:** The diff idiom is one operator call per branch in Namo; in every other tool it's a conversion to a set-of-rows type plus the operation. Having the set algebra as first-class Namo operators is what keeps the idiom short and in one type system.
+```r
+status <- if (setequal(today, yesterday)) {
+  'no change'
+} else if (nrow(setdiff(yesterday, today)) == 0) {
+  paste('added', nrow(setdiff(today, yesterday)), 'candidates')
+} else if (nrow(setdiff(today, yesterday)) == 0) {
+  paste('removed', nrow(setdiff(yesterday, today)), 'candidates')
+} else {
+  paste('churn:', nrow(symdiff(today, yesterday)), 'differing')
+}
+```
+
+**Polars / xarray / Julia** — same pattern as Pandas. None has set algebra on whole datasets; the workaround is to extract rows into a language-level set type, perform the operation there, and translate back.
+
+**Summary:** The diff idiom is one operator call per branch in Namo, and one function call per branch in dplyr; in the other tools it's a conversion to a set-of-rows type plus the operation. Having the set algebra as first-class Namo operators is what keeps the idiom short and in one type system.
 
 
 ## Type handling
@@ -1072,7 +1113,7 @@ namo[:status] = proc{|row| row[:volume] > 0 ? 'active' : 'suspended'}
 namo[status: 'active']
 ```
 
-**Pandas** — DataFrames hold mixed types (object columns). But the computation model assumes numeric columns. Each type has its own access pattern.
+**Pandas** — DataFrames hold mixed types. Each type has its own access pattern.
 
 ```python
 df['label'] = df['symbol'] + ' (' + df['exchange'] + ')'
@@ -1095,13 +1136,17 @@ df = df.with_columns(
 
 ```r
 df <- df %>% mutate(
-    label = paste(symbol, "(", exchange, ")"),
+    label = paste0(symbol, " (", exchange, ")"),
     status = ifelse(volume > 0, 'active', 'suspended')
 )
 filter(df, status == 'active')
 ```
 
-**xarray** — numeric only. Coordinates can be strings or dates, but data variables are expected to be numeric arrays. String-valued data variables are technically possible but unsupported by most operations.
+**xarray** — built around numeric arrays. Coordinates and data variables can also hold strings or dates; string variables concatenate with `+` and have a `.str` accessor, while the reductions and rolling windows are numeric.
+
+```python
+ds['label'] = ds['symbol'] + ' (' + ds['exchange'] + ')'
+```
 
 **Julia/DataFrames.jl** — columns are typed arrays. Mixed operations work but require type-appropriate functions. Julia's multiple dispatch handles type-specific operations elegantly, but the user must be type-aware.
 
@@ -1111,7 +1156,7 @@ df.status = ifelse.(df.volume .> 0, "active", "suspended")
 filter(:status => ==("active"), df)
 ```
 
-**Summary:** R/dplyr and Namo are the most type-agnostic. Pandas and Polars partition their APIs by type. xarray is numeric-only. Namo's advantage over R is that formulae are attached to the dataset and resolve lazily, while R's `mutate()` is eager.
+**Summary:** R/dplyr and Namo are the most type-agnostic. Pandas, Polars and xarray partition their APIs by type, and xarray's operations beyond arithmetic and `.str` are numeric. Namo's advantage over R is that formulae are attached to the dataset and resolve lazily, while R's `mutate()` is eager.
 
 
 ## Enumerable integration
@@ -1127,27 +1172,27 @@ namo[:revenue] = proc{|row| row[:price] * row[:quantity]}
 total = namo.reduce(0){|sum, row| sum + row[:revenue]}
 ```
 
-**Pandas** — yields (index, Series) pairs. Formulae don't exist — computed columns are materialised data. Iterating is discouraged for performance reasons.
+**Pandas** — `iterrows()` yields (index, Series) pairs. Formulae don't exist — computed columns are materialised data. Iterating is discouraged for performance reasons.
 
 ```python
 for idx, row in df.iterrows():
     # row['revenue'] works but was eagerly computed
 ```
 
-**Polars** — yields tuples. No formula concept. Iteration is discouraged; the expression DSL is preferred.
+**Polars** — `iter_rows()` yields tuples, or dicts with `named=True`. No formula concept. Iteration is discouraged; the expression DSL is preferred.
 
 ```python
 for row in df.iter_rows(named=True):
     # row['revenue'] was eagerly computed
 ```
 
-**R/dplyr** — no row-level iteration idiom. R operates on columns, not rows. `rowwise()` exists but is slow and discouraged.
+**R/dplyr** — no row-level iteration idiom. R operates on columns, not rows. `rowwise()` exists for where no vectorised function does; dplyr's documentation notes the vectorised functions are much faster.
 
 ```r
 df %>% rowwise() %>% mutate(total = revenue + tax)
 ```
 
-**xarray** — no row-level iteration. Operations are array-level.
+**xarray** — no row-level iteration: iterating a Dataset yields its variable names. Operations are array-level.
 
 **Julia/DataFrames.jl** — `eachrow()` yields DataFrameRow objects. No formula concept.
 
@@ -1248,32 +1293,36 @@ a.equals(b)         # element-wise, order-sensitive
 (a == b).all().all() # workaround
 ```
 
-**Polars** — `frame_equal()` is order-sensitive. `equals()` does the same. No three-tier hierarchy.
+**Polars** — `equals()` is order-sensitive (`frame_equal()`, its old name, is gone). `polars.testing.assert_frame_equal(a, b, check_row_order=False)` compares ignoring row order, as an assertion that raises rather than a boolean.
 
 ```python
 a.equals(b)
+assert_frame_equal(a, b, check_row_order=False)
 ```
 
-**R/dplyr** — base R's `identical(a, b)` checks deep equality including order. `dplyr::all_equal()` was deprecated; the current advice is to use `waldo::compare()`. No order-insensitive frame-level equality as a primitive.
+**R/dplyr** — base R's `identical(a, b)` checks deep equality including order. `dplyr::all_equal()` was deprecated in 1.1.0 in favour of base R's `all.equal()`. dplyr's `setequal(a, b)` compares the rows ignoring order, as sets.
 
 ```r
 identical(a, b)
 all.equal(a, b)
+setequal(a, b)
 ```
 
-**xarray** — `Dataset.equals(other)` checks coordinate, variable, and attribute equality. Order matters for coordinates.
+**xarray** — three levels: `identical` (values, coordinates and attributes), `equals` (values and coordinates, attributes ignored), and `broadcast_equals` (equal once broadcast against each other). All are order-sensitive.
 
 ```python
+ds1.identical(ds2)
 ds1.equals(ds2)
+ds1.broadcast_equals(ds2)
 ```
 
-**Julia/DataFrames.jl** — `==` does element-wise comparison; `isequal(a, b)` is the closer analogue but is also order-sensitive.
+**Julia/DataFrames.jl** — `==` and `isequal(a, b)` each return one Bool, and both are order-sensitive; `.==` compares element by element.
 
 ```julia
 isequal(a, b)
 ```
 
-**Summary:** No other tool has a four-level equality hierarchy on datasets. Most have one method that does element-wise or strict-identical comparison; none distinguish "same data ignoring order and metadata" from "same analytical shape regardless of data" from "same in every observable way." Namo's hierarchy is the only one that lets users pick the level of strictness appropriate to the question they're asking, and `===` makes Namos work naturally as templates in `case` dispatch.
+**Summary:** xarray has three levels of its own (`identical`, `equals`, `broadcast_equals`), all order-sensitive. Order-insensitive comparison exists as dplyr's `setequal()`, on sets, and Polars' `assert_frame_equal(check_row_order=False)`, an assertion. None of the others has a level for "same analytical shape regardless of data". Namo's four levels answer those questions through Ruby's own equality methods, and `===` makes Namos work naturally as templates in `case` dispatch.
 
 ### Schema dispatch on incoming data feeds
 
@@ -1294,7 +1343,9 @@ else raise ArgumentError, "unknown shape: #{incoming.dimensions}"
 end
 ```
 
-**Pandas** — no schema-as-value. Maintain free-floating sets of column names; dispatch via `if`/`elif` with set subset checks.
+`===` asks for the same dimensions, no more and no fewer: an incoming Namo carrying an extra dimension matches neither template here.
+
+**Pandas** — no schema-as-value. Maintain free-floating sets of column names; dispatch via `if`/`elif` comparing them, `==` for the same test as Namo's or `issubset` to allow extra columns.
 
 ```python
 ohlcv_cols        = {'date', 'symbol', 'open', 'high', 'low', 'close', 'volume'}
@@ -1302,12 +1353,22 @@ fundamentals_cols = {'symbol', 'pe', 'book_value', 'dividend_yield'}
 
 incoming_cols = set(incoming.columns)
 
-if   ohlcv_cols.issubset(incoming_cols):        process_ohlcv(incoming)
-elif fundamentals_cols.issubset(incoming_cols): process_fundamentals(incoming)
+if   incoming_cols == ohlcv_cols:        process_ohlcv(incoming)
+elif incoming_cols == fundamentals_cols: process_fundamentals(incoming)
 else: raise ValueError(f"unknown shape: {incoming.columns.tolist()}")
 ```
 
-**Polars** — same pattern as Pandas. `df.columns` is a list of names; dispatch via `if`/`elif` on set subset checks.
+**Polars** — `df.schema` is a value, a `pl.Schema` mapping names to dtypes, and two compare with `==`. Python's `match` dispatches on it by equality when the templates are dotted names, so a schema can be the pattern; dtypes are part of it, so a column of integers fails to match a template of floats.
+
+```python
+class Schemas:
+    ohlcv        = pl.Schema({'date': pl.Date, 'symbol': pl.String, 'close': pl.Float64})
+    fundamentals = pl.Schema({'symbol': pl.String, 'pe': pl.Float64})
+
+match incoming.schema:
+    case Schemas.ohlcv:        process_ohlcv(incoming)
+    case Schemas.fundamentals: process_fundamentals(incoming)
+```
 
 **R/dplyr** — same pattern. `names(df)` gives column names; dispatch via `if`/`else` on `setdiff` or `%in%`.
 
@@ -1315,7 +1376,7 @@ else: raise ValueError(f"unknown shape: {incoming.columns.tolist()}")
 
 **Julia/DataFrames.jl** — same pattern. `names(df)` gives column names; dispatch via `if`/`else` on set operations.
 
-**Summary:** No other tool has a schema as a first-class value. Everywhere else the schema is a list of column names extracted from the dataset and checked via set operations in control flow. Namo's `===` puts the schema-template directly into Ruby's case-statement dispatch, alongside `Integer === 5`. The template is also a Namo, so it composes with everything else — carries formulae, can be selected against, can be combined with operators. Extending the dispatch beyond simple shape-checking comes for free.
+**Summary:** Polars has a schema as a first-class value, `pl.Schema`, which Python's `match` can dispatch on by equality, dtypes included. In pandas and xarray the schema is a list of column or variable names extracted from the dataset and checked via set operations in control flow. Namo's `===` puts the schema-template directly into Ruby's case-statement dispatch, alongside `Integer === 5`. The template is also a Namo, so it composes with everything else — carries formulae, can be selected against, can be combined with operators. Extending the dispatch beyond simple shape-checking comes for free.
 
 ### Subset/superset tests
 
@@ -1330,14 +1391,14 @@ a >= b  # superset
 
 Multiset-theoretic on rows: duplicate rows count, so a single `{x:1}` is a proper subset of two `{x:1}`s. Pair with the set operators algebraically: `a & b == a` iff `a <= b`. Following stdlib `Set`'s precedent for mapping mathematical subset notation onto Ruby's comparison operators, generalised to multisets.
 
-**Pandas** — no built-in subset/superset test on DataFrames. Workarounds via merge and length comparison.
+**Pandas** — no built-in subset/superset test on DataFrames. Workarounds via merge and length comparison, which a duplicate in `b` throws off: the merge pairs `a`'s row with each copy.
 
 ```python
 # No direct equivalent
 is_subset = len(pd.merge(a, b, how='inner')) == len(a)
 ```
 
-**Polars** — no built-in. Workaround via anti-join — if the anti-join is empty, a is a subset of b.
+**Polars** — no built-in. Workaround via anti-join — if the anti-join is empty, a is a subset of b, as sets: duplicates aren't counted.
 
 ```python
 # No direct equivalent
@@ -1345,7 +1406,7 @@ is_subset = a.join(b, on=a.columns, how='anti').height == 0
 is_equal = is_subset and b.join(a, on=b.columns, how='anti').height == 0
 ```
 
-**R/dplyr** — no built-in for data frames.
+**R/dplyr** — no built-in for data frames. The `intersect` workaround deduplicates, so a duplicate row in `a` makes it answer false.
 
 ```r
 # No direct equivalent
@@ -1360,7 +1421,7 @@ is_subset <- nrow(intersect(a, b)) == nrow(a)
 all(ds1[var].equals(ds2[var]) for var in ds1.data_vars)
 ```
 
-**Julia/DataFrames.jl** — no built-in. Converting to sets of named tuples is the workaround.
+**Julia/DataFrames.jl** — no built-in. Converting to Sets of rows is the workaround; rows of different frames compare by value.
 
 ```julia
 # No direct equivalent
@@ -1394,11 +1455,11 @@ df['symbol'].unique()       # coordinates
 df['symbol'].tolist()       # values (just the column)
 ```
 
-**Polars** — similar to Pandas.
+**Polars** — similar to Pandas. `unique()` doesn't keep first-seen order unless asked.
 
 ```python
 df.columns                  # dimensions
-df['symbol'].unique()       # coordinates
+df['symbol'].unique(maintain_order=True)  # coordinates
 df['symbol'].to_list()      # values
 ```
 
@@ -1410,11 +1471,11 @@ unique(df$symbol)           # coordinates
 df$symbol                   # values
 ```
 
-**xarray** — dimensions, coordinates, and data variables are separate concepts with separate accessors.
+**xarray** — dimensions, coordinates, and data variables are separate concepts with separate accessors. A coordinate's values are unique only where it labels a dimension; along an observation dimension they repeat, and the unique values take `np.unique`.
 
 ```python
 ds.dims                     # dimensions
-ds.coords['symbol'].values  # coordinates
+ds.coords['symbol'].values  # coordinates, repeated along obs
 ds['close'].values          # values (data variable, numeric array)
 ```
 
@@ -1447,7 +1508,7 @@ The two names exist so users can reach for whichever fits the context — `value
 df.to_dict('list')   # {'symbol': ['BHP', ...], 'close': [42.5, ...]}
 ```
 
-**Polars** — `df.to_dict()` returns the columnar shape directly.
+**Polars** — `df.to_dict()` returns the columnar shape, as Series; `as_series=False` gives lists.
 
 ```python
 df.to_dict(as_series=False)
@@ -1465,10 +1526,11 @@ as.list(df)
 ds.to_dict()
 ```
 
-**Julia/DataFrames.jl** — no direct equivalent; you'd build the hash manually.
+**Julia/DataFrames.jl** — `Tables.columntable(df)` returns a NamedTuple of columns; a Dict is built from `pairs(eachcol(df))`.
 
 ```julia
-Dict(name => df[!, name] for name in names(df))
+Tables.columntable(df)
+Dict(pairs(eachcol(df)))
 ```
 
 **Summary:** Most tools have a columnar-dict conversion, with varying ergonomics. Namo's contribution is making `values` and `to_h` synonyms — the inspection method and the conversion method produce the same shape, so users don't have to decide which to learn.
@@ -1500,7 +1562,7 @@ elif matches_fundamentals(incoming):
     process_fundamentals(incoming)
 ```
 
-**Polars** — same as Pandas. No first-class schema-as-pattern construct.
+**Polars** — a `pl.Schema` can be the pattern in Python's `match`, as in "Schema dispatch" above, matching on equality of names and dtypes. Matching on a subset of columns is a predicate, as in Pandas.
 
 ```python
 if {'symbol', 'date', 'open', 'high', 'low', 'close', 'volume'}.issubset(incoming.columns):
@@ -1521,7 +1583,7 @@ if (matches_ohlcv(incoming)) {
 
 **Julia/DataFrames.jl** — Julia's multiple-dispatch and `Match.jl` package provide pattern matching capabilities, but not for DataFrame schemas specifically. You'd write predicate functions.
 
-**Summary:** No tool in this comparison exposes the schema as a separate pattern-matching object, and Namo no longer plans to — the whole Namo is the template, via `Namo#===`. The closest equivalent in the other tools remains predicate functions and `if/else` chains; in Namo, schema dispatch goes through Ruby's standard case-statement machinery with a Namo as the pattern — a construction that fits Ruby's conventions exactly but has no analogue in Python, R, or Julia's data-frame ecosystems.
+**Summary:** Namo no longer plans to expose the schema as a separate pattern-matching object — the whole Namo is the template, via `Namo#===`. The closest equivalent in the other tools remains predicate functions and `if/else` chains; in Namo, schema dispatch goes through Ruby's standard case-statement machinery with a Namo as the pattern — a construction that fits Ruby's conventions exactly. Python's `match` on a Polars `Schema` is the nearest analogue, matching names and dtypes by equality.
 
 
 ## What Namo doesn't have
@@ -1532,7 +1594,7 @@ Features present in competitors that Namo lacks or has deferred.
 
 **Pandas** — `pivot_table`, `melt`, `stack`, `unstack`.
 
-**Polars** — `pivot`, `melt`.
+**Polars** — `pivot`, `unpivot` (`melt` until 2.0).
 
 **R/dplyr** — `pivot_wider`, `pivot_longer` (tidyr).
 
@@ -1558,7 +1620,7 @@ Features present in competitors that Namo lacks or has deferred.
 
 ### Vectorised operations
 
-**Pandas**, **Polars**, **xarray**, **Julia** — operate on entire columns at once. Vectorised arithmetic runs at C/Fortran speed.
+**Pandas**, **Polars**, **xarray**, **R**, **Julia** — operate on entire columns at once, the arithmetic running in compiled code.
 
 **Namo** — currently operates row-by-row in pure Ruby. This is the tradeoff that enables lazy formulae and arbitrary Ruby in procs. Columnar storage (planned for 3.x) and optional C acceleration will narrow the performance gap for selection-heavy and numeric workloads while preserving the row-level formula model.
 
@@ -1566,13 +1628,13 @@ Features present in competitors that Namo lacks or has deferred.
 
 **Pandas** — reads CSV, Excel, SQL, Parquet, JSON, HTML, and more.
 
-**Polars** — reads CSV, Parquet, JSON, IPC.
+**Polars** — reads CSV, Parquet, JSON, IPC, Excel, Avro, Delta, and databases.
 
-**R** — reads CSV, Excel, databases.
+**R** — reads CSV in base R; Excel and databases through packages such as readxl and DBI.
 
-**xarray** — reads NetCDF, GRIB, Zarr.
+**xarray** — reads NetCDF and Zarr, and GRIB through the separately installed cfgrib backend.
 
-**Julia/DataFrames.jl** — reads CSV, Arrow, databases.
+**Julia/DataFrames.jl** — reads nothing itself; CSV.jl, Arrow.jl and the database packages produce DataFrames.
 
 **Namo** — takes an array of hashes. The I/O is Ruby's job. Loaders planned for 1.2 as optional sugar.
 

@@ -1,6 +1,32 @@
-# CHANGELOG
+# namo/CHANGELOG
+
+## 20261102
+
+0.32.7: ~ COMPARISON.md: Verify and where necessary correct claims made about pandas, Polars, xarray, dplyr, and DataFrames.jl; + comparison/*_claims, which contain executable verification code.
+
+1. + comparison/namo_claims.rb, pandas_claims.py, polars_claims.py, xarray_claims.py, dplyr_claims.R, dataframes_claims.jl: each runs every snippet COMPARISON.md shows for its tool, on inline data, then the probes behind its claims.
+2. ~ COMPARISON.md: + the versions compared and a pointer to the scripts; the date is the day of checking.
+3. ~ COMPARISON.md: Polars: `filter` takes keyword equality; one `with_columns` doesn't see the columns it makes; `melt` is `unpivot` and `frame_equal` is gone; `join_where`, `pl.Schema` and `assert_frame_equal(check_row_order=False)` added where they answer a "none offers" claim.
+4. ~ COMPARISON.md: pandas: a join with no `on=` doesn't warn; `.loc` takes rows and columns in one call, and a callable; strings infer as `str`, not `object`; registered accessors noted against parameterised formulae and formularies.
+5. ~ COMPARISON.md: xarray: `.str` on coordinates and string data variables; `sel` with a scalar, a list and a slice in one call, and none over repeated labels; `sel(method='ffill')` as an asof lookup; `where` with `drop=True` and a callable; `identical`/`equals`/`broadcast_equals`.
+6. ~ COMPARISON.md: dplyr: `symdiff()`, `setequal()`, `cross_join()` and `join_by()`'s rolling and inequality joins exist; a join with no `by` messages rather than warns; `all_equal()` gave way to `all.equal()`; a tibble keeps no row names; `filter()` wants vectorised predicates; zoo's `rollmean` centres its window, so the snippets take `align = 'right'`.
+7. ~ COMPARISON.md: DataFrames.jl: `==` returns one Bool; `symdiff` works on Sets of rows; `Tables.columntable` is the columnar conversion; the rolling snippets pad `rollmean` under `transform`, `combine` having refused windows of two lengths.
+8. ~ COMPARISON.md: the summaries those contradicted narrowed, and unsourced claims dropped; + at 0.32.7 a beginless range of Dates or Strings raises `TypeError` in selection, so the windowed formulae want numeric dates.
+9. ~ comparison/README.md: + the claims scripts.
+10. ~ .gitignore: + comparison/.venv/, comparison/.tools/.
+11. ~ namo.rb.gemspec: the gemspec heads the file list, as in namo.gemspec.
+12. ~ CHANGELOG: the heading names the project, `# namo/CHANGELOG`; + the 0.32.6 entry, which 0.32.6 shipped without.
+13. ~ Namo::VERSION: /0.32.6/0.32.7/
 
 ## 20261003
+
+0.32.6: ~ Namo::Enumerable#group_by: the block form and the no-argument call raise errors which say what to do instead.
+
+1. ~ Namo::Enumerable#group_by: When called with a block, it raises an ArgumentError naming the block form as unimplemented and entries.group_by{|row| ...} as the way to partition by a computed key, where Ruby's arity error said only that the count was wrong — which told the reader something was broken rather than that the boundary was drawn at 0.20.0, a computed key having no dimension to round-trip through.
+2. ~ Namo::Enumerable#group_by: When called with no argument, it raises 'group_by needs a dimension' rather than the same arity error.
+3. ~ README.md: The group_by section says it takes a dimension and no block, and what entries.group_by returns instead.
+4. ~ ROADMAP.md: + 0.32.6; + the optimisation candidates already in view, parked under 1.1 until there is a baseline to measure them against.
+5. ~ Namo::VERSION: /0.32.5/0.32.6/
 
 0.32.5: Documentation clean up.
 

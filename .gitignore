@@ -25,6 +25,10 @@ Gemfile.lock
 .yardoc
 _yardoc
 
+# comparison/ environments
+/comparison/.venv/
+/comparison/.tools/
+
 # Mac
 .DS_Store
 
