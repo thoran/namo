@@ -21,21 +21,25 @@ its label and its result, or the exception it raised.
 | `dplyr_claims.R` | R, with dplyr, tidyr, tibble and zoo |
 | `dataframes_claims.jl` | Julia, with DataFrames.jl, RollingFunctions.jl and Tables.jl |
 
-Each prints the versions it ran against first. The Python ones want an environment
-with pandas, Polars and xarray, which a virtual environment in this directory
-provides:
+Each prints the versions it ran against first. `setup` builds the environments they
+run in, inside this directory and ignored by git: `.venv/` for Python, with uv, and
+`.tools/` for R, with micromamba from conda-forge, and for Julia, from julialang.org's
+tarball, its sha256 checked. It wants uv and Ruby, and nothing else installed.
 
 ```sh
-uv venv comparison/.venv
-uv pip install -p comparison/.venv/bin/python pandas polars xarray
+comparison/setup
 comparison/.venv/bin/python comparison/polars_claims.py
+comparison/.tools/bin/Rscript comparison/dplyr_claims.R
+comparison/.tools/bin/julia comparison/dataframes_claims.jl
 ```
 
-The R one wants R with dplyr, tidyr, tibble and zoo, and the Julia one Julia with
-DataFrames, RollingFunctions and Tables; both run as they stand, `Rscript
-comparison/dplyr_claims.R` and `julia comparison/dataframes_claims.jl`, given an
-environment with those packages. `.venv/` and `.tools/` here are ignored by git, for
-environments kept beside the scripts.
+By default it installs the versions COMPARISON.md names, so a run reproduces the
+comparison as dated; `--latest` takes the newest releases of the packages, R, and
+Julia instead, for checking it again. uv uses a Python of the version asked for where
+one is installed, and otherwise downloads one into `.tools/`. Naming `python`, `r`, or
+`julia` builds that one alone. Each is removed and built afresh, so it can be run
+again, and the downloads and package caches are removed after. The whole is about
+2.3 GB, and can be deleted between runs.
 
 `namo_claims.rb` loads `lib/` from this repository rather than an installed gem.
 
