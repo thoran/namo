@@ -1,6 +1,8 @@
 require 'minitest/autorun'
 require 'minitest-spec-context'
 
+require 'date'
+
 require_relative '../lib/namo'
 
 module SupportedFlow
@@ -557,6 +559,36 @@ describe Namo do
       it "supports beginless and endless ranges" do
         _(sales[price: ..15.0].to_a.count).must_equal 2
         _(sales[quantity: 100..].to_a.count).must_equal 2
+      end
+
+      it "supports beginless and endless ranges of Dates" do
+        dated = Namo.new([
+          {date: Date.new(2026, 1, 1), close: 1},
+          {date: Date.new(2026, 1, 2), close: 2},
+          {date: Date.new(2026, 1, 3), close: 3},
+        ])
+        _(dated[date: ..Date.new(2026, 1, 2)].values(:close)).must_equal [1, 2]
+        _(dated[date: Date.new(2026, 1, 2)..].values(:close)).must_equal [2, 3]
+      end
+
+      it "supports beginless and endless ranges of Strings" do
+        dated = Namo.new([
+          {date: "2026-01-01", close: 1},
+          {date: "2026-01-02", close: 2},
+          {date: "2026-01-03", close: 3},
+        ])
+        _(dated[date: .."2026-01-02"].values(:close)).must_equal [1, 2]
+        _(dated[date: "2026-01-02"..].values(:close)).must_equal [2, 3]
+      end
+
+      it "windows a two-arity formula over Dates" do
+        dated = Namo.new([
+          {date: Date.new(2026, 1, 1), close: 1},
+          {date: Date.new(2026, 1, 2), close: 2},
+          {date: Date.new(2026, 1, 3), close: 3},
+        ])
+        dated[:running] = proc{|row, namo| namo[date: ..row[:date]].values(:close).sum}
+        _(dated.values(:running)).must_equal [1, 3, 6]
       end
 
       it "composes with projection in a single call" do

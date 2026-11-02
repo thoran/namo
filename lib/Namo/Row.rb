@@ -27,8 +27,10 @@ class Namo
     def match?(selections)
       selections.all? do |dimension, coordinate|
         case coordinate
-        when Array, Range
+        when Array
           coordinate.include?(self[dimension])
+        when Range
+          coordinate.cover?(self[dimension])
         when Proc
           coordinate.call(self[dimension])
         when Regexp

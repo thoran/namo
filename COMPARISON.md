@@ -614,8 +614,6 @@ namo[:sma_20] = proc do |row, namo|
 end
 ```
 
-At 0.32.7 the window above, and those in the next two sections, need `date` to be numeric: `Row#match?` tests a range with `include?`, which raises `TypeError` for a beginless range of Dates or Strings.
-
 **Pandas** — the `groupby` + `transform` + `rolling` chain is the idiom. Powerful but the formula is not attached to the dataset — it's a one-off column creation.
 
 ```python

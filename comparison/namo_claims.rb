@@ -33,8 +33,7 @@ def records
   ]
 end
 
-# Dates as day numbers: at 0.32.7 Row#match? tests a Range with include?, which
-# raises TypeError for a beginless range of Dates or Strings.  Shown below.
+# Dates as day numbers, or as Dates from a start Date.
 def prices(start = 1)
   rows = [['BHP', 40.0], ['RIO', 110.0]].flat_map do |symbol, base|
     (0...25).map{|i| {symbol: symbol, date: start + i, close: base + i, volume: 1000 + 10 * i}}

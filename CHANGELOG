@@ -2,6 +2,15 @@
 
 ## 20261102
 
+0.32.8: ~ Namo::Row#match?: A Range selects by cover?, so beginless and endless ranges of Dates and Strings select rather than raising TypeError.
+
+1. ~ Namo::Row#match?: A Range is tested with cover? and an Array with include?, where both had been tested with include?, which raises for a beginless or endless range of anything not numeric. A bounded range of Strings now selects by ordering, as a bounded range of numbers already did, rather than by membership of its succ sequence.
+2. + test/namo_test.rb: beginless and endless ranges of Dates and of Strings select; a two-arity formula windows over Dates.
+3. ~ COMPARISON.md: - the note that the windowed formulae want numeric dates.
+4. ~ comparison/namo_claims.rb: - the comment saying a beginless range of Dates raises.
+5. ~ ROADMAP.md: + 0.32.8.
+6. ~ Namo::VERSION: /0.32.7/0.32.8/
+
 0.32.7: ~ COMPARISON.md: Verify and where necessary correct claims made about pandas, Polars, xarray, dplyr, and DataFrames.jl; + comparison/*_claims, which contain executable verification code.
 
 1. + comparison/namo_claims.rb, pandas_claims.py, polars_claims.py, xarray_claims.py, dplyr_claims.R, dataframes_claims.jl: each runs every snippet COMPARISON.md shows for its tool, on inline data, then the probes behind its claims.
