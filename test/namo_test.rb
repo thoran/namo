@@ -325,6 +325,30 @@ describe Namo do
       _(namo.values(:agg, :x)).must_equal(agg: [2, 2, 2], x: [1, 2, 3])
       _(calls).must_equal 3
     end
+
+    it "reads a frozen Namo, the scope being held off the receiver" do
+      namo = Namo.new([{x: 1}, {x: 2}])
+      namo[:double] = proc{|row| row[:x] * 2}
+      namo[:total] = proc{|row, namo| namo.values(:double).sum}
+      namo.freeze
+      _(namo.values(:total)).must_equal [6, 6]
+      _(namo.coordinates(:double)).must_equal [2, 4]
+      _(namo.to_a).must_equal [{x: 1, double: 2, total: 6}, {x: 2, double: 4, total: 6}]
+    end
+
+    it "gives each thread reading one Namo a scope of its own" do
+      namo = Namo.new([{n: 1}])
+      entered, released = Queue.new, Queue.new
+      holder = nil
+      namo[:held] = proc{|row| entered << true; released.pop; row[:n]}
+      # :reader's formula lets the holding thread's access finish mid-way through this
+      # one, which must leave this access's scope standing for the :n that follows.
+      namo[:reader] = proc{|row| released << true; holder.join; row[:n]}
+      holder = Thread.new{namo.values(:held)}
+      entered.pop
+      _(namo.values(:reader, :n)).must_equal(reader: [1], n: [1])
+      _(holder.value).must_equal [1]
+    end
   end
 
   describe "#to_h" do
