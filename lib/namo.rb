@@ -368,18 +368,25 @@ class Namo
     end
   end
 
+  # An access's scope is held per fiber, keyed by the Namo, rather than on the Namo
+  # itself, so as a frozen Namo can be read and two threads reading one Namo don't
+  # share a scope.
   def materialising
-    return yield if @materialised
-    @materialised = {}
+    return yield if materialised_scopes.key?(self)
+    materialised_scopes[self] = {}
     begin
       yield
     ensure
-      @materialised = nil
+      materialised_scopes.delete(self)
     end
   end
 
+  def materialised_scopes
+    Thread.current[:namo_materialised_scopes] ||= {}.compare_by_identity
+  end
+
   def values_for(dim)
-    @materialised[dim] ||= (
+    materialised_scopes[self][dim] ||= (
       if data_dimensions.include?(dim)
         @data.map{|row_data| row_data[dim]}
       else

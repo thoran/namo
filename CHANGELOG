@@ -1,5 +1,14 @@
 # namo/CHANGELOG
 
+## 20261103
+
+0.32.10: ~ Namo#materialising: A frozen Namo can be read again, and two threads reading one Namo no longer share a scope.
+
+1. ~ Namo#materialising, #values_for: + #materialised_scopes, - @materialised. An access's scope is held per fiber, keyed by the Namo, rather than on the Namo itself. Since 0.29.0, every read wrote to the Namo, so values, coordinates, and to_a raised FrozenError on a frozen Namo, and two threads reading one Namo shared a scope which either could clear while the other was using it.
+2. ~ test/namo_test.rb: Reading a frozen Namo through a two-arity formula is tested, as is an access keeping its scope when another thread's access to the same Namo ends part-way through it.
+3. ~ ROADMAP.md: The 0.32.10 change is described.
+4. ~ Namo::VERSION: /0.32.9/0.32.10/
+
 ## 20261102
 
 0.32.9: + comparison/setup: Builds the environments the comparison/*_claims scripts run in, at the versions COMPARISON.md names, or with --latest the newest releases.
