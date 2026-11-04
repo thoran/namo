@@ -6,7 +6,7 @@ Compared at Namo 0.32.7; pandas 3.1.0, Polars 2.1.0 and xarray 2026.9.0, on Pyth
 
 Every snippet below, and the probes behind the claims, are run by the `*_claims` scripts in [comparison/](comparison/README.md), one per tool.
 
-Feature-by-feature comparison of Namo against Pandas, Polars, R/dplyr, xarray, and Julia/DataFrames.jl. Covers both where the tools are the same and where they differ.
+Feature-by-feature comparison of Namo against Pandas, Polars, R/dplyr, xarray, and Julia/DataFrames.jl. Covers both where the tools are the same and where they differ. [RUBY_COMPARISON.md](RUBY_COMPARISON.md) sets Namo against the other Ruby data libraries.
 
 Namo feature status is marked as **shipped**, **planned** (with version), or **not planned**.
 

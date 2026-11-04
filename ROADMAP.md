@@ -118,6 +118,8 @@ Three components, three responsibilities, clean interfaces. The same passive Nam
 
 Reactive frameworks like RxJS push values through subscription graphs. Namo provides the live computation property that makes such frameworks valuable, but leaves the reactivity infrastructure to the user — to be chosen and composed with whatever the rest of the system already uses. The Namo's job is to be a current-valued data container; everything else is composable around it.
 
+The same holds at the output edge. Namo does not print tables, draw charts, compute statistics, or pivot. Each of those has libraries devoted to it, and `values`, `to_h`, and `to_a` produce the shapes those libraries take, so passing a Namo to one is a single call rather than a wrapper. Statistics reach Namo through the methods a column responds to, as with `summary`'s `reducer:`. Pivoting was ruled out at 0.24.0: widening data into a grid is presentation, so it belongs at the output edge rather than in the algebra, and tables and charts are presentation in the same way. The README's "Using Namo with other libraries" shows one library for each. Any proposal to bring one of them into Namo should first answer the reasons given here.
+
 ### Portability of analytical artefacts
 
 Following from self-contained formulae and the unified interface: a Namo is a portable analytical artefact. Data plus computation plus structure travel together. Serialise a Namo, send it to a colleague, and they have everything needed to query it, extend it, and recompute its derived values.
@@ -1329,6 +1331,14 @@ A patch rather than a minor: what raises is new wording, not new ground — the 
 
 A patch rather than a minor: selection by a Range is not new ground, and what it now does for Strings is what it already did for numbers.
 
+### 0.32.10 (2026-11-03): reading no longer writes to the Namo
+
+0.29.0 held an access's scope in `@materialised` on the Namo being read, so every read was also a write. A frozen Namo raised `FrozenError` from `values`, `coordinates`, and `to_a`, though the README's Mutability section advises freezing one before using it as a hash key or sharing it across threads. And two threads reading the same unfrozen Namo shared one scope, so whichever access finished first cleared it while the other was still using it, and the other then raised `NoMethodError`. The scope is now held per fiber in `Thread.current`, keyed by the Namo's identity. A frozen Namo can be read, including a shareable one inside a Ractor, and each thread's access has its own scope. Nesting works as before: a formula which calls `values` on the same Namo, in the same fiber, finds the open scope and reuses it.
+
+The scope is fiber-local rather than in fiber storage (`Fiber[]`), because a new thread inherits fiber storage, which would give one thread's scope to the threads it is meant to be kept apart from.
+
+This is a patch rather than a minor version: the only change is that what could be read before 0.29.0 can be read again. Freezing as a supported state, with a deep freeze and the caching it allows, is still planned for 2.x.
+
 ### Summary
 
 The set operators (`+`, `-`, `&`, `|`, `^`), the comparison operators (`==`, `===`, `eql?`, `<`, `<=`, `>`, `>=`), and the composition operators (`*`, `**`, `/`) — `*` and `**` taking optional blocks for custom match refinement — together with selection (exact, array, range, proc, regex), projection, contraction, formulae (one-arity row-scoped, two-arity collection-scoped, and parameterised receiving arguments at access time, mixing freely), polymorphic assignment via `[]=` (a callable — proc, lambda, or `Method` — registers a formula, scalar broadcasts to every row, exclusive storage either way), data/formula exclusivity carried through projection (naming a derived dimension materialises it and drops the formula; omitting it carries the formula live) and composition (`*` and `**` refuse a data/formula name collision), the full inspection vocabulary (`dimensions`, `data_dimensions`, `derived_dimensions`, `coordinates`, `values`, `to_h`), Row value semantics (`==`, `eql?`, `hash`), the subset-returning Enumerable methods (`select`, `reject`, `sort_by`, `first`, `last`, `take`, `drop`, `take_while`, `drop_while`, `uniq`, `partition`) returning Namos, a constructor that takes data positionally or by keyword and carries an optional `name:`, `Namo::Collection` — a hierarchical aggregate of named member Namos, assembled with `<<` and queried through `summary`/`detail` views with lazy detail materialisation, `summary`/`as_summary` taking an optional block for a per-member reduction beyond a single named reducer — and `group_by`, the partition-side constructor that splits a Namo into a `Collection` (the mirror of assembling one), formularies (`Namo::Formulary`) — reusable modules of derived dimensions attached to a Namo at runtime through `attach`/`<<` (or `attach!`, the forceful sibling that evicts a colliding data column rather than raising) or mixed into a subclass through `include`, and removed by `detach` — the mutating family is `attach`/`attach!`/`detach` — resolving as first-class derived dimensions — and the polymorphic `<<` operator that appends the constituent appropriate to its receiver (a formulary or a data row to a base Namo, guarding a row against a data/formula name collision; a member to a `Collection`), give Namo a complete vocabulary for working with a single dataset, combining datasets that share the same dimensions, combining or decomposing datasets with different dimensions, composing named datasets into a queryable whole, partitioning one back into named pieces, and drawing on reusable libraries of derived dimensions, with Rows that behave correctly as Ruby values, cross-row computation that reflects the live state of the Namo it's asked through, and analytical chains that stay closed through filtering and ordering. The next phase is the 1.0.0 stable release.
@@ -1929,7 +1939,7 @@ Development order:
 
 1. Default (current): always RowStore, no choice, no configuration.
 2. Choose at instantiation: Namo detects the input shape (array of hashes vs hash of arrays) or accepts an explicit `storage:` keyword.
-3. Dynamic: one primary layout with the other cached on demand, cache invalidated on mutation.
+3. Dynamic: Namo switches between the two layouts to suit the operations it is asked to do, as often as needed (below).
 
 ```ruby
 # Row-oriented (array of hashes, current)
@@ -1938,6 +1948,24 @@ namo = Namo.new([{symbol: 'BHP', close: 42.5}, ...])
 # Column-oriented (hash of arrays) — the shape to_h produces
 namo = Namo.new({symbol: ['BHP', ...], close: [42.5, ...]})
 ```
+
+#### Dynamic layout
+
+The shape the data is given in does not decide which layout suits the operations that follow. Rows are faster for operations which use whole rows: iteration, formulae which read several fields of a row, appending, and `to_a`. Columns are faster for operations on a single dimension: selection, aggregation, sorting, and `values`. A Namo built from rows and then filtered by sector a thousand times would be faster held as columns, and one built from columns and then iterated over would be faster held as rows. Step 2 fixes the layout when the Namo is created, which suits the first operation but not later ones of a different kind.
+
+So Namo may change its layout: to columns while most operations are on columns, and back to rows when they are not, as often as needed. No public method exposes the layout. `values`, `to_h`, `to_a`, and `each` return the same results whichever store holds the data, so switching changes performance and never results, as with 2.x caching. Nor need the stores be written in Ruby: a `ColumnStore` of typed native buffers, using the C extension below, would work the same way, only faster.
+
+How Namo decides when to switch is not yet settled. There are three options, from simplest to most elaborate:
+
+- **Per operation.** Each operation declares the layout it prefers. A Namo holding the other layout switches when transposing and then running the operation is estimated to cost less than running it in the current layout. No history is kept.
+- **Per workload.** The Namo counts the kinds of operation it is asked to do, selections and aggregations against iterations and appends, and switches when one kind predominates. Some hysteresis stops it switching back and forth when the two kinds alternate.
+- **Both layouts.** A frozen Namo can keep both layouts, at the cost of the extra memory, and each operation uses whichever suits it.
+
+The per-operation rule is needed in any case, and the other two build on it. Whether keeping a history of the workload is worth its overhead is a question for the 1.1 benchmarking suite.
+
+As for freezing, the Mutability open question's conclusion still holds: no cache needs to detect mutation. A frozen Namo can keep a switched layout, or both layouts, indefinitely, since nothing can make them stale. An unfrozen Namo either replaces its stored layout with the new one, discarding the old so that there is nothing to keep in step, or builds the other layout for one access only. 0.29.0's access-scoped materialisation already does the latter: `values_for` builds the columns an access needs and discards them when it returns. What is ruled out is keeping a second layout alongside the first on an unfrozen Namo and invalidating it on mutation, since the `attr_accessor :data` back door means that not every mutation can be detected.
+
+The `data` accessor is the unsettled part. It returns the row store itself, but when columns are stored there is no row store to return. It could transpose back to rows, so that calling `data` switches the layout to rows. Or it could return rows built for that call, in which case changing them would change nothing in the Namo, silently, unless they are returned frozen, so that a change raises an error and has to go through `<<` or `[]=`, where Namo can see it. Either of these last two would change the README's Mutability contract, under which `data` is deliberately a back door.
 
 When DuckDB is the backend (4.x), neither layout matters — the data lives in DuckDB. Columnar storage only matters when Namo is doing the computation itself in pure Ruby.
 

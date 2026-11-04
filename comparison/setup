@@ -1,24 +1,28 @@
 #!/usr/bin/env ruby
 # comparison/setup
 
-# 20261102
-# 0.0.0
+# 20261104
+# 0.1.1
 
-# Builds the environments the *_claims scripts run in, inside this directory:
+# Builds the environments the scripts here run in, inside this directory:
 # .venv/ for Python, with uv, and .tools/ for R, with micromamba from conda-forge,
-# and for Julia, from julialang.org's own tarball. Nothing is installed elsewhere.
+# for Julia, from julialang.org's own tarball, and for the Ruby data libraries and
+# those other_libraries.rb passes a Namo to, as gems with Apache Arrow's GLib libraries
+# from conda-forge under them. Nothing is installed elsewhere.
 #
-# By default the versions are those COMPARISON.md was checked against, so that a
-# run reproduces the dated comparison; --latest takes the newest releases instead,
-# for checking it again. Each environment named, or all three, is removed and built
-# afresh, and the downloads and package caches are removed after.
+# By default the versions are those COMPARISON.md, RUBY_COMPARISON.md, and the
+# README were checked against, so that a run reproduces the dated comparison; --latest takes the
+# newest releases instead, for checking it again. Each environment named, or all
+# four, is removed and built afresh, and the downloads and package caches are
+# removed after.
 
 require 'digest'
 require 'fileutils'
 require 'json'
 require 'open-uri'
 
-ENVIRONMENTS = %w{python r julia}
+ARROW_PACKAGES = {'arrow-c-glib' => '26.0.0'}
+ENVIRONMENTS = %w{python r julia ruby}
 JULIA_PACKAGES = {'DataFrames' => '1.8.2', 'RollingFunctions' => '0.8.1', 'Tables' => nil}
 JULIA_VERSION = '1.13.3'
 JULIA_VERSIONS_URL = 'https://julialang-s3.julialang.org/bin/versions.json'
@@ -26,16 +30,17 @@ MICROMAMBA_URL = 'https://micro.mamba.pm/api/micromamba/%s/latest'
 PYTHON_PACKAGES = {'pandas' => '3.1.0', 'polars' => '2.1.0', 'xarray' => '2026.9.0', 'numpy' => '2.5.4', 'pyarrow' => '26.0.0'}
 PYTHON_VERSION = '3.13.18'
 R_PACKAGES = {'r-base' => '4.5.3', 'r-dplyr' => '1.2.1', 'r-tidyr' => '1.3.2', 'r-tibble' => '3.3.1', 'r-zoo' => '1.9_0'}
+RUBY_GEMS = {'daru' => '0.3', 'matrix' => '0.4.3', 'rover-df' => '1.1.0', 'polars-df' => '0.27.1', 'red_amber' => '0.5.2', 'statistics.rb' => '0.11.0', 'terminal-table' => '4.0.0', 'vega' => '0.6.0'}
 
 def usage
-  puts "setup - Build the environments the comparison/*_claims scripts run in."
+  puts "setup - Build the environments the scripts in comparison/ run in."
   puts
-  puts "Usage: comparison/setup [--latest] [python] [r] [julia]"
+  puts "Usage: comparison/setup [--latest] [python] [r] [julia] [ruby]"
   puts
-  puts "With no environment named, builds all three. Each is removed and built afresh."
+  puts "With no environment named, builds all four. Each is removed and built afresh."
   puts
   puts "Options:"
-  puts "  -l, --latest  The newest releases, rather than the versions COMPARISON.md names"
+  puts "  -l, --latest  The newest releases, rather than the versions the comparisons name"
   puts "  -h, --help    Show this help"
 end
 
@@ -234,6 +239,60 @@ def build_julia
   install_julia
   add_julia_packages
   write_julia_wrapper
+end
+
+def arrow_specs
+  ARROW_PACKAGES.map{|name, version| latest? ? name : "#{name}=#{version}"}
+end
+
+def install_arrow
+  run(micromamba, 'create', '-y', '-q', '-p', tools_path('arrow'), '-c', 'conda-forge', '--override-channels', *arrow_specs, env: {'MAMBA_ROOT_PREFIX' => tools_path('mamba')})
+  remove(tools_path('mamba'))
+end
+
+# Red Arrow's version must be Arrow's, so it is read from what was installed.
+def arrow_version
+  File.read(tools_path('arrow', 'lib', 'pkgconfig', 'arrow-glib.pc'))[/^Version: (\S+)/, 1]
+end
+
+def gem_env
+  {'GEM_HOME' => tools_path('ruby'), 'GEM_PATH' => tools_path('ruby'), 'PKG_CONFIG_PATH' => tools_path('arrow', 'lib', 'pkgconfig')}
+end
+
+def gem_specs
+  ["red-arrow:#{arrow_version}"] + RUBY_GEMS.map{|name, version| latest? ? name : "#{name}:#{version}"}
+end
+
+def install_gems
+  run(File.join(RbConfig::CONFIG['bindir'], 'gem'), 'install', '--no-document', *gem_specs, env: gem_env)
+  remove(tools_path('ruby', 'cache'))
+end
+
+# Runs the Ruby which ran setup, with the gems and the Arrow libraries installed
+# here. -W0, since GLib's bindings warn on load and would bury what the scripts
+# print.
+def write_ruby_wrapper
+  path = tools_path('bin', 'ruby')
+  File.write(path, <<~SH)
+    #!/bin/sh
+    tools=$(cd "$(dirname "$0")/.." && pwd)
+    export GEM_HOME="$tools/ruby"
+    export GEM_PATH="$tools/ruby"
+    export GI_TYPELIB_PATH="$tools/arrow/lib/girepository-1.0"
+    export DYLD_LIBRARY_PATH="$tools/arrow/lib"
+    export LD_LIBRARY_PATH="$tools/arrow/lib"
+    exec "#{RbConfig.ruby}" -W0 "$@"
+  SH
+  File.chmod(0755, path)
+end
+
+def build_ruby
+  heading 'Ruby'
+  remove(tools_path('ruby'), tools_path('arrow'), tools_path('mamba'), micromamba)
+  install_micromamba
+  install_arrow
+  install_gems
+  write_ruby_wrapper
 end
 
 def build_environments

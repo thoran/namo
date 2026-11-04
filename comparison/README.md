@@ -1,10 +1,11 @@
 # comparison
 
 Two sets of scripts: those which run the snippets in
-[COMPARISON.md](../COMPARISON.md), and those behind "Measured, at 0.31.0" in
+[COMPARISON.md](../COMPARISON.md), [RUBY_COMPARISON.md](../RUBY_COMPARISON.md), and
+the README's "Using Namo with other libraries", and those behind the figures in RUBY_COMPARISON.md and "Measured, at 0.31.0" in
 [ROADMAP.md](../ROADMAP.md).
 
-## The COMPARISON.md scripts
+## The claims scripts
 
 One per tool, each with its own small inline data, so they run on a clean clone
 given the tool. Each runs every snippet COMPARISON.md shows for its tool, in the
@@ -20,30 +21,59 @@ its label and its result, or the exception it raised.
 | `xarray_claims.py` | xarray, with pandas and NumPy |
 | `dplyr_claims.R` | R, with dplyr, tidyr, tibble and zoo |
 | `dataframes_claims.jl` | Julia, with DataFrames.jl, RollingFunctions.jl and Tables.jl |
+| `ruby_claims.rb` | RUBY_COMPARISON.md: Namo, Daru, Rover, Polars-ruby, and RedAmber |
+| `other_libraries.rb` | the README's "Using Namo with other libraries": statistics.rb, terminal-table, vega, and Polars-ruby |
 
 Each prints the versions it ran against first. `setup` builds the environments they
 run in, inside this directory and ignored by git: `.venv/` for Python, with uv, and
-`.tools/` for R, with micromamba from conda-forge, and for Julia, from julialang.org's
-tarball, its sha256 checked. It wants uv and Ruby, and nothing else installed.
+`.tools/` for R, with micromamba from conda-forge, for Julia, from julialang.org's
+tarball, its sha256 checked, and for the Ruby libraries and those `other_libraries.rb`
+passes a Namo to, as gems in `.tools/ruby/` over Apache Arrow's GLib libraries from conda-forge in `.tools/arrow/`, which
+RedAmber wants. It wants uv and Ruby, and nothing else installed.
 
 ```sh
 comparison/setup
 comparison/.venv/bin/python comparison/polars_claims.py
 comparison/.tools/bin/Rscript comparison/dplyr_claims.R
 comparison/.tools/bin/julia comparison/dataframes_claims.jl
+comparison/.tools/bin/ruby comparison/ruby_claims.rb
+comparison/.tools/bin/ruby comparison/other_libraries.rb
 ```
 
-By default it installs the versions COMPARISON.md names, so a run reproduces the
-comparison as dated; `--latest` takes the newest releases of the packages, R, and
-Julia instead, for checking it again. uv uses a Python of the version asked for where
-one is installed, and otherwise downloads one into `.tools/`. Naming `python`, `r`, or
-`julia` builds that one alone. Each is removed and built afresh, so it can be run
-again, and the downloads and package caches are removed after. The whole is about
-2.3 GB, and can be deleted between runs.
+`.tools/bin/ruby` runs the Ruby which ran `setup`, with those gems and libraries.
 
-`namo_claims.rb` loads `lib/` from this repository rather than an installed gem.
+By default it installs the versions the two comparisons and the README name, so a run reproduces
+them as dated; `--latest` takes the newest releases of the packages, R, Julia, and
+the gems instead, for checking them again, Red Arrow taking the version of the Arrow
+installed. uv uses a Python of the version asked for where one is installed, and
+otherwise downloads one into `.tools/`. Naming `python`, `r`, `julia`, or `ruby`
+builds that one alone. Each is removed and built afresh, so it can be run again, and
+the downloads and package caches are removed after. The whole is about 3.3 GB, of
+which the Ruby environment is 1 GB, and can be deleted between runs.
 
-## The timing scripts
+`namo_claims.rb`, `ruby_claims.rb`, `other_libraries.rb`, and `ruby_dataframes.rb` load `lib/` from this
+repository rather than an installed gem.
+
+## The Ruby libraries timing script
+
+`ruby_dataframes.rb` is behind the "Measured" section of RUBY_COMPARISON.md. It runs
+on a clean clone given the `ruby` environment, since it generates its data from a
+fixed seed:
+
+```sh
+comparison/.tools/bin/ruby comparison/ruby_dataframes.rb
+comparison/.tools/bin/ruby comparison/ruby_dataframes.rb 5000 50000
+```
+
+One workload in each library, as idiomatically as that library writes it: select
+one sector's rows, derive a price-earnings ratio, sort by it, and read the ratios
+back as an Array. **construct** is the library taking the rows as an Array of
+Hashes, and **compute** is the workload. Every library's ratios are compared with
+plain Ruby's before anything is timed, and the script stops on a disagreement.
+Medians of five, after a warm run. A library which will not load is skipped rather
+than failing the run.
+
+## The ROADMAP.md timing scripts
 
 These do not run on a clean clone, which is why they are here rather than in
 `script/`. They need a sqlite database that is not in this repository, and the

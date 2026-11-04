@@ -1,5 +1,43 @@
 # namo/CHANGELOG
 
+## 20261104
+
+0.32.13: + README.md: "Using Namo with other libraries", passing a Namo to statistics.rb, terminal-table, vega, and Polars-ruby, with comparison/other_libraries.rb running its examples.
+
+1. + README.md: "Using Namo with other libraries", after "Inspection output": Statistics on a column, in a two-arity formula, and as a summary reducer, with statistics.rb; a terminal table from values, with terminal-table; a Vega-Lite chart from to_a, with vega; and a pivot from values, with Polars-ruby.
+2. ~ README.md: The reducer: note names statistics.rb.
+3. + comparison/other_libraries.rb: Runs every snippet in "Using Namo with other libraries", in order, then the probe behind its caveat.
+4. ~ comparison/setup: + statistics.rb 0.11.0, terminal-table 4.0.0, and vega 0.6.0 in the ruby environment.
+5. ~ comparison/README.md: + other_libraries.rb.
+6. ~ comparison/ruby_claims.rb: + Polars, Rover, and RedAmber frames built from a Namo's to_h.
+7. ~ RUBY_COMPARISON.md: Display is left to other libraries, with a pointer to "Using Namo with other libraries", where the others had been said to do it better; + the libraries compose, a Namo's values and to_h being what the three columnar ones are built from.
+8. ~ ROADMAP.md: Composition with surrounding systems: + Namo leaves tables, charts, statistics, and pivots to other libraries at the output edge, as 0.24.0 did pivoting.
+9. ~ Namo::VERSION: /0.32.12/0.32.13/
+
+0.32.12: ~ ROADMAP.md: 3.x columnar storage's third step, Dynamic, switches between rows and columns to suit the operations a Namo is asked to do, where it had kept the second layout as a cache invalidated on mutation.
+
+1. ~ ROADMAP.md: 3.x, Columnar storage: Step 3 rewritten; + "Dynamic layout": Which operations suit rows and which suit columns, a ColumnStore of native buffers, three options for deciding when to switch, how switching interacts with freezing, and what data returns when columns are stored. Invalidation on mutation is dropped, since the data back door means that not every mutation can be detected.
+2. ~ Namo::VERSION: /0.32.11/0.32.12/
+
+## 20261103
+
+0.32.11: + RUBY_COMPARISON.md: Namo against Daru, Rover, Polars-ruby, and RedAmber, with comparison/ruby_claims.rb running its snippets and probes, and comparison/ruby_dataframes.rb its timings.
+
+1. + RUBY_COMPARISON.md: Why Namo rather than one of the Ruby options, compared at Daru 0.3, Rover 1.1.0, Polars-ruby 0.27.1, and RedAmber 0.5.2 on Ruby 4.0.7, with measured timings.
+2. + comparison/ruby_claims.rb: Runs every snippet in RUBY_COMPARISON.md, in order, then the probes behind its claims.
+3. + comparison/ruby_dataframes.rb: One workload in each library on generated data, checking each answer against plain Ruby's before timing it.
+4. ~ comparison/setup: + ruby, building the gems in .tools/ruby/ over Apache Arrow's GLib libraries from conda-forge in .tools/arrow/, which RedAmber needs, and .tools/bin/ruby to run with them; Red Arrow takes the installed Arrow's version, since the two must match.
+5. ~ comparison/README.md: + ruby_claims.rb, ruby_dataframes.rb, and the ruby environment.
+6. ~ COMPARISON.md: + A pointer to RUBY_COMPARISON.md.
+7. ~ Namo::VERSION: /0.32.10/0.32.11/
+
+0.32.10: ~ Namo#materialising: An access's scope is held per fiber, keyed by the Namo, rather than on the Namo, so as a frozen Namo can be read and two threads reading one Namo each have a scope of their own.
+
+1. ~ Namo#materialising, #values_for: + #materialised_scopes, an identity Hash in Thread.current; - @materialised. Since 0.29.0, values, coordinates, and to_a raised FrozenError on a frozen Namo, and an access to a Namo which another thread was also reading could have its scope cleared under it and raise NoMethodError.
+2. + test/namo_test.rb: A frozen Namo answers values, coordinates, and to_a through a two-arity formula; an access keeps its scope when another thread's access on the same Namo finishes part-way through it.
+3. ~ ROADMAP.md: + 0.32.10.
+4. ~ Namo::VERSION: /0.32.9/0.32.10/
+
 ## 20261102
 
 0.32.9: + comparison/setup: Builds the environments the comparison/*_claims scripts run in, at the versions COMPARISON.md names, or with --latest the newest releases.
