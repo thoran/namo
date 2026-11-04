@@ -1,5 +1,12 @@
 # namo/CHANGELOG
 
+## 20261104
+
+0.32.12: ~ ROADMAP.md: 3.x columnar storage's third step, Dynamic, switches between rows and columns to suit the operations a Namo is asked to do, where it had kept the second layout as a cache invalidated on mutation.
+
+1. ~ ROADMAP.md: 3.x, Columnar storage: Step 3 rewritten; + "Dynamic layout": Which operations suit rows and which suit columns, a ColumnStore of native buffers, three options for deciding when to switch, how switching interacts with freezing, and what data returns when columns are stored. Invalidation on mutation is dropped, since the data back door means that not every mutation can be detected.
+2. ~ Namo::VERSION: /0.32.11/0.32.12/
+
 ## 20261103
 
 0.32.11: + RUBY_COMPARISON.md: Namo against Daru, Rover, Polars-ruby, and RedAmber, with comparison/ruby_claims.rb running its snippets and probes, and comparison/ruby_dataframes.rb its timings.
