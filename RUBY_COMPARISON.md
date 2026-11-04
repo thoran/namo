@@ -323,7 +323,7 @@ namo.values(:close)         # => [42.5, 118.3]
 
 against `df.columns`, `df['symbol'].unique.to_a`, and `df['close'].to_a` in Polars, or `df.keys`, `df[:symbol].uniq.to_a`, and `df[:close].to_a` in Rover.
 
-What the others do better is display. Polars prints a table with types and borders, RedAmber a table with types, and Daru and Rover tables with aligned columns. Namo's `inspect` (0.31.0) prints its rows as hashes, including derived values, ten at most, with a count of the rest: complete within that limit, but not a table.
+The others print themselves as tables: Polars with types and borders, RedAmber with types, and Daru and Rover with aligned columns. Namo leaves presentation to other libraries, as it does statistics and charting. Its `inspect` (0.31.0) is for seeing what a Namo holds: its rows as hashes, including derived values, ten at most. `values`, `to_h`, and `to_a` give any library for tabular presentation what it takes, and "Using Namo with other libraries" in the [README](README.md#using-namo-with-other-libraries) has a table, a chart, statistics, and a pivot.
 
 
 ## Parallelism and concurrency
@@ -416,4 +416,4 @@ Daru is the legacy DataFrame of the statsample family. Use it, or daru_lite, whe
 
 Namo is a dimension-symmetric query engine over arrays of hashes. Use it to work with data in the form it arrives in, without copying it into a container or declaring a schema, with formulae that stay live and an algebra of operators over whole datasets.
 
-If you need speed, use Polars. If you need a light table, use Rover. If you need Ruby's expressiveness, dimension symmetry, and an operator algebra over data in its own shape, use Namo. They are not competing for the same job.
+If you need speed, use Polars. If you need a light table, use Rover. If you need Ruby's expressiveness, dimension symmetry, and an operator algebra over data in its own shape, use Namo. They are not competing for the same job, and they compose: a Namo's `values` and `to_h` are what Polars, Rover, and RedAmber are built from, as the README's pivot shows.

@@ -1,8 +1,8 @@
 #!/usr/bin/env ruby
 # ruby_claims.rb
 
-# 20261103
-# 0.0.0
+# 20261104
+# 0.0.1
 
 # The snippets in RUBY_COMPARISON.md, in the document's order, each run against
 # small inline data, followed by the probes behind its claims. One script for the
@@ -288,3 +288,10 @@ show('Runtime dependencies'){
     [name, spec ? spec.runtime_dependencies.map(&:to_s) : 'loaded from lib/, none in its gemspec']
   end
 }
+
+
+# Where they sit
+
+show('Polars: built from a Namo\'s to_h'){Polars::DataFrame.new(namo.to_h)['close'].to_a}
+show('Rover: built from a Namo\'s to_h'){Rover::DataFrame.new(namo.to_h)[:close].to_a}
+show('RedAmber: built from a Namo\'s to_h'){RedAmber::DataFrame.new(namo.to_h)[:close].to_a}

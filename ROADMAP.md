@@ -118,6 +118,8 @@ Three components, three responsibilities, clean interfaces. The same passive Nam
 
 Reactive frameworks like RxJS push values through subscription graphs. Namo provides the live computation property that makes such frameworks valuable, but leaves the reactivity infrastructure to the user — to be chosen and composed with whatever the rest of the system already uses. The Namo's job is to be a current-valued data container; everything else is composable around it.
 
+The same holds at the output edge. Namo does not print tables, draw charts, compute statistics, or pivot. Each of those has libraries devoted to it, and `values`, `to_h`, and `to_a` produce the shapes those libraries take, so passing a Namo to one is a single call rather than a wrapper. Statistics reach Namo through the methods a column responds to, as with `summary`'s `reducer:`. Pivoting was ruled out at 0.24.0: widening data into a grid is presentation, so it belongs at the output edge rather than in the algebra, and tables and charts are presentation in the same way. The README's "Using Namo with other libraries" shows one library for each. Any proposal to bring one of them into Namo should first answer the reasons given here.
+
 ### Portability of analytical artefacts
 
 Following from self-contained formulae and the unified interface: a Namo is a portable analytical artefact. Data plus computation plus structure travel together. Serialise a Namo, send it to a colleague, and they have everything needed to query it, extend it, and recompute its derived values.

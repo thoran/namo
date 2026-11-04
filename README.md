@@ -1063,6 +1063,74 @@ sales.group_by(:quarter)
 # ] 4 rows>
 ```
 
+### Using Namo with other libraries
+
+Namo holds data and computes over it. It leaves tables, charts, statistics, and pivots to libraries made for them. `values`, `to_h`, and `to_a` produce the shapes those libraries take, an Array per column, a Hash of those Arrays, or an Array of Hashes, so passing a Namo to one is usually a single call. Below is one library for each.
+
+Statistics, with statistics.rb, whose opt-in patch gives every Enumerable `mean`, `median`, `standard_deviation`, and more:
+
+```ruby
+require 'statistics-enumerable'
+
+sales.values(:revenue).mean                  # => 1250.0
+sales.values(:revenue).standard_deviation    # => 250.0
+
+sales[:revenue_z] = proc{|row, namo| (row[:revenue] - namo.values(:revenue).mean) / namo.values(:revenue).standard_deviation}
+sales.values(:revenue_z)                     # => [-1.0, 1.0, -1.0, 1.0]
+
+sales.group_by(:product).summary(:revenue, reducer: :mean).to_a
+# => [{member: "Widget", revenue: 1250.0}, {member: "Gadget", revenue: 1250.0}]
+```
+
+Since Namo is Enumerable, the patch applies to it too, but a Namo iterates over Rows, so `sales.mean` raises an error. Call these methods on a column instead.
+
+A table in the terminal, with terminal-table:
+
+```ruby
+require 'terminal-table'
+
+columns = sales.values(:product, :quarter, :revenue)
+puts Terminal::Table.new(headings: columns.keys, rows: columns.values.transpose)
+# +---------+---------+---------+
+# | product | quarter | revenue |
+# +---------+---------+---------+
+# | Widget  | Q1      | 1000.0  |
+# | Widget  | Q2      | 1500.0  |
+# | Gadget  | Q1      | 1000.0  |
+# | Gadget  | Q2      | 1500.0  |
+# +---------+---------+---------+
+```
+
+A chart, with vega, which renders in IRuby or on a web page. Vega-Lite takes the rows as they are:
+
+```ruby
+require 'vega'
+
+Vega.lite
+  .data(sales.to_a)
+  .mark(type: 'bar')
+  .encoding(x: {field: 'quarter'}, y: {field: 'revenue', type: 'quantitative'}, color: {field: 'product'})
+```
+
+A pivot, with Polars, since Namo does not pivot. Polars takes the columnar form:
+
+```ruby
+require 'polars-df'
+
+Polars::DataFrame.new(sales.values(:product, :quarter, :revenue)).pivot('quarter', index: 'product', values: 'revenue')
+# shape: (2, 3)
+# ┌─────────┬────────┬────────┐
+# │ product ┆ Q1     ┆ Q2     │
+# │ ---     ┆ ---    ┆ ---    │
+# │ str     ┆ f64    ┆ f64    │
+# ╞═════════╪════════╪════════╡
+# │ Widget  ┆ 1000.0 ┆ 1500.0 │
+# │ Gadget  ┆ 1000.0 ┆ 1500.0 │
+# └─────────┴────────┴────────┘
+```
+
+These examples use `values` with several dimensions rather than a projection, because a projection also carries every formula it does not name, still live, so `:revenue_z` would be included too. `comparison/other_libraries.rb` runs these examples.
+
 ### Named Namos
 
 A Namo can carry a name, passed by the `name:` keyword and read or set through the `name` accessor:
@@ -1180,7 +1248,7 @@ gt.as_summary(:weight)                     # gt's data becomes the summary; retu
 gt.as_detail(:assembly)                    # gt's data becomes the detail; returns gt
 ```
 
-`reducer:` is any method the member's column responds to — `:sum` (the default) and `:mean` are typical (`:mean` via a statistics gem that adds `Array#mean`).
+`reducer:` is any method the member's column responds to — `:sum` (the default) and `:mean` are typical (`:mean` via a statistics gem that adds `Array#mean`, as statistics.rb does: see [Using Namo with other libraries](#using-namo-with-other-libraries)).
 
 #### A block for per-member reductions
 
