@@ -322,7 +322,7 @@ describe Namo do
       namo[:agg] = proc{|row, namo| namo.values(:base).first}
       # :agg's formula calls values(:base) mid-materialisation; that nested call must
       # reuse the open scope, not reset it, so the :x column that follows still builds.
-      _(namo.values(:agg, :x)).must_equal(agg: [2, 2, 2], x: [1, 2, 3])
+      _(namo.values(:agg, :x)).must_equal({agg: [2, 2, 2], x: [1, 2, 3]})
       _(calls).must_equal 3
     end
 
@@ -346,7 +346,7 @@ describe Namo do
       namo[:reader] = proc{|row| released << true; holder.join; row[:n]}
       holder = Thread.new{namo.values(:held)}
       entered.pop
-      _(namo.values(:reader, :n)).must_equal(reader: [1], n: [1])
+      _(namo.values(:reader, :n)).must_equal({reader: [1], n: [1]})
       _(holder.value).must_equal [1]
     end
   end
