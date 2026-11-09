@@ -2,6 +2,16 @@
 
 ## 20261109
 
+0.32.12: + RUBY_COMPARISON.md: Namo is compared with Daru, Rover, Polars-ruby, and RedAmber.
+
+1. + RUBY_COMPARISON.md: Namo is compared with Daru 0.3, Rover 1.1.0, Polars-ruby 0.27.1, and RedAmber 0.5.2 on Ruby 4.0.7, feature by feature and in measured timings.
+2. + comparison/ruby_claims.rb: Runs every snippet in RUBY_COMPARISON.md, in order, then the probes behind its claims.
+3. + comparison/ruby_dataframes.rb: Times one workload in each library on generated data, having checked each answer against plain Ruby's.
+4. ~ comparison/setup: Builds a ruby environment as well, with the gems over Apache Arrow's GLib libraries from conda-forge, which RedAmber needs, and a ruby to run them with. Red Arrow takes the installed Arrow's version, since the two must match.
+5. ~ comparison/README.md: The two scripts and the ruby environment are described.
+6. ~ COMPARISON.md: Points to RUBY_COMPARISON.md.
+7. ~ Namo::VERSION: /0.32.11/0.32.12/
+
 0.32.11: ~ test/namo_test.rb: The two tests added in 0.32.10 pass under minitest 6.1.
 
 1. ~ test/namo_test.rb: The Hashes the two access-scope tests expect are in braces, since minitest 6.1.0 takes a Hash given to must_equal without them as keyword arguments, leaving the expected value nil.
