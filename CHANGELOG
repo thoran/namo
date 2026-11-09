@@ -1,5 +1,12 @@
 # namo/CHANGELOG
 
+## 20261109
+
+0.32.11: ~ test/namo_test.rb: The two tests added in 0.32.10 pass under minitest 6.1.
+
+1. ~ test/namo_test.rb: The Hashes the two access-scope tests expect are in braces, since minitest 6.1.0 takes a Hash given to must_equal without them as keyword arguments, leaving the expected value nil.
+2. ~ Namo::VERSION: /0.32.10/0.32.11/
+
 ## 20261103
 
 0.32.10: ~ Namo#materialising: A frozen Namo can be read again, and two threads reading one Namo no longer share a scope.
