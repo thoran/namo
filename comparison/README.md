@@ -1,8 +1,8 @@
 # comparison
 
 Two sets of scripts: those which run the snippets in
-[COMPARISON.md](../COMPARISON.md) and [RUBY_COMPARISON.md](../RUBY_COMPARISON.md),
-and those behind the figures in RUBY_COMPARISON.md and "Measured, at 0.31.0" in
+[COMPARISON.md](../COMPARISON.md), [RUBY_COMPARISON.md](../RUBY_COMPARISON.md), and
+the README's "Using Namo with other libraries", and those behind the figures in RUBY_COMPARISON.md and "Measured, at 0.31.0" in
 [ROADMAP.md](../ROADMAP.md).
 
 ## The claims scripts
@@ -22,13 +22,15 @@ its label and its result, or the exception it raised.
 | `dplyr_claims.R` | R, with dplyr, tidyr, tibble and zoo |
 | `dataframes_claims.jl` | Julia, with DataFrames.jl, RollingFunctions.jl and Tables.jl |
 | `ruby_claims.rb` | RUBY_COMPARISON.md: Namo, Daru, Rover, Polars-ruby, and RedAmber |
+| `readme_claims.rb` | the README's "Using Namo with other libraries": statistics.rb, terminal-table, vega, and Polars-ruby |
 
 Each prints the versions it ran against first. `setup` builds the environments they
 run in, inside this directory and ignored by git: `.venv/` for Python, with uv, and
 `.tools/` for R, with micromamba from conda-forge, for Julia, from julialang.org's
-tarball, its sha256 checked, and for the Ruby libraries, as gems in `.tools/ruby/`
-over Apache Arrow's GLib libraries from conda-forge in `.tools/arrow/`, which
-RedAmber wants. It wants uv and Ruby, and nothing else installed.
+tarball, its sha256 checked, and for the Ruby libraries and those `readme_claims.rb`
+passes a Namo to, as gems in `.tools/ruby/` over Apache Arrow's GLib libraries from
+conda-forge in `.tools/arrow/`, which RedAmber wants. It wants uv and Ruby, and
+nothing else installed.
 
 ```sh
 comparison/setup
@@ -36,11 +38,12 @@ comparison/.venv/bin/python comparison/polars_claims.py
 comparison/.tools/bin/Rscript comparison/dplyr_claims.R
 comparison/.tools/bin/julia comparison/dataframes_claims.jl
 comparison/.tools/bin/ruby comparison/ruby_claims.rb
+comparison/.tools/bin/ruby comparison/readme_claims.rb
 ```
 
 `.tools/bin/ruby` runs the Ruby which ran `setup`, with those gems and libraries.
 
-By default it installs the versions the two comparisons name, so a run reproduces
+By default it installs the versions the two comparisons and the README name, so a run reproduces
 them as dated; `--latest` takes the newest releases of the packages, R, Julia, and
 the gems instead, for checking them again, Red Arrow taking the version of the Arrow
 installed. uv uses a Python of the version asked for where one is installed, and
@@ -49,7 +52,7 @@ builds that one alone. Each is removed and built afresh, so it can be run again,
 the downloads and package caches are removed after. The whole is about 3.3 GB, of
 which the Ruby environment is 1 GB, and can be deleted between runs.
 
-`namo_claims.rb`, `ruby_claims.rb`, and `ruby_dataframes.rb` load `lib/` from this
+`namo_claims.rb`, `ruby_claims.rb`, `readme_claims.rb`, and `ruby_dataframes.rb` load `lib/` from this
 repository rather than an installed gem.
 
 ## The Ruby libraries timing script

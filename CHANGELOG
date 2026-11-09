@@ -2,6 +2,19 @@
 
 ## 20261109
 
+0.32.13: ~ README.md: A new section shows a Namo passed to statistics.rb, terminal-table, vega, and Polars-ruby.
+
+1. ~ README.md: A section, "Using Namo with other libraries", after "Inspection output", passes a Namo to statistics.rb for statistics, terminal-table for a table, vega for a chart, and Polars-ruby for a pivot.
+2. ~ README.md: The note on summary's reducer: points to statistics.rb.
+3. + comparison/readme_claims.rb: Runs every snippet in "Using Namo with other libraries", in order, then the probe behind its caveat.
+4. ~ comparison/setup: The ruby environment gains statistics.rb 0.11.0, terminal-table 4.0.0, and vega 0.6.0.
+5. ~ comparison/README.md: The new script is described.
+6. ~ comparison/ruby_claims.rb: Polars, Rover, and RedAmber frames are built from a Namo's to_h.
+7. ~ RUBY_COMPARISON.md: Display is left to other libraries, where the others had been said to do it better, and the libraries are said to compose, a Namo's values and to_h being what the three columnar ones are built from.
+8. ~ ROADMAP.md: In "Composition with surrounding systems", Namo leaves tables, charts, statistics, and pivots to other libraries, as 0.24.0 did pivoting.
+9. ~ ROADMAP.md: In 3.x, a Namo switches between row and column storage to suit the operations asked of it. Columnar storage's third step is rewritten, and a "Dynamic layout" section covers which operations suit which layout, a ColumnStore of native buffers, three options for deciding when to switch, how switching interacts with freezing, and what data returns when columns are stored. The second layout kept as a cache and invalidated on mutation is dropped, since the data back door means that not every mutation can be detected.
+10. ~ Namo::VERSION: /0.32.12/0.32.13/
+
 0.32.12: + RUBY_COMPARISON.md: Namo is compared with Daru, Rover, Polars-ruby, and RedAmber.
 
 1. + RUBY_COMPARISON.md: Namo is compared with Daru 0.3, Rover 1.1.0, Polars-ruby 0.27.1, and RedAmber 0.5.2 on Ruby 4.0.7, feature by feature and in measured timings.

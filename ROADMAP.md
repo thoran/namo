@@ -118,6 +118,8 @@ Three components, three responsibilities, clean interfaces. The same passive Nam
 
 Reactive frameworks like RxJS push values through subscription graphs. Namo provides the live computation property that makes such frameworks valuable, but leaves the reactivity infrastructure to the user — to be chosen and composed with whatever the rest of the system already uses. The Namo's job is to be a current-valued data container; everything else is composable around it.
 
+The same holds at the output edge. Namo does not print tables, draw charts, compute statistics, or pivot. Each of those has libraries devoted to it, and `values`, `to_h`, and `to_a` produce the shapes those libraries take, so passing a Namo to one is a single call rather than a wrapper. Statistics reach Namo through the methods a column responds to, as with `summary`'s `reducer:`. Pivoting was ruled out at 0.24.0: widening data into a grid is presentation, so it belongs at the output edge rather than in the algebra, and tables and charts are presentation in the same way. The README's "Using Namo with other libraries" shows one library for each. Any proposal to bring one of them into Namo should first answer the reasons given here.
+
 ### Portability of analytical artefacts
 
 Following from self-contained formulae and the unified interface: a Namo is a portable analytical artefact. Data plus computation plus structure travel together. Serialise a Namo, send it to a colleague, and they have everything needed to query it, extend it, and recompute its derived values.
@@ -1937,7 +1939,7 @@ Development order:
 
 1. Default (current): always RowStore, no choice, no configuration.
 2. Choose at instantiation: Namo detects the input shape (array of hashes vs hash of arrays) or accepts an explicit `storage:` keyword.
-3. Dynamic: one primary layout with the other cached on demand, cache invalidated on mutation.
+3. Dynamic: Namo switches between the two layouts to suit the operations it is asked to do, as often as needed (below).
 
 ```ruby
 # Row-oriented (array of hashes, current)
@@ -1946,6 +1948,24 @@ namo = Namo.new([{symbol: 'BHP', close: 42.5}, ...])
 # Column-oriented (hash of arrays) — the shape to_h produces
 namo = Namo.new({symbol: ['BHP', ...], close: [42.5, ...]})
 ```
+
+#### Dynamic layout
+
+The shape the data is given in does not decide which layout suits the operations that follow. Rows are faster for operations which use whole rows: iteration, formulae which read several fields of a row, appending, and `to_a`. Columns are faster for operations on a single dimension: selection, aggregation, sorting, and `values`. A Namo built from rows and then filtered by sector a thousand times would be faster held as columns, and one built from columns and then iterated over would be faster held as rows. Step 2 fixes the layout when the Namo is created, which suits the first operation but not later ones of a different kind.
+
+So Namo may change its layout: to columns while most operations are on columns, and back to rows when they are not, as often as needed. No public method exposes the layout. `values`, `to_h`, `to_a`, and `each` return the same results whichever store holds the data, so switching changes performance and never results, as with 2.x caching. Nor need the stores be written in Ruby: a `ColumnStore` of typed native buffers, using the C extension below, would work the same way, only faster.
+
+How Namo decides when to switch is not yet settled. There are three options, from simplest to most elaborate:
+
+- **Per operation.** Each operation declares the layout it prefers. A Namo holding the other layout switches when transposing and then running the operation is estimated to cost less than running it in the current layout. No history is kept.
+- **Per workload.** The Namo counts the kinds of operation it is asked to do, selections and aggregations against iterations and appends, and switches when one kind predominates. Some hysteresis stops it switching back and forth when the two kinds alternate.
+- **Both layouts.** A frozen Namo can keep both layouts, at the cost of the extra memory, and each operation uses whichever suits it.
+
+The per-operation rule is needed in any case, and the other two build on it. Whether keeping a history of the workload is worth its overhead is a question for the 1.1 benchmarking suite.
+
+As for freezing, the Mutability open question's conclusion still holds: no cache needs to detect mutation. A frozen Namo can keep a switched layout, or both layouts, indefinitely, since nothing can make them stale. An unfrozen Namo either replaces its stored layout with the new one, discarding the old so that there is nothing to keep in step, or builds the other layout for one access only. 0.29.0's access-scoped materialisation already does the latter: `values_for` builds the columns an access needs and discards them when it returns. What is ruled out is keeping a second layout alongside the first on an unfrozen Namo and invalidating it on mutation, since the `attr_accessor :data` back door means that not every mutation can be detected.
+
+The `data` accessor is the unsettled part. It returns the row store itself, but when columns are stored there is no row store to return. It could transpose back to rows, so that calling `data` switches the layout to rows. Or it could return rows built for that call, in which case changing them would change nothing in the Namo, silently, unless they are returned frozen, so that a change raises an error and has to go through `<<` or `[]=`, where Namo can see it. Either of these last two would change the README's Mutability contract, under which `data` is deliberately a back door.
 
 When DuckDB is the backend (4.x), neither layout matters — the data lives in DuckDB. Columnar storage only matters when Namo is doing the computation itself in pure Ruby.
 
